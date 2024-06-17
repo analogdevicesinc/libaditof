@@ -162,8 +162,11 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     {
         std::lock_guard<std::mutex> lock(preallocMutex);
         for (int i = 0; i < 10; ++i) {
-            preallocatedFrameBuffers.emplace_back(rawFrameSize);  // vector with rawFrameSize capacity
-            freeFrameBuffers.push(&preallocatedFrameBuffers.back());
+            uint8_t* buffer = static_cast<uint8_t*>(aligned_alloc(64, rawFrameSize));
+            if (buffer) {
+                preallocatedFrameBuffers.push_back(buffer);
+                freeFrameBuffers.push(buffer);
+            }
         }
     }
 
@@ -282,11 +285,12 @@ void BufferProcessor::captureFrameThread() {
         Frame frame;
         {
             std::lock_guard<std::mutex> lock(poolMutex);
-            if (bufferPool.size() >= preallocSize)
+            if (bufferPool.size() >= preallocSize){
+                LOG(WARNING) << __func__ << ": Buffer pool full, dropping oldest frame.";
                 bufferPool.pop();
-
-            std::vector<uint8_t>& targetBuffer = preallocatedFrameBuffers[bufferIndex];
-            targetBuffer.assign(pdata, pdata + buf_data_len);
+            }
+            uint8_t* targetBuffer = preallocatedFrameBuffers[bufferIndex];
+            memcpy(targetBuffer, pdata, buf_data_len);
 
             frame.data = targetBuffer;
             frame.size = buf_data_len;
@@ -306,7 +310,7 @@ void BufferProcessor::captureFrameThread() {
     }
     if (totalV4L2Captured > 0) {
         double averageCaptureTime = static_cast<double>(totalCaptureTime) / totalV4L2Captured;
-        LOG(INFO) << __func__ << ": Average capture time: " << averageCaptureTime << " ms";
+        //LOG(INFO) << __func__ << ": Average capture time: " << averageCaptureTime << " ms";
     }
 }
 
@@ -355,7 +359,7 @@ void BufferProcessor::processThread() {
 
             auto processStart = std::chrono::high_resolution_clock::now();
 
-            uint32_t ret = TofiCompute(reinterpret_cast<uint16_t *>(frame.data.data()), m_tofiComputeContext, NULL);
+            uint32_t ret = TofiCompute(reinterpret_cast<uint16_t *>(frame.data), m_tofiComputeContext, NULL);
             if (ret != ADI_TOFI_SUCCESS) {
                 LOG(ERROR) << __func__ << ": TofiCompute failed Skipping frame!";
                  {

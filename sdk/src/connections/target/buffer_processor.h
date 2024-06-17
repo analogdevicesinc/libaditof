@@ -130,13 +130,11 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     struct VideoDev *m_outputVideoDev;
 
     struct Frame {
-        std::vector<uint8_t> data;
-        size_t size;
+        uint8_t* data = nullptr;
+        size_t size = 0;
         std::shared_ptr<uint16_t> tofiBuffer;
 
         Frame() = default;
-        Frame(std::vector<uint8_t>&& d, size_t s) : data(std::move(d)), size(s), tofiBuffer(nullptr) {}
-
     };
 
     std::queue<Frame> bufferPool;
@@ -147,10 +145,12 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     bool stopThreadsFlag = false;
     bool streamRunning = false;
 
-    std::vector<std::vector<uint8_t>> preallocatedFrameBuffers;
-    std::queue<std::vector<uint8_t>*> freeFrameBuffers;
+    std::vector<uint8_t*> preallocatedFrameBuffers;
+    std::queue<uint8_t*> freeFrameBuffers;
     std::mutex preallocMutex;
     std::condition_variable preallocNotEmpty;
+
+    size_t rawFrameBufferSize = 0;
 
     std::thread captureThread;
     std::thread processingThread;
