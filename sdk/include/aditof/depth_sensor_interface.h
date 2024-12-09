@@ -135,9 +135,12 @@ class DepthSensorInterface {
      * @brief Send a write command to adsd3500.
      * @param cmd - the command to be sent
      * @param data - the data to be written
+     * @param usDelay - the number of microseconds to wait between the host command
+     * and the actual write
      * @return Status
      */
-    virtual aditof::Status adsd3500_write_cmd(uint16_t cmd, uint16_t data) = 0;
+    virtual aditof::Status adsd3500_write_cmd(uint16_t cmd, uint16_t data,
+                                              unsigned int usDelay = 0) = 0;
 
     /**
      * @brief Send a read command to adsd3500. This will perform a burst read making it

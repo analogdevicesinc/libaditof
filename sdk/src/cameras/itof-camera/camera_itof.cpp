@@ -346,6 +346,29 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     }
 
     m_iniKeyValPairs = m_depth_params_map[mode];
+    configureSensorModeDetails();
+    status = m_depthSensor->setMode(mode);
+    if (status != Status::OK) {
+        LOG(WARNING) << "Failed to set frame type";
+        return status;
+    }
+
+    status = m_depthSensor->getModeDetails(mode, m_modeDetailsCache);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to get frame type details!";
+        return status;
+    }
+
+    m_pcmFrame = m_modeDetailsCache.isPCM;
+
+    uint16_t chipCmd = 0xDA00;
+    chipCmd += mode;
+    status = m_depthSensor->adsd3500_write_cmd(chipCmd, 0x280F, 200000);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to switch mode in chip using host commands!";
+        return status;
+    }
+
     setAdsd3500IniParams(m_iniKeyValPairs);
     configureSensorModeDetails();
     m_details.mode = mode;
@@ -355,20 +378,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     for (auto param : m_iniKeyValPairs) {
         LOG(INFO) << param.first << " : " << param.second;
     }
-
-    status = m_depthSensor->getModeDetails(mode, m_modeDetailsCache);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to get frame type details!";
-        return status;
-    }
-
-    status = m_depthSensor->setMode(mode);
-    if (status != Status::OK) {
-        LOG(WARNING) << "Failed to set frame type";
-        return status;
-    }
-
-    m_pcmFrame = m_modeDetailsCache.isPCM;
 
     if (m_enableMetaDatainAB > 0) {
         if (!m_pcmFrame) {

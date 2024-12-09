@@ -23,6 +23,7 @@ option(WITH_OFFLINE "Build offline interface?" OFF)
 option(WITH_GLOG_DEPENDENCY "Build with GLOG dependency to be used for logging?" OFF)
 option(CI_BUILD "Build for CI" OFF)
 option(WITH_SUBMODULES "Use submodules to build the library" ON)
+option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
 
 ######################### Target based Options ################################
 option(NXP "Set to ON when building on NXP" OFF)
@@ -104,6 +105,10 @@ endif()
 
 if(CI_BUILD)
     set(USE_DEPTH_COMPUTE_OPENSOURCE ON)
+endif()
+
+if(ENABLE_PCM)
+    add_definitions(-DENABLE_PCM)
 endif()
 
 if (WITH_NETWORK)

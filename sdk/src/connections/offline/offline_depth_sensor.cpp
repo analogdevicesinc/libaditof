@@ -227,7 +227,8 @@ OfflineDepthSensor::setHostConnectionType(std::string &connectionType) {
 }
 
 aditof::Status OfflineDepthSensor::adsd3500_write_cmd(uint16_t cmd,
-                                                      uint16_t data) {
+                                                      uint16_t data,
+                                                      unsigned int usDelay) {
     return aditof::Status::OK;
 }
 

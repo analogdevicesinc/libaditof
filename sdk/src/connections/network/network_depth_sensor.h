@@ -71,8 +71,9 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
 
     virtual aditof::Status adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
                                              unsigned int usDelay = 0) override;
-    virtual aditof::Status adsd3500_write_cmd(uint16_t cmd,
-                                              uint16_t data) override;
+    virtual aditof::Status
+    adsd3500_write_cmd(uint16_t cmd, uint16_t data,
+                       unsigned int usDelay = 0) override;
     virtual aditof::Status
     adsd3500_read_payload_cmd(uint32_t cmd, uint8_t *readback_data,
                               uint16_t payload_len) override;

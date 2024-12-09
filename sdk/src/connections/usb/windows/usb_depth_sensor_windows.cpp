@@ -945,7 +945,8 @@ aditof::Status UsbDepthSensor::adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
     return Status::OK;
 }
 
-aditof::Status UsbDepthSensor::adsd3500_write_cmd(uint16_t cmd, uint16_t data) {
+aditof::Status UsbDepthSensor::adsd3500_write_cmd(uint16_t cmd, uint16_t data,
+                                                  unsigned int usDelay) {
     using namespace aditof;
 
     Status status = Status::OK;
