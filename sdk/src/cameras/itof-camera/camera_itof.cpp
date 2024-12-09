@@ -665,8 +665,55 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame) {
     return Status::OK;
 }
 
-aditof::Status CameraItof::normalizeABdata(aditof::Frame *frame,
-                                           bool useLogScaling) {
+void CameraItof::normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
+                                   uint16_t abHeight, bool advanceScaling,
+                                   bool useLogScaling) {
+
+    size_t imageSize = abHeight * abWidth;
+
+    uint32_t min_value_of_AB_pixel = 0xFFFF;
+    uint32_t max_value_of_AB_pixel = 1;
+
+    if (advanceScaling) {
+
+        for (size_t dummyCtr = 0; dummyCtr < imageSize; ++dummyCtr) {
+            if (abBuffer[dummyCtr] > max_value_of_AB_pixel) {
+                max_value_of_AB_pixel = abBuffer[dummyCtr];
+            }
+            if (abBuffer[dummyCtr] < min_value_of_AB_pixel) {
+                min_value_of_AB_pixel = abBuffer[dummyCtr];
+            }
+        }
+        max_value_of_AB_pixel -= min_value_of_AB_pixel;
+    } else {
+
+        //TODO: This is hard code, but should reflect the number of AB bits
+        //      See https://github.com/analogdevicesinc/ToF/blob/7d63e2d7e0e2bb795f5a55139740b4d5870ad3d6/examples/tof-viewer/src/ADIView.cpp#L254
+        uint32_t m_maxABPixelValue = (1 << 13) - 1;
+        max_value_of_AB_pixel = m_maxABPixelValue;
+        min_value_of_AB_pixel = 0;
+    }
+
+    double c = 255.0f / log10(1 + max_value_of_AB_pixel);
+
+    for (size_t dummyCtr = 0; dummyCtr < imageSize; ++dummyCtr) {
+
+        abBuffer[dummyCtr] -= min_value_of_AB_pixel;
+
+        double pix = abBuffer[dummyCtr] * (255.0 / max_value_of_AB_pixel);
+
+        pix = (pix >= 255.0) ? 255.0 : pix;
+
+        if (useLogScaling) {
+            pix = c * log10(pix + 1);
+        }
+        abBuffer[dummyCtr] = (uint8_t)(pix);
+    }
+}
+
+aditof::Status CameraItof::normalizeABFrame(aditof::Frame *frame,
+                                            bool advanceScaling,
+                                            bool useLogScaling) {
 
     using namespace aditof;
     Status status = Status::OK;
@@ -689,36 +736,8 @@ aditof::Status CameraItof::normalizeABdata(aditof::Frame *frame,
     frameAbDetails.width = 0;
     frame->getDataDetails("ab", frameAbDetails);
 
-    size_t imageSize = frameAbDetails.height * frameAbDetails.width;
-
-    uint32_t min_value_of_AB_pixel = 0xFFFF;
-    uint32_t max_value_of_AB_pixel = 1;
-
-    for (size_t dummyCtr = 0; dummyCtr < imageSize; ++dummyCtr) {
-        if (abVideoData[dummyCtr] > max_value_of_AB_pixel) {
-            max_value_of_AB_pixel = abVideoData[dummyCtr];
-        }
-        if (abVideoData[dummyCtr] < min_value_of_AB_pixel) {
-            min_value_of_AB_pixel = abVideoData[dummyCtr];
-        }
-    }
-    max_value_of_AB_pixel -= min_value_of_AB_pixel;
-
-    double c = 255.0f / log10(1 + max_value_of_AB_pixel);
-
-    for (size_t dummyCtr = 0; dummyCtr < imageSize; ++dummyCtr) {
-
-        abVideoData[dummyCtr] -= min_value_of_AB_pixel;
-
-        double pix = abVideoData[dummyCtr] * (255.0 / max_value_of_AB_pixel);
-
-        pix = (pix >= 255.0) ? 255.0 : pix;
-
-        if (useLogScaling) {
-            pix = c * log10(pix + 1);
-        }
-        abVideoData[dummyCtr] = (uint8_t)(pix);
-    }
+    normalizeABBuffer(abVideoData, frameAbDetails.width, frameAbDetails.height,
+                      advanceScaling, useLogScaling);
 
     return status;
 }
@@ -1386,7 +1405,8 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
 }
 
 aditof::Status
-CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile) {
+CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
+                                        const int16_t mode_in_use) {
 
     using namespace aditof;
     Status status = Status::OK;
@@ -1457,6 +1477,10 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile) {
         }
 
         for (const auto &mode : m_availableModes) {
+
+            if (mode_in_use >= 0 && mode != mode_in_use) {
+                continue;
+            }
 
             std::string modeStr = std::to_string(mode);
 

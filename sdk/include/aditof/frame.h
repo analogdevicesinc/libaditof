@@ -119,7 +119,6 @@ class Frame {
 
   private:
     std::unique_ptr<FrameImpl> m_impl;
-    Status allocFrameData();
 };
 
 } // namespace aditof

@@ -120,14 +120,31 @@ class SDK_API Camera {
 
     /**
      * @brief Scale AB image with logarithmic base 10.
-     * @param frame - The frame of the camera
+     * @param abBuffer - Pointer to the AB buffer
+     * @param abWidth - Width (in pixels) of the AB buffer
+     * @param abHeight - Height (in pixels) of the AB buffer
+     * @param advanceScaling - If is true then use advance AB scaling.
      * @param useLogScaling - If is false is applied the normalization
      * between 0 and 255,
      * if is true is applied normalization between 0 and 255 and log10
      * @return Status
      */
-    virtual aditof::Status normalizeABdata(aditof::Frame *frame,
-                                           bool useLogScaling) = 0;
+    virtual void normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
+                                   uint16_t abHeight, bool advanceScaling,
+                                   bool useLogScaling) = 0;
+
+    /**
+     * @brief Scale AB image with logarithmic base 10 in a Frame instance.
+     * @param frame - The frame of the camera
+     * @param advanceScaling - If is true then use advance AB scaling.
+     * @param useLogScaling - If is false is applied the normalization
+     * between 0 and 255,
+     * if is true is applied normalization between 0 and 255 and log10
+     * @return Status
+     */
+    virtual aditof::Status normalizeABFrame(aditof::Frame *frame,
+                                            bool advanceScaling,
+                                            bool useLogScaling) = 0;
 
     /**
      * @brief Gets the current details of the camera
@@ -560,11 +577,13 @@ class SDK_API Camera {
     /**
      * @brief Load adsd parameters from json file.
      * Need setMode to apply
-     * @param pathFile - Path to load from json file
+     * @param pathFileloadDepthParamsFromJsonFile - Path to load from json file
+     * @param mode_in_use - Specify to read details for a specifc mode
      * @return Status
      */
-    virtual aditof::Status
-    loadDepthParamsFromJsonFile(const std::string &pathFile) = 0;
+    virtual aditof::Status loadDepthParamsFromJsonFile(
+        const std::string &pathFileloadDepthParamsFromJsonFile,
+        const int16_t mode_in_use = -1) = 0;
 
     /**
      * @brief Reset the ini parameters from the chip and sets the ones stored in CCB
