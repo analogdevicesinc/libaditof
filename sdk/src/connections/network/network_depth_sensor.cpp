@@ -55,6 +55,14 @@ struct NetworkDepthSensor::ImplData {
     Network::InterruptNotificationCallback cb;
 };
 
+#ifdef USE_ZMQ
+int NetworkDepthSensor::frame_size = 0;
+
+extern int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size);
+
+extern void zmq_closeConnection();
+#endif // ZMQ
+
 NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
                                        const std::string &ip)
     : m_implData(new NetworkDepthSensor::ImplData), m_stopServerCheck(false) {
@@ -387,6 +395,13 @@ aditof::Status NetworkDepthSensor::stop() {
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
 
+    #ifdef USE_ZMQ
+
+    // Close the ZMQ connection after the sensor is stopped.
+    zmq_closeConnection();
+
+    #endif
+
     return status;
 }
 
@@ -582,6 +597,10 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
+    #ifdef USE_ZMQ
+    frame_size = type.frameWidthInBytes * type.frameHeightInBytes * sizeof(uint16_t);
+    #endif
+
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
         return Status::INVALID_ARGUMENT;
@@ -610,40 +629,52 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
     using namespace aditof;
 
-    Network *net = m_implData->handle.net;
-    std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
-    if (!net->isServer_Connected()) {
-        LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
-    }
+    #ifdef USE_ZMQ // Use ZeroMQ to get frames from the target.
 
-    net->send_buff[m_sensorIndex].set_func_name("GetFrame");
-    net->send_buff[m_sensorIndex].set_expect_reply(true);
+        int ret = zmq_getFrame(buffer, frame_size);
+        if (ret == -1) {
+            return Status::GENERIC_ERROR;
+        }
+        return Status::OK;
 
-    if (net->SendCommand(static_cast<void *>(buffer)) != 0) {
-        LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
-    }
+    #else // Use Libwebsockets to get frames from the target.
 
-    if (net->recv_server_data() != 0) {
-        LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
-    }
+        Network *net = m_implData->handle.net;
+        std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
-    if (net->recv_buff[m_sensorIndex].server_status() !=
-        payload::ServerStatus::REQUEST_ACCEPTED) {
-        LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
-    }
+        if (!net->isServer_Connected()) {
+            LOG(WARNING) << "Not connected to server";
+            return Status::UNREACHABLE;
+        }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
-    if (status != Status::OK) {
-        LOG(WARNING) << "getFrame() failed on target";
+        net->send_buff[m_sensorIndex].set_func_name("GetFrame");
+        net->send_buff[m_sensorIndex].set_expect_reply(true);
+
+        if (net->SendCommand(static_cast<void *>(buffer)) != 0) {
+            LOG(WARNING) << "Send Command Failed";
+            return Status::INVALID_ARGUMENT;
+        }
+
+        if (net->recv_server_data() != 0) {
+            LOG(WARNING) << "Receive Data Failed";
+            return Status::GENERIC_ERROR;
+        }
+
+        if (net->recv_buff[m_sensorIndex].server_status() !=
+            payload::ServerStatus::REQUEST_ACCEPTED) {
+            LOG(WARNING) << "API execution on Target Failed";
+            return Status::GENERIC_ERROR;
+        }
+
+        Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+        if (status != Status::OK) {
+            LOG(WARNING) << "getFrame() failed on target";
+            return status;
+        }
+
         return status;
-    }
-
-    return status;
+    #endif
 }
 
 aditof::Status NetworkDepthSensor::getAvailableControls(
