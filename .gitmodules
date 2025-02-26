@@ -10,3 +10,6 @@
 	path = glog
 	url = https://github.com/google/glog
         branch = v0.6.0
+[submodule "libzmq"]
+	path = libzmq
+	url = https://github.com/zeromq/libzmq.git
