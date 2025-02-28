@@ -223,19 +223,19 @@ int Network::ServerConnect(const std::string &ip) {
                 cout << "Conn established" << endl;
 
                 #ifdef USE_ZMQ
-                if (bZmq_init == false) { // Initialize ZMQ only once
-                    zmq_context = std::make_unique<zmq::context_t>(1);
-                    client_socket = std::make_unique<zmq::socket_t>(
-                        *zmq_context, zmq::socket_type::pull);
-                    client_socket->setsockopt(
-                        ZMQ_RCVTIMEO,
-                        1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
-                    std::string zmq_address = "tcp://" + ip + ":5555";
-                    client_socket->connect(zmq_address);
-                    LOG(INFO) << "ZMQ Client Connection established.";
-                    bZmq_init = true;
-                }
-#endif
+                    if (bZmq_init == false) { // Initialize ZMQ only once
+                        zmq_context = std::make_unique<zmq::context_t>(1);
+                        client_socket = std::make_unique<zmq::socket_t>(
+                            *zmq_context, zmq::socket_type::pull);
+                        client_socket->setsockopt(
+                            ZMQ_RCVTIMEO,
+                            1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
+                        std::string zmq_address = "tcp://" + ip + ":5555";
+                        client_socket->connect(zmq_address);
+                        LOG(INFO) << "ZMQ Client Connection established.";
+                        bZmq_init = true;
+                    }
+                #endif
 
                 return 0;
             } else {
@@ -634,6 +634,7 @@ int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
     zmq::message_t message;
     client_socket->recv(message, zmq::recv_flags::none);
     // memccpy(buffer, message.data(), message.size(), buf_size);
+    LOG(INFO) << "message size is : " << message.size();
     if (buf_size == message.size()) {
         memcpy(buffer, message.data(), message.size());
     } else {

@@ -40,6 +40,7 @@
 #include <chrono>
 #include <unordered_map>
 
+
 struct CalibrationData {
     std::string mode;
     float gain;
@@ -516,6 +517,11 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
                                               .frame_content(i));
     }
 
+    #ifdef USE_ZMQ
+    frame_size = (details.baseResolutionWidth * details.baseResolutionHeight * 4) *
+                 sizeof(uint16_t);
+    #endif
+
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
     return status;
 }
@@ -534,6 +540,7 @@ aditof::Status NetworkDepthSensor::setMode(const uint8_t &mode) {
     net->send_buff[m_sensorIndex].set_func_name("SetModeByIndex");
     net->send_buff[m_sensorIndex].add_func_int32_param(mode);
     net->send_buff[m_sensorIndex].set_expect_reply(true);
+
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
@@ -598,7 +605,7 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
     #ifdef USE_ZMQ
-    frame_size = type.frameWidthInBytes * type.frameHeightInBytes * sizeof(uint16_t);
+    frame_size = (type.baseResolutionWidth * type.baseResolutionHeight * 4) * sizeof(uint16_t);
     #endif
 
     if (net->SendCommand() != 0) {
