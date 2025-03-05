@@ -634,7 +634,6 @@ int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
     zmq::message_t message;
     client_socket->recv(message, zmq::recv_flags::none);
     // memccpy(buffer, message.data(), message.size(), buf_size);
-    LOG(INFO) << "message size is : " << message.size();
     if (buf_size == message.size()) {
         memcpy(buffer, message.data(), message.size());
     } else {
