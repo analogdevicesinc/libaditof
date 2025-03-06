@@ -32,15 +32,14 @@
 #include "network.h"
 
 #include <functional>
+#include <glog/logging.h>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <iostream>
-#include <glog/logging.h>
 
 #ifdef USE_ZMQ
 #include <zmq.hpp>
 #endif
-
 
 #define RX_BUFFER_BYTES (20996420)
 #define MAX_RETRY_CNT 3
@@ -222,20 +221,20 @@ int Network::ServerConnect(const std::string &ip) {
                 /*Server is connected successfully*/
                 cout << "Conn established" << endl;
 
-                #ifdef USE_ZMQ
-                    if (bZmq_init == false) { // Initialize ZMQ only once
-                        zmq_context = std::make_unique<zmq::context_t>(1);
-                        client_socket = std::make_unique<zmq::socket_t>(
-                            *zmq_context, zmq::socket_type::pull);
-                        client_socket->setsockopt(
-                            ZMQ_RCVTIMEO,
-                            1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
-                        std::string zmq_address = "tcp://" + ip + ":5555";
-                        client_socket->connect(zmq_address);
-                        LOG(INFO) << "ZMQ Client Connection established.";
-                        bZmq_init = true;
-                    }
-                #endif
+#ifdef USE_ZMQ
+                if (bZmq_init == false) { // Initialize ZMQ only once
+                    zmq_context = std::make_unique<zmq::context_t>(1);
+                    client_socket = std::make_unique<zmq::socket_t>(
+                        *zmq_context, zmq::socket_type::pull);
+                    client_socket->setsockopt(
+                        ZMQ_RCVTIMEO,
+                        1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
+                    std::string zmq_address = "tcp://" + ip + ":5555";
+                    client_socket->connect(zmq_address);
+                    LOG(INFO) << "ZMQ Client Connection established.";
+                    bZmq_init = true;
+                }
+#endif
 
                 return 0;
             } else {
@@ -559,9 +558,9 @@ int Network::callback_function(struct lws *wsi,
         Server_Connected[connectionId] = false;
         web_socket.at(connectionId) = NULL;
 
-        #ifdef USE_ZMQ
+#ifdef USE_ZMQ
         zmq_closeConnection();
-        #endif
+#endif
         break;
     }
 
@@ -626,7 +625,6 @@ Network::~Network() {
         lws_context_destroy(context.at(m_connectionId));
     }
 }
-
 
 #ifdef USE_ZMQ
 
