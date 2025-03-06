@@ -138,7 +138,7 @@ if(WITH_GLOG_DEPENDENCY)
 endif()
 
 if( WITH_NETWORK )
-	if(WITH_ZEROMQ_DEPENDENCY)
+	if(WITH_ZMQ_DEPENDENCY)
 		# Include the cppzmq to use in c++
 		set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cppzmq")
 		
