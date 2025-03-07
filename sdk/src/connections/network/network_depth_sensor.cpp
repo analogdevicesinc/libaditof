@@ -55,6 +55,14 @@ struct NetworkDepthSensor::ImplData {
     Network::InterruptNotificationCallback cb;
 };
 
+#ifdef USE_ZMQ
+int NetworkDepthSensor::frame_size = 0;
+
+extern int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size);
+
+extern void zmq_closeConnection();
+#endif // ZMQ
+
 NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
                                        const std::string &ip)
     : m_implData(new NetworkDepthSensor::ImplData), m_stopServerCheck(false) {
@@ -387,6 +395,13 @@ aditof::Status NetworkDepthSensor::stop() {
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
 
+#ifdef USE_ZMQ
+
+    // Close the ZMQ connection after the sensor is stopped.
+    zmq_closeConnection();
+
+#endif
+
     return status;
 }
 
@@ -501,6 +516,12 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
                                               .frame_content(i));
     }
 
+#ifdef USE_ZMQ
+    frame_size =
+        (details.baseResolutionWidth * details.baseResolutionHeight * 4) *
+        sizeof(uint16_t);
+#endif
+
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
     return status;
 }
@@ -582,6 +603,11 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
+#ifdef USE_ZMQ
+    frame_size = (type.baseResolutionWidth * type.baseResolutionHeight * 4) *
+                 sizeof(uint16_t);
+#endif
+
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
         return Status::INVALID_ARGUMENT;
@@ -609,6 +635,16 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
 aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
     using namespace aditof;
+
+#ifdef USE_ZMQ // Use ZeroMQ to get frames from the target.
+
+    int ret = zmq_getFrame(buffer, frame_size);
+    if (ret == -1) {
+        return Status::GENERIC_ERROR;
+    }
+    return Status::OK;
+
+#else // Use Libwebsockets to get frames from the target.
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
@@ -644,6 +680,7 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
     }
 
     return status;
+#endif
 }
 
 aditof::Status NetworkDepthSensor::getAvailableControls(

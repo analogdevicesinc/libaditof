@@ -47,6 +47,13 @@ struct NetworkHandle {
     std::mutex net_mutex;
 };
 
+#ifdef USE_ZMQ
+
+void zmq_closeConnection();
+int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size);
+
+#endif
+
 class Network {
   public:
     typedef std::function<void(void)> InterruptNotificationCallback;
