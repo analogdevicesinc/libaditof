@@ -32,7 +32,11 @@
 #include "network.h"
 
 #include <functional>
+#ifdef USE_GLOG
 #include <glog/logging.h>
+#else
+#include <aditof/log.h>
+#endif
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <iostream>
