@@ -634,14 +634,16 @@ Network::~Network() {
 
 int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
     zmq::message_t message;
-    client_socket->recv(message, zmq::recv_flags::none);
-    // memccpy(buffer, message.data(), message.size(), buf_size);
+    if (client_socket != nullptr) {
+        client_socket->recv(message, zmq::recv_flags::none);
+    }
+
     if (buf_size == message.size()) {
         memcpy(buffer, message.data(), message.size());
     } else {
-        LOG(WARNING)
-            << "Incorrect number of bytes received. Dropping the frame.";
-        return -1;
+        LOG(INFO) << "Received message of size " << message.size()
+                  << "Expected message size " << buf_size
+                  << ", dropping the frame.";
     }
 
     return 0;

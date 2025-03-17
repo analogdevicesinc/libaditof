@@ -395,13 +395,6 @@ aditof::Status NetworkDepthSensor::stop() {
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
 
-#ifdef USE_ZMQ
-
-    // Close the ZMQ connection after the sensor is stopped.
-    zmq_closeConnection();
-
-#endif
-
     return status;
 }
 
