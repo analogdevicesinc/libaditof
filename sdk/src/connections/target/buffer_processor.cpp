@@ -225,6 +225,8 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
         return status;
     }
 
+    auto now = std::chrono::system_clock::now();
+
     status = dequeueInternalBufferPrivate(buf[0], dev);
     if (status != Status::OK) {
         return status;
@@ -257,6 +259,10 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
             return Status::GENERIC_ERROR;
         }
 
+        uint32_t *ptr_idx = (uint32_t *)(m_tofiComputeContext->p_ab_frame);
+        int64_t iNow = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        uint64_t *epoch_time = (uint64_t *)&ptr_idx[5];
+        *epoch_time = static_cast<uint64_t>(iNow);
     } else {
 
         m_tofiComputeContext->p_depth_frame = m_processedBuffer;
