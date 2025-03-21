@@ -627,7 +627,7 @@ int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
     if (buf_size == message.size()) {
         memcpy(buffer, message.data(), message.size());
     } else {
-        LOG(ERROR) << "Received message of size " << message.size()
+        LOG(INFO) << "Received message of size " << message.size()
                    << " bytes . Expected message size " << buf_size
                    << " bytes , dropping the frame.";
     }
