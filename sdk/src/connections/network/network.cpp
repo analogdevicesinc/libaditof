@@ -169,8 +169,10 @@ int Network::ServerConnect(const std::string &ip) {
     info.gid = -1;
     info.uid = -1;
     info.pt_serv_buf_size = 4096;
+    #ifdef USE_ZMQ
     zmq_ip = ip;
-
+    #endif
+    
     /*Create a websocket for client*/
     context.at(m_connectionId) = lws_create_context(&info);
 
@@ -627,7 +629,7 @@ int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
     if (buf_size == message.size()) {
         memcpy(buffer, message.data(), message.size());
     } else {
-        LOG(INFO) << "Received message of size " << message.size()
+        LOG(ERROR) << "Received message of size " << message.size()
                    << " bytes . Expected message size " << buf_size
                    << " bytes , dropping the frame.";
     }
