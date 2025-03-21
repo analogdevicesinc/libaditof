@@ -99,8 +99,6 @@ bool Network::InterruptDetected[MAX_CAMERA_NUM];
 void *Network::rawPayloads[MAX_CAMERA_NUM];
 std::vector<std::string> m_connectionList;
 
-
-
 /*
 * isServer_Connected(): checks if server is connected
 * Parameters:        none
@@ -630,8 +628,8 @@ int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
         memcpy(buffer, message.data(), message.size());
     } else {
         LOG(ERROR) << "Received message of size " << message.size()
-                  << " bytes . Expected message size " << buf_size
-                  << " bytes , dropping the frame.";
+                   << " bytes . Expected message size " << buf_size
+                   << " bytes , dropping the frame.";
     }
 
     return 0;

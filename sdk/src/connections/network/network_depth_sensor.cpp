@@ -368,15 +368,15 @@ aditof::Status NetworkDepthSensor::start() {
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
 
 #ifdef USE_ZMQ
-        zmq_context = std::make_unique<zmq::context_t>(1);
-        client_socket = std::make_unique<zmq::socket_t>(*zmq_context,
-                                                        zmq::socket_type::pull);
-        client_socket->setsockopt(
-            ZMQ_RCVTIMEO,
-            1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
-        std::string zmq_address = "tcp://" + zmq_ip + ":5555";
-        client_socket->connect(zmq_address);
-        LOG(INFO) << "ZMQ Client Connection established.";
+    zmq_context = std::make_unique<zmq::context_t>(1);
+    client_socket =
+        std::make_unique<zmq::socket_t>(*zmq_context, zmq::socket_type::pull);
+    client_socket->setsockopt(
+        ZMQ_RCVTIMEO,
+        1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
+    std::string zmq_address = "tcp://" + zmq_ip + ":5555";
+    client_socket->connect(zmq_address);
+    LOG(INFO) << "ZMQ Client Connection established.";
 #endif
 
     return status;
@@ -416,10 +416,9 @@ aditof::Status NetworkDepthSensor::stop() {
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
 
-    #ifdef USE_ZMQ
+#ifdef USE_ZMQ
     zmq_closeConnection();
-    #endif // USE_ZMQ
-
+#endif // USE_ZMQ
 
     return status;
 }
