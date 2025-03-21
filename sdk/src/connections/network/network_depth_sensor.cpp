@@ -39,6 +39,9 @@
 #endif
 #include <chrono>
 #include <unordered_map>
+#ifdef USE_ZMQ
+#include <zmq.hpp>
+#endif
 
 struct CalibrationData {
     std::string mode;
@@ -62,6 +65,12 @@ extern int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size);
 
 extern void zmq_closeConnection();
 #endif // ZMQ
+
+#if USE_ZMQ
+extern std::unique_ptr<zmq::socket_t> client_socket;
+extern std::unique_ptr<zmq::context_t> zmq_context;
+extern std::string zmq_ip;
+#endif
 
 NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
                                        const std::string &ip)
@@ -358,6 +367,18 @@ aditof::Status NetworkDepthSensor::start() {
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
 
+#ifdef USE_ZMQ
+        zmq_context = std::make_unique<zmq::context_t>(1);
+        client_socket = std::make_unique<zmq::socket_t>(*zmq_context,
+                                                        zmq::socket_type::pull);
+        client_socket->setsockopt(
+            ZMQ_RCVTIMEO,
+            1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
+        std::string zmq_address = "tcp://" + zmq_ip + ":5555";
+        client_socket->connect(zmq_address);
+        LOG(INFO) << "ZMQ Client Connection established.";
+#endif
+
     return status;
 }
 
@@ -394,6 +415,11 @@ aditof::Status NetworkDepthSensor::stop() {
     }
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+
+    #ifdef USE_ZMQ
+    zmq_closeConnection();
+    #endif // USE_ZMQ
+
 
     return status;
 }

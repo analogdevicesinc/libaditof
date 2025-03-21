@@ -45,6 +45,12 @@
 #include <zmq.hpp>
 #endif
 
+#if USE_ZMQ
+std::unique_ptr<zmq::socket_t> client_socket;
+std::unique_ptr<zmq::context_t> zmq_context;
+std::string zmq_ip;
+#endif
+
 #define RX_BUFFER_BYTES (20996420)
 #define MAX_RETRY_CNT 3
 
@@ -93,11 +99,7 @@ bool Network::InterruptDetected[MAX_CAMERA_NUM];
 void *Network::rawPayloads[MAX_CAMERA_NUM];
 std::vector<std::string> m_connectionList;
 
-#if USE_ZMQ
-std::unique_ptr<zmq::socket_t> client_socket;
-std::unique_ptr<zmq::context_t> zmq_context;
-bool bZmq_init = false;
-#endif
+
 
 /*
 * isServer_Connected(): checks if server is connected
@@ -169,6 +171,7 @@ int Network::ServerConnect(const std::string &ip) {
     info.gid = -1;
     info.uid = -1;
     info.pt_serv_buf_size = 4096;
+    zmq_ip = ip;
 
     /*Create a websocket for client*/
     context.at(m_connectionId) = lws_create_context(&info);
@@ -224,21 +227,6 @@ int Network::ServerConnect(const std::string &ip) {
                        server_msg) == 0) {
                 /*Server is connected successfully*/
                 cout << "Conn established" << endl;
-
-#ifdef USE_ZMQ
-                if (bZmq_init == false) { // Initialize ZMQ only once
-                    zmq_context = std::make_unique<zmq::context_t>(1);
-                    client_socket = std::make_unique<zmq::socket_t>(
-                        *zmq_context, zmq::socket_type::pull);
-                    client_socket->setsockopt(
-                        ZMQ_RCVTIMEO,
-                        1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
-                    std::string zmq_address = "tcp://" + ip + ":5555";
-                    client_socket->connect(zmq_address);
-                    LOG(INFO) << "ZMQ Client Connection established.";
-                    bZmq_init = true;
-                }
-#endif
 
                 return 0;
             } else {
@@ -641,9 +629,9 @@ int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
     if (buf_size == message.size()) {
         memcpy(buffer, message.data(), message.size());
     } else {
-        LOG(INFO) << "Received message of size " << message.size()
-                  << "Expected message size " << buf_size
-                  << ", dropping the frame.";
+        LOG(ERROR) << "Received message of size " << message.size()
+                  << " bytes . Expected message size " << buf_size
+                  << " bytes , dropping the frame.";
     }
 
     return 0;
@@ -659,8 +647,6 @@ void zmq_closeConnection() {
     if (zmq_context) {
         zmq_context.reset(); // Release the ZMQ context
     }
-
-    bZmq_init = false;
 
     LOG(INFO) << "ZMQ Client Connection closed.";
 }
