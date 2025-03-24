@@ -169,10 +169,10 @@ int Network::ServerConnect(const std::string &ip) {
     info.gid = -1;
     info.uid = -1;
     info.pt_serv_buf_size = 4096;
-    #ifdef USE_ZMQ
+#ifdef USE_ZMQ
     zmq_ip = ip;
-    #endif
-    
+#endif
+
     /*Create a websocket for client*/
     context.at(m_connectionId) = lws_create_context(&info);
 
