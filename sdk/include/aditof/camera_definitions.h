@@ -200,6 +200,7 @@ enum class ImagerType {
     UNSET,    //!< Value for when the type is unset
     ADSD3100, //!< The ADSD3100 imager
     ADSD3030, //!< The ADSD3030 imager
+    ADTF3080, //!< The ADTF3080 imager
 };
 
 } // namespace aditof

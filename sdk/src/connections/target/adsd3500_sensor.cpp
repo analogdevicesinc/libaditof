@@ -87,7 +87,8 @@ struct ConfigurationData {
 enum class SensorImagerType {
     IMAGER_UNKNOWN,
     IMAGER_ADSD3100,
-    IMAGER_ADSD3030
+    IMAGER_ADSD3030,
+    IMAGER_ADTF3080
 };
 
 enum class CCBVersion { CCB_UNKNOWN, CCB_VERSION0, CCB_VERSION1, CCB_VERSION2 };
@@ -1693,6 +1694,11 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                 m_modeSelector.setControl("imagerType", "adsd3030");
                 break;
             }
+            case 3: {
+                m_implData->imagerType = SensorImagerType::IMAGER_ADTF3080;
+                m_modeSelector.setControl("imagerType", "adtf3080");
+                break;
+            }
             default: {
                 LOG(WARNING) << "Unknown imager type read from ADSD3500: "
                              << imager_version;
@@ -1846,6 +1852,9 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
     } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3030) {
         status = DeviceParameters::createIniParams(
             m_iniFileStructList, m_availableModes, "adsd3030");
+    } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3080) {
+        status = DeviceParameters::createIniParams(
+            m_iniFileStructList, m_availableModes, "adtf3080");
     }
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to populate ini params struct!";
@@ -2115,6 +2124,8 @@ aditof::Status Adsd3500Sensor::getIniParamsArrayForMode(int mode,
     std::string imager = "adsd3030";
     if (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3100) {
         imager = "adsd3100";
+    } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3080) {
+        imager = "adtf3080";
     }
 
     auto it = std::find_if(

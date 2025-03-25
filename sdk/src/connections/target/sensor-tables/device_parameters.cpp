@@ -28,6 +28,8 @@ aditof::Status DeviceParameters::createIniParams(
             iniF.iniKeyValPairs = adsd3100_fullDepth;
         } else if (imagerType == "adsd3030") {
             iniF.iniKeyValPairs = adsd3030_fullDepth;
+        } else if (imagerType == "adtf3080") {
+            iniF.iniKeyValPairs = adtf3080_fullDepth;
         }
 
         iniFileStructList.emplace_back(iniF);

@@ -73,6 +73,8 @@ aditof::Status Adsd3500ModeSelector::getAvailableModeDetails(
             m_depthSensorModeDetails = adsd3100_standardModes;
         } else if (m_controls["imagerType"] == "adsd3030") {
             m_depthSensorModeDetails = adsd3030_standardModes;
+        } else if (m_controls["imagerType"] == "adtf3080") {
+            m_depthSensorModeDetails = adtf3080_standardModes;
         }
     }
 
@@ -94,6 +96,14 @@ aditof::Status Adsd3500ModeSelector::getConfigurationTable(
         } else if (m_controls["imagerType"] == "adsd3030") {
             m_tableInUse = adsd3030_standardModes;
             for (auto &modes : adsd3030_standardModes) {
+                if (m_controls["mode"] == std::to_string(modes.modeNumber)) {
+                    configurationTable = modes;
+                    return aditof::Status::OK;
+                }
+            }
+        } else if (m_controls["imagerType"] == "adtf3080") {
+            m_tableInUse = adtf3080_standardModes;
+            for (auto &modes : adtf3080_standardModes) {
                 if (m_controls["mode"] == std::to_string(modes.modeNumber)) {
                     configurationTable = modes;
                     return aditof::Status::OK;
@@ -164,32 +174,45 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
         }
         return aditof::Status::OK;
     }
+    if (m_controls["imagerType"] == "adtf3080") {
+        if (configurationTable.baseResolutionHeight == 640 &&
+            configurationTable.baseResolutionWidth == 512) {
+            height = 640;
+        } else { // check this condition, this may fail if resolution is not equal to 320 x 240
+            configurationTable.frameWidthInBytes = 1280;
+            configurationTable.frameHeightInBytes = 320;
+            configurationTable.pixelFormatIndex = 0;
+            return aditof::Status::OK;
+        }
 
-    if ((configurationTable.modeNumber == 2 ||
-         configurationTable.modeNumber == 3 ||
-         configurationTable.modeNumber == 5 ||
-         configurationTable.modeNumber == 6) &&
-        m_controls["imagerType"] == "adsd3100") {
-        height = 512;
-    } else if ((configurationTable.modeNumber == 0 ||
-                configurationTable.modeNumber == 1) &&
-               m_controls["imagerType"] == "adsd3030") {
-        height = 640;
-    } else if (configurationTable.modeNumber == 7 &&
-               m_controls["imagerType"] == "adsd3030") {
-        width = 2560;
-        height = 640;
-    } else if (configurationTable.modeNumber >= 2 &&
-               m_controls["imagerType"] == "adsd3030") {
-        configurationTable.frameWidthInBytes = 1280;
-        configurationTable.frameHeightInBytes = 320;
-        configurationTable.pixelFormatIndex = 0;
-        return aditof::Status::OK;
-    } else if ((configurationTable.modeNumber < 0 ||
-                configurationTable.modeNumber > 6) &&
-               m_controls["imagerType"] != "adsd3100" &&
-               m_controls["imagerType"] != "adsd3030") {
-        return aditof::Status::INVALID_ARGUMENT;
+    } else {
+
+        if ((configurationTable.modeNumber == 2 ||
+             configurationTable.modeNumber == 3 ||
+             configurationTable.modeNumber == 5 ||
+             configurationTable.modeNumber == 6) &&
+            m_controls["imagerType"] == "adsd3100") {
+            height = 512;
+        } else if ((configurationTable.modeNumber == 0 ||
+                    configurationTable.modeNumber == 1) &&
+                   m_controls["imagerType"] == "adsd3030") {
+            height = 640;
+        } else if (configurationTable.modeNumber == 7 &&
+                   m_controls["imagerType"] == "adsd3030") {
+            width = 2560;
+            height = 640;
+        } else if (configurationTable.modeNumber >= 2 &&
+                   m_controls["imagerType"] == "adsd3030") {
+            configurationTable.frameWidthInBytes = 1280;
+            configurationTable.frameHeightInBytes = 320;
+            configurationTable.pixelFormatIndex = 0;
+            return aditof::Status::OK;
+        } else if ((configurationTable.modeNumber < 0 ||
+                    configurationTable.modeNumber > 6) &&
+                   m_controls["imagerType"] != "adsd3100" &&
+                   m_controls["imagerType"] != "adsd3030") {
+            return aditof::Status::INVALID_ARGUMENT;
+        }
     }
 
     configurationTable.frameWidthInBytes = width;
@@ -217,6 +240,8 @@ aditof::Status Adsd3500ModeSelector::setControl(const std::string &control,
             m_tableInUse = adsd3100_standardModes;
         } else if (value == "adsd3030") {
             m_tableInUse = adsd3030_standardModes;
+        } else if (value == "adtf3080") {
+            m_tableInUse = adtf3080_standardModes;
         }
     }
 

@@ -154,6 +154,8 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             m_imagerType = ImagerType::ADSD3100;
         } else if (controlValue == "2") {
             m_imagerType = ImagerType::ADSD3030;
+        } else if (controlValue == "3") {
+            m_imagerType = ImagerType::ADTF3080;
         } else {
             m_imagerType = ImagerType::UNSET;
             LOG(ERROR) << "Unkown imager type: " << controlValue;
@@ -1894,6 +1896,9 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
                 LOG(ERROR) << "ADSD3100 imager error detected: "
                            << m_adsdErrors.GetStringADSD3100(imagerStatus);
             } else if (m_imagerType == ImagerType::ADSD3030) {
+                LOG(ERROR) << "ADSD3030 imager error detected: "
+                           << m_adsdErrors.GetStringADSD3030(imagerStatus);
+            } else if (m_imagerType == ImagerType::ADTF3080) {
                 LOG(ERROR) << "ADSD3030 imager error detected: "
                            << m_adsdErrors.GetStringADSD3030(imagerStatus);
             } else {
