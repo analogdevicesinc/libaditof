@@ -154,7 +154,7 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             m_imagerType = ImagerType::ADSD3100;
         } else if (controlValue == ControlValue.at(ImagerType::ADSD3030)) {
             m_imagerType = ImagerType::ADSD3030;
-        } else if (controlValue == ControlValue.at(ImagerType::ADSD3100)) {
+        } else if (controlValue == ControlValue.at(ImagerType::ADTF3080)) {
             m_imagerType = ImagerType::ADTF3080;
         } else {
             m_imagerType = ImagerType::UNSET;
