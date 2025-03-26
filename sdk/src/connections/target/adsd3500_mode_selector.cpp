@@ -69,11 +69,13 @@ aditof::Status Adsd3500ModeSelector::getAvailableModeDetails(
     m_depthSensorModeDetails.clear();
 
     if (m_configuration == "standard") {
-        if (m_controls["imagerType"] == "adsd3100") {
+        if (m_controls["imagerType"] == imagerType.at(ImagerType::ADSD3100)) {
             m_depthSensorModeDetails = adsd3100_standardModes;
-        } else if (m_controls["imagerType"] == "adsd3030") {
+        } else if (m_controls["imagerType"] ==
+                   imagerType.at(ImagerType::ADSD3030)) {
             m_depthSensorModeDetails = adsd3030_standardModes;
-        } else if (m_controls["imagerType"] == "adtf3080") {
+        } else if (m_controls["imagerType"] ==
+                   imagerType.at(ImagerType::ADTF3080)) {
             m_depthSensorModeDetails = adtf3080_standardModes;
         }
     }
@@ -85,7 +87,7 @@ aditof::Status Adsd3500ModeSelector::getConfigurationTable(
     DepthSensorModeDetails &configurationTable) {
 
     if (m_configuration == "standard") {
-        if (m_controls["imagerType"] == "adsd3100") {
+        if (m_controls["imagerType"] == imagerType.at(ImagerType::ADSD3100)) {
             m_tableInUse = adsd3100_standardModes;
             for (auto &modes : adsd3100_standardModes) {
                 if (m_controls["mode"] == std::to_string(modes.modeNumber)) {
@@ -93,7 +95,8 @@ aditof::Status Adsd3500ModeSelector::getConfigurationTable(
                     return aditof::Status::OK;
                 }
             }
-        } else if (m_controls["imagerType"] == "adsd3030") {
+        } else if (m_controls["imagerType"] ==
+                   imagerType.at(ImagerType::ADSD3030)) {
             m_tableInUse = adsd3030_standardModes;
             for (auto &modes : adsd3030_standardModes) {
                 if (m_controls["mode"] == std::to_string(modes.modeNumber)) {
@@ -101,7 +104,8 @@ aditof::Status Adsd3500ModeSelector::getConfigurationTable(
                     return aditof::Status::OK;
                 }
             }
-        } else if (m_controls["imagerType"] == "adtf3080") {
+        } else if (m_controls["imagerType"] ==
+                   imagerType.at(ImagerType::ADTF3080)) {
             m_tableInUse = adtf3080_standardModes;
             for (auto &modes : adtf3080_standardModes) {
                 if (m_controls["mode"] == std::to_string(modes.modeNumber)) {
@@ -154,11 +158,10 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
         return aditof::Status::INVALID_ARGUMENT;
     }
 
-    int frameWidth = 512;
     int totalBits = depth_i + ab_i + conf_i;
-    int width = frameWidth * totalBits / 8;
+    int width = configurationTable.baseResolutionWidth * totalBits / 8;
 
-    int height = 512;
+    int height = configurationTable.baseResolutionHeight;
 
     if (configurationTable.isPCM) {
         configurationTable.frameWidthInBytes =
@@ -174,16 +177,14 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
         }
         return aditof::Status::OK;
     }
-    if (m_controls["imagerType"] == "adtf3080") {
-        if (configurationTable.baseResolutionHeight == 640 &&
-            configurationTable.baseResolutionWidth == 512) {
-            height = 640;
-        } else { // check this condition, this may fail if resolution is not equal to 320 x 240
-            configurationTable.frameWidthInBytes = 1280;
-            configurationTable.frameHeightInBytes = 320;
-            configurationTable.pixelFormatIndex = 0;
-            return aditof::Status::OK;
-        }
+    if (m_controls["imagerType"] == imagerType.at(ImagerType::ADTF3080)) {
+
+        configurationTable.frameWidthInBytes =
+            configurationTable.baseResolutionWidth * totalBits / 8;
+        configurationTable.frameHeightInBytes =
+            configurationTable.baseResolutionHeight;
+        configurationTable.pixelFormatIndex = 0;
+        return aditof::Status::OK;
 
     } else {
 
@@ -191,26 +192,31 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
              configurationTable.modeNumber == 3 ||
              configurationTable.modeNumber == 5 ||
              configurationTable.modeNumber == 6) &&
-            m_controls["imagerType"] == "adsd3100") {
+            m_controls["imagerType"] == imagerType.at(ImagerType::ADSD3100)) {
             height = 512;
         } else if ((configurationTable.modeNumber == 0 ||
                     configurationTable.modeNumber == 1) &&
-                   m_controls["imagerType"] == "adsd3030") {
+                   m_controls["imagerType"] ==
+                       imagerType.at(ImagerType::ADSD3030)) {
             height = 640;
         } else if (configurationTable.modeNumber == 7 &&
-                   m_controls["imagerType"] == "adsd3030") {
+                   m_controls["imagerType"] ==
+                       imagerType.at(ImagerType::ADSD3030)) {
             width = 2560;
             height = 640;
         } else if (configurationTable.modeNumber >= 2 &&
-                   m_controls["imagerType"] == "adsd3030") {
+                   m_controls["imagerType"] ==
+                       imagerType.at(ImagerType::ADSD3030)) {
             configurationTable.frameWidthInBytes = 1280;
             configurationTable.frameHeightInBytes = 320;
             configurationTable.pixelFormatIndex = 0;
             return aditof::Status::OK;
         } else if ((configurationTable.modeNumber < 0 ||
                     configurationTable.modeNumber > 6) &&
-                   m_controls["imagerType"] != "adsd3100" &&
-                   m_controls["imagerType"] != "adsd3030") {
+                   m_controls["imagerType"] !=
+                       imagerType.at(ImagerType::ADSD3100) &&
+                   m_controls["imagerType"] !=
+                       imagerType.at(ImagerType::ADSD3030)) {
             return aditof::Status::INVALID_ARGUMENT;
         }
     }
@@ -236,11 +242,11 @@ aditof::Status Adsd3500ModeSelector::setControl(const std::string &control,
 
     //ccbm will work only with standard modes
     if (control == "imagerType") {
-        if (value == "adsd3100") {
+        if (value == imagerType.at(ImagerType::ADSD3100)) {
             m_tableInUse = adsd3100_standardModes;
-        } else if (value == "adsd3030") {
+        } else if (value == imagerType.at(ImagerType::ADSD3030)) {
             m_tableInUse = adsd3030_standardModes;
-        } else if (value == "adtf3080") {
+        } else if (value == imagerType.at(ImagerType::ADTF3080)) {
             m_tableInUse = adtf3080_standardModes;
         }
     }

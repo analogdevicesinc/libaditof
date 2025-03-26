@@ -37,6 +37,7 @@
 #include "status_definitions.h"
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -202,6 +203,16 @@ enum class ImagerType {
     ADSD3030, //!< The ADSD3030 imager
     ADTF3080, //!< The ADTF3080 imager
 };
+
+const std::map<ImagerType, std::string> ControlValue{
+    {ImagerType::ADSD3100, "1"},
+    {ImagerType::ADSD3030, "2"},
+    {ImagerType::ADTF3080, "3"}};
+
+const std::map<ImagerType, std::string> imagerType{
+    {ImagerType::ADSD3100, "adsd3100"},
+    {ImagerType::ADSD3030, "adsd3030"},
+    {ImagerType::ADTF3080, "adtf3080"}};
 
 } // namespace aditof
 

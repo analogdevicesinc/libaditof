@@ -37,6 +37,15 @@
 #include <aditof/sensor_definitions.h>
 #include <vector>
 
+#define MP_BASE_HEIGHT 1024
+#define MP_BASE_WIDTH 1024
+#define QMP_BASE_HEIGHT 512
+#define QMP_BASE_WIDTH 512
+#define VGA_BASE_HEIGHT 640
+#define VGA_BASE_WIDTH 512
+#define QVGA_BASE_HEIGHT 320
+#define QVGA_BASE_WIDTH 256
+
 using namespace aditof;
 
 const std::vector<DriverConfiguration> m_adsd3500standard = {
