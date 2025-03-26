@@ -27,8 +27,8 @@ option(WITH_SUBMODULES "Use submodules to build the library" ON)
 option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
 
 ######################### Target based Options ################################
-option(NXP "Set to ON when building on NXP" OFF)
-option(NVIDIA "Set to ON when building on NVIDIA" OFF)
+option(ON_NXP "Set to ON when building on NXP" OFF)
+option(ON_NVIDIA "Set to ON when building on NVIDIA" OFF)
 option(WITH_PROTOBUF_DEPENDENCY "Build with PROTOBUF dependency?" ON)
 option(USE_DEPTH_COMPUTE_OPENSOURCE "Use an open source implementation?" OFF)
 
@@ -87,7 +87,7 @@ endif()
 
 # Check whether we configure things for remote or we're on target
 set(SELECTED_PLATFORMS 0)
-set(ALL_PLATFORMS NXP;NVIDIA)
+set(ALL_PLATFORMS ON_NXP;ON_NVIDIA)
 foreach(platform IN LISTS ALL_PLATFORMS)
     if(${platform})
         math(EXPR SELECTED_PLATFORMS "${SELECTED_PLATFORMS}+1")
@@ -175,26 +175,26 @@ if(WITH_GLOG_DEPENDENCY)
         endif()
 endif()
 
-if(WITH_ZMQ_DEPENDENCY)
+if(WITH_NETWORK AND WITH_ZMQ_DEPENDENCY)
 		add_definitions(-DUSE_ZMQ)
 		if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/.git")
-			    # Temporarily store the current compile options
-                set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
-                set(old_c_flags "${CMAKE_C_FLAGS}")
-                # Disable warnings for this subdirectory
-                set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-                set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-                set(BUILD_TESTS OFF CACHE BOOL "Disable building tests for libzmq")
-                set(POSITION_INDEPENDENT_CODE 1)
-				add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libzmq)
-				unset(POSITION_INDEPENDENT_CODE)
-				# Restore the old compile options
-                set(CMAKE_CXX_FLAGS "${old_cxx_flags}")
-                set(CMAKE_C_FLAGS "${old_c_flags}")
+                        # Temporarily store the current compile options
+                        set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
+                        set(old_c_flags "${CMAKE_C_FLAGS}")
+                        # Disable warnings for this subdirectory
+                        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+                        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+                        set(BUILD_TESTS OFF CACHE BOOL "Disable building tests for libzmq")
+                        set(POSITION_INDEPENDENT_CODE 1)
+                                        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libzmq)
+                                        unset(POSITION_INDEPENDENT_CODE)
+                                        # Restore the old compile options
+                        set(CMAKE_CXX_FLAGS "${old_cxx_flags}")
+                        set(CMAKE_C_FLAGS "${old_c_flags}")
 		endif()
 endif()
 
-if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets/.git" )
+if(WITH_NETWORK AND WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets/.git" )
         # Temporarily store the current compile options
         set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
         set(old_c_flags "${CMAKE_C_FLAGS}")
@@ -231,7 +231,7 @@ if(NOT WITH_PROTOBUF_DEPENDENCY)
         endif()
 else()
         add_definitions(-DUSE_PROTOBUF)
-        if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/protobuf/.git" )
+        if(WITH_NETWORK AND WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/protobuf/.git" )
                 # Temporarily store the current compile options
                 set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
                 set(old_c_flags "${CMAKE_C_FLAGS}")
