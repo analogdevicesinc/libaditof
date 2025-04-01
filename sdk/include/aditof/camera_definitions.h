@@ -204,11 +204,17 @@ enum class ImagerType {
     ADTF3080, //!< The ADTF3080 imager
 };
 
+/**
+ * @brief Types of imagers based on ControlValue
+ */
+
 const std::map<ImagerType, std::string> ControlValue{
     {ImagerType::ADSD3100, "1"},
     {ImagerType::ADSD3030, "2"},
     {ImagerType::ADTF3080, "3"}};
-
+/**
+ * @brief Types of imagers 
+ */
 const std::map<ImagerType, std::string> imagerType{
     {ImagerType::ADSD3100, "adsd3100"},
     {ImagerType::ADSD3030, "adsd3030"},
