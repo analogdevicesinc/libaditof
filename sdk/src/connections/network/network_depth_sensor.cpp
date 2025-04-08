@@ -60,6 +60,7 @@ struct NetworkDepthSensor::ImplData {
 
 #ifdef USE_ZMQ
 int NetworkDepthSensor::frame_size = 0;
+int max_buffer_size = 10;
 
 extern int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size);
 
@@ -374,6 +375,7 @@ aditof::Status NetworkDepthSensor::start() {
     client_socket->setsockopt(
         ZMQ_RCVTIMEO,
         1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
+	client_socket->setsockopt(ZMQ_RCVHWM, (int*)&max_buffer_size, sizeof(max_buffer_size));
     std::string zmq_address = "tcp://" + zmq_ip + ":5555";
     client_socket->connect(zmq_address);
     LOG(INFO) << "ZMQ Client Connection established.";
