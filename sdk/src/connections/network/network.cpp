@@ -41,15 +41,13 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <iostream>
 
-#ifdef USE_ZMQ
-#include <zmq.hpp>
-#endif
 
-#if USE_ZMQ
 std::unique_ptr<zmq::socket_t> client_socket;
 std::unique_ptr<zmq::context_t> zmq_context;
 std::string zmq_ip;
-#endif
+
+std::atomic<bool> running = true;
+
 
 #define RX_BUFFER_BYTES (20996420)
 #define MAX_RETRY_CNT 3
@@ -65,23 +63,14 @@ struct clientData {
     std::vector<char> data;
 };
 
-static struct lws_protocols protocols[] = {
-    {
-        "network-protocol",
-        Network::callback_function,
-        sizeof(clientData),
-        RX_BUFFER_BYTES,
-    },
-    {NULL, NULL, 0, 0} /* terminator */
-};
-
 int nBytes = 0;          /*no of bytes sent*/
 int recv_data_error = 0; /*flag for recv data*/
 char server_msg[] = "Connection Allowed";
 
 /*Declare static members*/
-std::vector<lws *> Network::web_socket;
-std::vector<lws_context *> Network::context;
+std::vector<zmq::socket_t> Network::command_socket;
+std::vector<zmq::socket_t> Network::monitor_sockets;
+std::vector<zmq::context_t*> Network::contexts;
 ClientRequest Network::send_buff[MAX_CAMERA_NUM];
 ServerResponse Network::recv_buff[MAX_CAMERA_NUM];
 recursive_mutex Network::m_mutex[MAX_CAMERA_NUM];
@@ -161,90 +150,109 @@ bool Network::isData_Received() {
 * Desription:   This function initializes the websocket and connects to server.
 */
 int Network::ServerConnect(const std::string &ip) {
-    struct lws_context_creation_info info;
-    memset(&info, 0, sizeof(info));
 
-    info.port = CONTEXT_PORT_NO_LISTEN;
-    info.protocols = protocols;
-    info.gid = -1;
-    info.uid = -1;
-    info.pt_serv_buf_size = 4096;
-#ifdef USE_ZMQ
-    zmq_ip = ip;
-#endif
 
-    /*Create a websocket for client*/
-    context.at(m_connectionId) = lws_create_context(&info);
-
-    struct lws_client_connect_info ccinfo = {0};
-    ccinfo.context = context.at(m_connectionId);
-    ccinfo.address = ip.c_str();
-    ccinfo.port = 5000;
-    ccinfo.path = "/";
-    ccinfo.host = lws_canonical_hostname(context.at(m_connectionId));
-    ccinfo.origin = "origin";
-    ccinfo.protocol = protocols[PROTOCOL_0].name;
+    // Set up ZeroMQ context and socket
+    zmq::context_t context(1);
+    contexts.at(m_connectionId) = std::move(&context);
+    zmq::socket_t client(context, ZMQ_REQ);
+    zmq::socket_t monitor(context, ZMQ_PAIR);
 
     if (!m_connectionId) {
-        lws *webSocket = lws_client_connect_via_info(&ccinfo);
 
-        web_socket.clear();
-        web_socket.emplace_back(webSocket);
+        command_socket.clear();
+        command_socket.emplace_back(std::move(client));
+
+        monitor_sockets.clear();
+        monitor_sockets.emplace_back(std::move(monitor));
+
     } else {
 
-        for (size_t i = 0; i < web_socket.size(); i++) {
-            if (web_socket.at(i) == nullptr) {
-                web_socket.erase(web_socket.begin() + i);
+        for (size_t i = 0; i < command_socket.size(); i++) {
+            if (command_socket.at(i) == nullptr) {
+                command_socket.erase(command_socket.begin() + i);
                 i--;
             }
         }
-        web_socket.push_back(lws_client_connect_via_info(&ccinfo));
+        command_socket.push_back(std::move(client));
+
+        for (size_t i = 0; i < monitor_sockets.size(); i++) {
+            if (monitor_sockets.at(i) == nullptr) {
+                monitor_sockets.erase(monitor_sockets.begin() + i);
+                i--;
+            }
+        }
+        monitor_sockets.push_back(std::move(monitor));
     }
 
-    /*Start a new thread to service any pending event on web socket*/
 
-    threadObj[m_connectionId] = std::thread(&Network::call_lws_service, this);
+
+    // Set up the monitor using the C API
+    std::string monitor_endpoint =
+        "inproc://monitor-client" + std::to_string(m_connectionId);
+    zmq_socket_monitor(command_socket[m_connectionId].handle(),
+                       monitor_endpoint.c_str(), ZMQ_EVENT_ALL);
+
+    // Connect the monitor socket
+    monitor_sockets[m_connectionId].connect(monitor_endpoint);
+
+    // Start a new thread to service any pending events on ZeroMQ socket
+    threadObj[m_connectionId] = std::thread(&Network::call_zmq_service,this, std::ref(ip));
 
     Network::Thread_Detached[m_connectionId] = true;
     threadObj[m_connectionId].detach();
+
+     if (!Server_Connected[m_connectionId]) {
+        LOG(INFO) << "Attempting to connect server... ";
+        try {
+
+            command_socket[m_connectionId].connect("tcp://" + ip + ":5556");
+        } catch (const zmq::error_t &e) {
+            LOG(ERROR) << "Error Connecting to server" << e.what();
+            if (e.num() == EHOSTUNREACH) {
+                LOG(ERROR) << "Host is unreachable";
+            }
+        }
+     }
 
     /*Wait for thread to be ready and server is connected*/
 
     std::unique_lock<std::recursive_mutex> mlock(m_mutex[m_connectionId]);
 
-    /*Wait till server is connected or timeout of 3 sec*/
+       /*Wait till server is connected or timeout of 3 sec*/
     if (Cond_Var[m_connectionId].wait_for(
             mlock, std::chrono::seconds(3),
             std::bind(&Network::isServer_Connected, this)) == false) {
         Server_Connected[m_connectionId] = false;
         return -1;
-    } else if (web_socket.at(m_connectionId) != NULL) {
-        /*Wait for Server message to check another client is connected already
-         * or not*/
-        if (recv_server_data() == 0) {
-            /*Data received correctly*/
-            if (strcmp(recv_buff[m_connectionId].message().c_str(),
-                       server_msg) == 0) {
-                /*Server is connected successfully*/
-                cout << "Conn established" << endl;
-
-                return 0;
-            } else {
-                /*Another client is connected already*/
-                cout << "Server Message :: "
-                     << recv_buff[m_connectionId].message() << endl;
-                Server_Connected[m_connectionId] = false;
-                return -1;
-            }
-        } else {
-            /*No message received from Server*/
-            Server_Connected[m_connectionId] = false;
-            return -1;
         }
-    } else if (web_socket.at(m_connectionId) == NULL) {
-        Server_Connected[m_connectionId] = false;
-        return -1;
-    }
+    //} else if (command_socket.at(m_connectionId) != NULL) {
+    //    /*Wait for Server message to check another client is connected already
+    //     * or not*/
+    //    if (recv_server_data() == 0) {
+    //        /*Data received correctly*/
+    //        if (strcmp(recv_buff[m_connectionId].message().c_str(),
+    //                   server_msg) == 0) {
+    //            /*Server is connected successfully*/
+    //            cout << "Conn established" << endl;
+
+    //            return 0;
+    //        } else {
+    //            /*Another client is connected already*/
+    //            cout << "Server Message :: "
+    //                 << recv_buff[m_connectionId].message() << endl;
+    //            Server_Connected[m_connectionId] = false;
+    //            return -1;
+    //        }
+    //    } else {
+    //        /*No message received from Server*/
+    //        Server_Connected[m_connectionId] = false;
+    //        return -1;
+    //    }
+    //} else if (command_socket.at(m_connectionId) == NULL) {
+    //    Server_Connected[m_connectionId] = false;
+    //    return -1;
+    //}
 
     return -1;
 }
@@ -263,52 +271,42 @@ int Network::SendCommand(void *rawPayload) {
 
     recv_buff[m_connectionId].Clear();
 
-    while (numRetry++ < MAX_RETRY_CNT &&
-           Server_Connected[m_connectionId] != false) {
+    while (numRetry++ < MAX_RETRY_CNT && Server_Connected[m_connectionId]) {
+        // Send the command
+        zmq::message_t request(siz);
+        send_buff[m_connectionId].SerializeToArray(request.data(), siz);
+        command_socket[m_connectionId].send(request, zmq::send_flags::none);
 
-        lws_callback_on_writable(web_socket.at(m_connectionId));
-        lws_callback_on_writable(web_socket.at(m_connectionId));
-        /*Acquire the lock*/
-        std::unique_lock<std::recursive_mutex> mlock(m_mutex[m_connectionId]);
+        // Poll for a response
+        zmq::pollitem_t items[] = {
+            {static_cast<void *>(command_socket[m_connectionId]), 0, ZMQ_POLLIN,
+             0}};
 
-        if (Cond_Var[m_connectionId].wait_for(
-                mlock, std::chrono::seconds(10),
-                std::bind(&Network::isSend_Successful, this)) == false) {
-            status = -1; /*timeout occurs*/
-#ifdef NW_DEBUG
-            cout << "Send Timeout error" << endl;
-#endif
-            break;
-        }
+        zmq::poll(
+            items, 1,
+            std::chrono::milliseconds(10000).count()); // 10 seconds timeout
 
-        Send_Successful[m_connectionId] = false;
+        if (items[0].revents & ZMQ_POLLIN) {
+            zmq::message_t reply;
+            command_socket[m_connectionId].recv(reply, zmq::recv_flags::none);
 
-        if (nBytes < 0) {
-            /*Send failed Network issue*/
-#ifdef NW_DEBUG
-            cout << "Write Error" << endl;
-#endif
-            status = -1;
-            break;
-        } else if (nBytes < siz) {
-            /*Retry sending command*/
-#ifdef NW_DEBUG
-            cout << "Retry sending " << numRetry << " times" << endl;
-#endif
-            status = -1;
-        } else if (nBytes == siz) {
-#ifdef NW_DEBUG
-            cout << "Write Successful" << endl;
-#endif
+            LOG(INFO) << "Write Successful";
+
             if (rawPayload) {
                 rawPayloads[m_connectionId] = rawPayload;
             }
             status = 0;
             break;
+        } else {
+            status = -1; // Timeout occurred
+            break;
+#ifdef NW_DEBUG
+            std::cout << "Send Timeout error" << std::endl;
+#endif
         }
     }
 
-    if (Server_Connected[m_connectionId] == false) {
+    if (!Server_Connected[m_connectionId]) {
         status = -2;
     }
 
@@ -316,6 +314,7 @@ int Network::SendCommand(void *rawPayload) {
 
     return status;
 }
+
 
 /*
 * recv_server_data():  receive data from server
@@ -327,7 +326,6 @@ int Network::SendCommand(void *rawPayload) {
 int Network::recv_server_data() {
     int status = -1;
     uint8_t numRetry = 0;
-    /*Wait until data received from the server after command execution*/
 
     while (numRetry++ < MAX_RETRY_CNT &&
            Server_Connected[m_connectionId] != false) {
@@ -340,20 +338,32 @@ int Network::recv_server_data() {
             /*reset the flag value to receive again*/
             Data_Received[m_connectionId] = false;
 
-            if (recv_data_error == 1) {
-                /*Retry sending command*/
-                if (SendCommand() != 0) {
-                    status = -1;
-                    break;
-                }
-            } else if (recv_data_error == 0) {
-                /*Data received correctly*/
-                status = 0;
-                break;
-            }
+            zmq::pollitem_t items[] = {
+                {static_cast<void *>(command_socket[m_connectionId]), 0,
+                 ZMQ_POLLIN, 0}};
 
+            zmq::poll(items, 1, 10000); // Poll for 10 seconds
+
+            if (items[0].revents & ZMQ_POLLIN) {
+                zmq::message_t message;
+                if (command_socket[m_connectionId].recv(
+                        message, zmq::recv_flags::none)) {
+                    // Check if data is received correctly
+                    if (message.size() > 0) {
+                        /*Data received correctly*/
+                        status = 0;
+                        break;
+                    }
+                } else {
+                    /*No data received, retry sending command */
+                    if (SendCommand() != 0) {
+                        status = -1;
+                        break;
+                    }
+                }
+            }
         } else {
-            /*No data recvd till time out Retry sending command */
+            /*No data received till timeout, retry sending command */
             if (SendCommand() != 0) {
                 status = -1;
                 break;
@@ -388,29 +398,26 @@ int Network::recv_server_data() {
  * Desription:   This function calls websockets library api to service any
  * pending websocket activity
  */
-void Network::call_lws_service() {
-    while (1) {
-        lws_service(context.at(m_connectionId), 0);
-#ifdef NW_DEBUG
-        cout << ".";
-#endif
-        /*In case connection is broken, stop websocket service*/
-        if (Server_Connected[m_connectionId] == true) {
-            Connection_Closed[m_connectionId] = true;
-        } else if (Connection_Closed[m_connectionId] == true &&
-                   Server_Connected[m_connectionId] == false) {
-            Connection_Closed[m_connectionId] = false;
+
+void Network::call_zmq_service(const std::string &ip) {
+    while (running) {
+        ////std::this_thread::sleep_for(std::chrono::seconds(1));
+        zmq::pollitem_t items[] = {
+            {static_cast<void *>(monitor_sockets[m_connectionId]), 0,
+                ZMQ_POLLIN, 0}};
+
+        zmq::poll(&items[0], 1, -1);
+
+        if (items[0].revents & ZMQ_POLLIN) {
+
+            zmq_event_t event;
+            zmq::message_t msg;
+            monitor_sockets[m_connectionId].recv(msg);
+            memcpy(&event, msg.data(), sizeof(event));
+
+            callback_function(command_socket.at(m_connectionId), event);
         }
-        /*Complete the thread if destructor is called*/
-        if (Thread_Running[m_connectionId] == 1) {
-            std::lock_guard<std::mutex> guard(thread_mutex[m_connectionId]);
-#ifdef NW_DEBUG
-            cout << "Thread exited" << endl;
-#endif
-            Thread_Running[m_connectionId] = 2;
-            thread_Cond_Var[m_connectionId].notify_all();
-            break;
-        }
+        
     }
 }
 
@@ -424,145 +431,56 @@ libwebsocket in   - pointer to data len  - length of data
 * Desription:           This function handles the websocket events and take
 appropriate action
 */
-int Network::callback_function(struct lws *wsi,
-                               enum lws_callback_reasons reason, void *user,
-                               void *in, size_t len) {
+int Network::callback_function(zmq::socket_t& stx,const zmq_event_t &event) {
+
     int connectionId = 0;
-    auto status = std::find(web_socket.begin(), web_socket.end(), wsi);
-    if (status != web_socket.end()) {
+    auto status = std::find(command_socket.begin(), command_socket.end(),
+                            stx);
+    if (status != command_socket.end()) {
         connectionId =
-            static_cast<int>(std::distance(web_socket.begin(), status));
+            static_cast<int>(std::distance(command_socket.begin(), status));
     }
 
-    switch (reason) {
-    case LWS_CALLBACK_CLIENT_ESTABLISHED: {
-        /*Notify host SDK that server is connected */
-        std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
+
+    // Handle the event based on the connection ID
+    switch (event.event) {
+    case ZMQ_EVENT_CONNECTED:
+        std::cout << "Connected to server";
         Server_Connected[connectionId] = true;
         Cond_Var[connectionId].notify_all();
         break;
-    }
-
-    case LWS_CALLBACK_CLIENT_RECEIVE: {
-        /* Handle incoming messages here. */
-#ifdef NW_DEBUG
-        cout << endl << "Rcvd Data len : " << len << endl;
-#endif
-
-        const size_t remaining = lws_remaining_packet_payload(wsi);
-        bool isFinal = lws_is_final_fragment(wsi);
-
-        struct clientData *clientData = static_cast<struct clientData *>(user);
-
-        if (!remaining && isFinal) {
-            if (clientData->hasFragments) {
-                // apend message
-                char *inData = static_cast<char *>(in);
-                clientData->data.insert(clientData->data.end(), inData,
-                                        inData + len);
-                in = static_cast<void *>(clientData->data.data());
-                len = clientData->data.size();
-            }
-            // Expect regular protobuf messages
-            if (rawPayloads[connectionId] == nullptr) {
-                google::protobuf::io::ArrayInputStream ais(
-                    static_cast<char *>(in), static_cast<int>(len));
-                CodedInputStream coded_input(&ais);
-                recv_buff[connectionId].ParseFromCodedStream(&coded_input);
-
-                recv_data_error = 0;
-                Data_Received[connectionId] = true;
-
-                if (recv_buff[connectionId].interrupt_occured()) {
-                    InterruptDetected[connectionId] = true;
-                }
-
-                /*Notify the host SDK that data is received from server*/
-                Cond_Var[connectionId].notify_all();
-            } else {
-                //expect content that is not wrapped in a protobuf message
-                char *pCharIn = static_cast<char *>(in);
-                memcpy(rawPayloads[connectionId],
-                       (pCharIn + FRAME_PREPADDING_BYTES),
-                       len - FRAME_PREPADDING_BYTES);
-                if (pCharIn[0] == 123) {
-                    InterruptDetected[connectionId] = true;
-                }
-                rawPayloads[connectionId] = nullptr;
-                recv_data_error = 0;
-                Data_Received[connectionId] = true;
-
-                /*Notify the host SDK that data is received from server*/
-                Cond_Var[connectionId].notify_all();
-            }
-
-        } else {
-            // append message
-            if (clientData->data.size() == 0) {
-                clientData->data.reserve(len + remaining);
-            }
-
-            std::cout << "apending data" << std::endl;
-            char *inData = static_cast<char *>(in);
-            clientData->data.insert(clientData->data.end(), inData,
-                                    inData + len);
-            clientData->hasFragments = true;
-        }
-
-        break;
-    }
-
-    case LWS_CALLBACK_CLIENT_WRITEABLE: {
-#ifdef NW_DEBUG
-        cout << endl << "Client is sending " << send_buff.func_name() << endl;
-#endif
-        if (send_buff[connectionId].func_name().empty()) {
-            break;
-        }
-
-        /* Get size of packet to be sent*/
-        int siz = send_buff[connectionId].ByteSize();
-        /*Pre padding of bytes as per websockets*/
-        unsigned char *pkt =
-            new unsigned char[siz + LWS_SEND_BUFFER_PRE_PADDING];
-        unsigned char *pkt_pad = pkt + LWS_SEND_BUFFER_PRE_PADDING;
-
-        google::protobuf::io::ArrayOutputStream aos(pkt_pad, siz);
-        CodedOutputStream *coded_output = new CodedOutputStream(&aos);
-        send_buff[connectionId].SerializeToCodedStream(coded_output);
-
-        nBytes = lws_write(wsi, pkt_pad, siz, LWS_WRITE_TEXT);
-
-        /*Notify the host SDK that data is sent to server*/
-        Send_Successful[connectionId] = true;
-        Cond_Var[connectionId].notify_all();
-
-        delete coded_output;
-        delete[] pkt;
-        send_buff[connectionId].Clear();
-        break;
-    }
-
-    case LWS_CALLBACK_CLIENT_CLOSED: {
-        cout << "Connection Closed" << endl;
+    case ZMQ_EVENT_CLOSED:
+        std::cout << "Closed connection with connection ID: " << connectionId << std::endl;
         /*Set a flag to indicate server connection is closed abruptly*/
-        std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
-        Server_Connected[connectionId] = false;
-        web_socket.at(connectionId) = NULL;
-
-#ifdef USE_ZMQ
-        zmq_closeConnection();
-#endif
+        {
+            std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
+            Server_Connected[connectionId] = false;
+            running = false;
+            command_socket.at(connectionId).close();
+            monitor_sockets.at(connectionId).close();
+            
+        }
         break;
-    }
-
-    case LWS_CALLBACK_CLIENT_CONNECTION_ERROR: {
-        cout << "Connection Error" << endl;
-        web_socket.at(connectionId) = NULL;
+    case ZMQ_EVENT_CONNECT_RETRIED:
+        std::cout << "Connection retried to with connection ID: " << connectionId << std::endl;
         break;
-    }
-
+    case ZMQ_EVENT_DISCONNECTED:
+        std::cout << "Disconnected from server at with connection ID: " << connectionId << std::endl;
+        /*Set a flag to indicate server connection is closed abruptly*/
+        {
+            std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
+            Server_Connected[connectionId] = false;
+            running = false;
+            command_socket.at(connectionId).close();
+            monitor_sockets.at(connectionId).close();
+            
+        }
+        break;
     default:
+#ifdef NW_DEBUG
+        std::cout << "Event: " << event.event << " on " << addr
+                  << " with connection ID: " << m_connectionId << std::endl;
+#endif
         break;
     }
 
@@ -594,9 +512,9 @@ Network::Network(int connectionId)
     Network::InterruptDetected[connectionId] = false;
 
     m_connectionId = connectionId;
-    while (context.size() <= m_connectionId)
-        context.emplace_back(nullptr);
-    context.at(m_connectionId) = nullptr;
+    while (contexts.size() <= m_connectionId)
+        contexts.emplace_back(nullptr);
+    contexts.at(m_connectionId) = nullptr;
 }
 
 /*
@@ -605,20 +523,16 @@ Network::Network(int connectionId)
  * Desription:   Destructor for network class
  */
 Network::~Network() {
-    if (context.at(m_connectionId) != NULL && Thread_Detached[m_connectionId]) {
+    if (contexts.at(m_connectionId) != NULL && Thread_Detached[m_connectionId]) {
         /*set a flag to complete the thread */
-        std::unique_lock<std::mutex> mlock(thread_mutex[m_connectionId]);
-        Thread_Running[m_connectionId] = 1;
-        /*wait for thread to finish*/
-        thread_Cond_Var[m_connectionId].wait(
-            mlock, std::bind(&Network::isThread_Running, this));
         Thread_Detached[m_connectionId] = false;
 
-        lws_context_destroy(context.at(m_connectionId));
+        command_socket[m_connectionId].close();
+        monitor_sockets[m_connectionId].close();
     }
 }
 
-#ifdef USE_ZMQ
+
 
 int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
     zmq::message_t message;
@@ -651,4 +565,3 @@ void zmq_closeConnection() {
     LOG(INFO) << "ZMQ Client Connection closed.";
 }
 
-#endif

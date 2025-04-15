@@ -37,6 +37,12 @@
 #include <libwebsockets.h>
 #include <thread>
 #include <vector>
+#include <zmq.hpp>
+
+#ifndef ZMQ_NODISCARD
+#define ZMQ_NODISCARD
+#endif
+
 
 #define MAX_CAMERA_NUM 10
 
@@ -47,20 +53,21 @@ struct NetworkHandle {
     std::mutex net_mutex;
 };
 
-#ifdef USE_ZMQ
+
 
 void zmq_closeConnection();
 int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size);
 
-#endif
+
 
 class Network {
   public:
     typedef std::function<void(void)> InterruptNotificationCallback;
 
   private:
-    static std::vector<lws_context *> context;
-    static std::vector<lws *> web_socket;
+    static std::vector<zmq::context_t*> contexts;
+    static std::vector<zmq::socket_t> command_socket;
+    static std::vector<zmq::socket_t> monitor_sockets;
 
     std::thread threadObj[MAX_CAMERA_NUM];
     static std::recursive_mutex m_mutex[MAX_CAMERA_NUM];
@@ -85,7 +92,8 @@ class Network {
 
     //! call_lws_service - calls lws_service api to service any websocket
     //! activity
-    void call_lws_service();
+    //void call_lws_service();
+    void call_zmq_service(const std::string& ip);
 
   public:
     int m_connectionId;
@@ -108,9 +116,7 @@ class Network {
     int recv_server_data();
 
     //! callback_function() - APi to handle websocket events
-    static int callback_function(struct lws *wsi,
-                                 enum lws_callback_reasons reason, void *user,
-                                 void *in, size_t len);
+    static int callback_function(zmq::socket_t& stx, const zmq_event_t &event);
 
     //! Network() - APi to initialize network parameters
     Network(int connectionId);

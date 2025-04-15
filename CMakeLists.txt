@@ -19,7 +19,7 @@ set(VERSION "${ADITOF_VERSION_MAJOR}.${ADITOF_VERSION_MINOR}.${ADITOF_VERSION_PA
 ############################### Options #######################################
 option(WITH_DOC "Build documentation?" OFF)
 option(WITH_NETWORK "Build network interface?" ON)
-option(WITH_ZMQ_DEPENDENCY "Use ZMQ as the network protocol for frames?" OFF)
+option(WITH_ZMQ_DEPENDENCY "Use ZMQ as the network protocol for frames?" ON)
 option(WITH_OFFLINE "Build offline interface?" OFF)
 option(WITH_GLOG_DEPENDENCY "Build with GLOG dependency to be used for logging?" OFF)
 option(CI_BUILD "Build for CI" OFF)

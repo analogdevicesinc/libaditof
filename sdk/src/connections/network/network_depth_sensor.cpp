@@ -39,9 +39,8 @@
 #endif
 #include <chrono>
 #include <unordered_map>
-#ifdef USE_ZMQ
 #include <zmq.hpp>
-#endif
+
 
 struct CalibrationData {
     std::string mode;
@@ -58,19 +57,18 @@ struct NetworkDepthSensor::ImplData {
     Network::InterruptNotificationCallback cb;
 };
 
-#ifdef USE_ZMQ
 int NetworkDepthSensor::frame_size = 0;
 
 extern int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size);
 
 extern void zmq_closeConnection();
-#endif // ZMQ
 
-#if USE_ZMQ
+
+
 extern std::unique_ptr<zmq::socket_t> client_socket;
 extern std::unique_ptr<zmq::context_t> zmq_context;
 extern std::string zmq_ip;
-#endif
+
 
 NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
                                        const std::string &ip)
@@ -367,7 +365,7 @@ aditof::Status NetworkDepthSensor::start() {
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
 
-#ifdef USE_ZMQ
+
     zmq_context = std::make_unique<zmq::context_t>(1);
     client_socket =
         std::make_unique<zmq::socket_t>(*zmq_context, zmq::socket_type::pull);
@@ -377,7 +375,7 @@ aditof::Status NetworkDepthSensor::start() {
     std::string zmq_address = "tcp://" + zmq_ip + ":5555";
     client_socket->connect(zmq_address);
     LOG(INFO) << "ZMQ Client Connection established.";
-#endif
+
 
     return status;
 }
@@ -416,9 +414,9 @@ aditof::Status NetworkDepthSensor::stop() {
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
 
-#ifdef USE_ZMQ
+
     zmq_closeConnection();
-#endif // USE_ZMQ
+
 
     return status;
 }
@@ -534,11 +532,11 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
                                               .frame_content(i));
     }
 
-#ifdef USE_ZMQ
+
     frame_size =
         (details.baseResolutionWidth * details.baseResolutionHeight * 4) *
         sizeof(uint16_t);
-#endif
+
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
     return status;
@@ -621,10 +619,9 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
-#ifdef USE_ZMQ
+
     frame_size = (type.baseResolutionWidth * type.baseResolutionHeight * 4) *
                  sizeof(uint16_t);
-#endif
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
@@ -654,51 +651,13 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
     using namespace aditof;
 
-#ifdef USE_ZMQ // Use ZeroMQ to get frames from the target.
+
 
     int ret = zmq_getFrame(buffer, frame_size);
     if (ret == -1) {
         return Status::GENERIC_ERROR;
     }
     return Status::OK;
-
-#else // Use Libwebsockets to get frames from the target.
-
-    Network *net = m_implData->handle.net;
-    std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
-
-    if (!net->isServer_Connected()) {
-        LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
-    }
-
-    net->send_buff[m_sensorIndex].set_func_name("GetFrame");
-    net->send_buff[m_sensorIndex].set_expect_reply(true);
-
-    if (net->SendCommand(static_cast<void *>(buffer)) != 0) {
-        LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
-    }
-
-    if (net->recv_server_data() != 0) {
-        LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (net->recv_buff[m_sensorIndex].server_status() !=
-        payload::ServerStatus::REQUEST_ACCEPTED) {
-        LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
-    }
-
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
-    if (status != Status::OK) {
-        LOG(WARNING) << "getFrame() failed on target";
-        return status;
-    }
-
-    return status;
-#endif
 }
 
 aditof::Status NetworkDepthSensor::getAvailableControls(
