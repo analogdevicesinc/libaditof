@@ -39,10 +39,6 @@
 #include <vector>
 #include <zmq.hpp>
 
-#ifndef ZMQ_NODISCARD
-#define ZMQ_NODISCARD
-#endif
-
 
 #define MAX_CAMERA_NUM 10
 
@@ -65,9 +61,9 @@ class Network {
     typedef std::function<void(void)> InterruptNotificationCallback;
 
   private:
-    static std::vector<zmq::context_t*> contexts;
-    static std::vector<zmq::socket_t> command_socket;
-    static std::vector<zmq::socket_t> monitor_sockets;
+    static std::vector<std::unique_ptr<zmq::context_t>> contexts;
+    static std::vector<std::unique_ptr<zmq::socket_t>> command_socket;
+    static std::vector<std::unique_ptr<zmq::socket_t>> monitor_sockets;
 
     std::thread threadObj[MAX_CAMERA_NUM];
     static std::recursive_mutex m_mutex[MAX_CAMERA_NUM];
@@ -116,7 +112,8 @@ class Network {
     int recv_server_data();
 
     //! callback_function() - APi to handle websocket events
-    static int callback_function(zmq::socket_t& stx, const zmq_event_t &event);
+    static int callback_function(std::unique_ptr<zmq::socket_t> &stx,
+                                 const zmq_event_t &event);
 
     //! Network() - APi to initialize network parameters
     Network(int connectionId);
