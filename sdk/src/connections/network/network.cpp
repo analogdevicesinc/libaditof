@@ -152,11 +152,12 @@ bool Network::isData_Received() {
 int Network::ServerConnect(const std::string &ip) {
 
     uint8_t numTry = 0;
+    zmq_ip = ip;
     // Set up ZeroMQ context and socket
     std::unique_ptr<zmq::context_t> m_context;
     std::unique_ptr<zmq::socket_t> m_command;
     std::unique_ptr<zmq::socket_t> m_monitor;
-    m_context = std::make_unique<zmq::context_t>(1);
+    m_context = std::make_unique<zmq::context_t>(2);
     contexts.at(m_connectionId) = std::move(m_context);
     m_command = std::make_unique<zmq::socket_t>(*contexts.at(m_connectionId), ZMQ_REQ);
     m_monitor = std::make_unique<zmq::socket_t>(*contexts.at(m_connectionId), ZMQ_PAIR);  
@@ -238,10 +239,7 @@ int Network::ServerConnect(const std::string &ip) {
          * or not*/
         send_buff[m_connectionId].set_func_name("ServerConnect");
         send_buff[m_connectionId].set_expect_reply(true);
-        if (SendCommand() == 0) {
-        
-            LOG(INFO) << "Send Command Successful";
-        } else {
+        if (SendCommand() != 0) {
             LOG(ERROR) << "Send Command Failed";
             Server_Connected[m_connectionId] = false;
             return -1;
@@ -346,52 +344,48 @@ int Network::recv_server_data() {
             /*reset the flag value to receive again*/
             Data_Received[m_connectionId] = false;
 
-                   // Poll the socket for incoming messages
+            // Poll the socket for incoming messages
 
             zmq::pollitem_t items[] = {
                 {static_cast<void *>(*command_socket[m_connectionId]), 0,
                  ZMQ_POLLIN, 0}};
 
-            zmq::poll(items, 1, -1);
+            zmq::poll(items, 1, 10000); // wait till 10 sec
 
             zmq::message_t message;
             if (items[0].revents & ZMQ_POLLIN) {
-                /*Data received from server*/
-                LOG(INFO) << "Data received from server";
-            } else {
-                /*No data received from server*/
-                LOG(INFO) << "No data received from server";
-            }
-            if (command_socket[m_connectionId]->recv(
-                    message, zmq::recv_flags::none)) {
-                // Check if data is received correctly
-                if (message.size() >= 0) {
-                    /*Data received correctly*/
-                    LOG(INFO) << "Data received from server";
-                    google::protobuf::io::ArrayInputStream ais(
-                        static_cast<char *>(message.data()), static_cast<int>(message.size()));
-                    CodedInputStream coded_input(&ais);
-                    recv_buff[m_connectionId].ParseFromCodedStream(
-                        &coded_input);
 
-                    recv_data_error = 0;
-                    Data_Received[m_connectionId] = true;
+                if (command_socket[m_connectionId]->recv(
+                        message, zmq::recv_flags::none)) {
+                    // Check if data is received correctly
+                    if (message.size() >= 0) {
+                        google::protobuf::io::ArrayInputStream ais(
+                            static_cast<char *>(message.data()),
+                            static_cast<int>(message.size()));
+                        CodedInputStream coded_input(&ais);
+                        recv_buff[m_connectionId].ParseFromCodedStream(
+                            &coded_input);
 
-                    if (recv_buff[m_connectionId].interrupt_occured()) {
-                        InterruptDetected[m_connectionId] = true;
+                        recv_data_error = 0;
+                        Data_Received[m_connectionId] = true;
+
+                        if (recv_buff[m_connectionId].interrupt_occured()) {
+                            InterruptDetected[m_connectionId] = true;
+                        }
+
+                        /*Notify the host SDK that data is received from server*/
+                        Cond_Var[m_connectionId].notify_all();
+                        status = 0;
+                        break;
                     }
-
-                    /*Notify the host SDK that data is received from server*/
-                    Cond_Var[m_connectionId].notify_all();
-                    status = 0;
-                    break;
-                }
-            } else {
-                /*No data received, retry sending command */
-                LOG(INFO) << "Data not received from server going to send again";
-                if (SendCommand() != 0) {
-                    status = -1;
-                    break;
+                } else {
+                    /*No data received, retry sending command */
+                    LOG(INFO)
+                        << "Data not received from server going to send again";
+                    if (SendCommand() != 0) {
+                        status = -1;
+                        break;
+                    }
                 }
             }
         } else {
@@ -434,16 +428,15 @@ int Network::recv_server_data() {
 void Network::call_zmq_service(const std::string &ip) {
     while (running) {
 
-         
-        
-
         zmq_event_t event;
         zmq::message_t msg;
         try {
             zmq::message_t event;
-            monitor_sockets[m_connectionId]->recv(msg);
+            if (monitor_sockets[m_connectionId]) {
+                monitor_sockets[m_connectionId]->recv(msg);
+            }
         } catch (const zmq::error_t &e) {
-            std::cerr << "ZeroMQ monitor error: " << e.what() << std::endl;
+            //LOG(ERROR) << "ZeroMQ monitor error: " << e.what() << std::endl;
         }
         
         memcpy(&event, msg.data(), sizeof(event));
@@ -574,9 +567,8 @@ Network::Network(int connectionId)
 Network::~Network() {
     if (contexts.at(m_connectionId) != NULL && Thread_Detached[m_connectionId]) {
 
-        LOG(INFO) << "destruction of connection with connection ID: "
-                  << m_connectionId;
         /*set a flag to complete the thread */
+       
         Thread_Detached[m_connectionId] = false;
         {
             std::lock_guard<std::recursive_mutex> guard(m_mutex[m_connectionId]);
@@ -584,11 +576,7 @@ Network::~Network() {
             running = false;
             command_socket.at(m_connectionId)->close();
             monitor_sockets.at(m_connectionId)->close();
-            try {
-                contexts.at(m_connectionId)->close();
-            } catch (const zmq::error_t &e) {
-                LOG(ERROR) << "Error closing context: " << e.what();
-            }
+            contexts.at(m_connectionId)->close();
             command_socket.at(m_connectionId) = NULL;
             monitor_sockets.at(m_connectionId) = NULL;
             contexts.at(m_connectionId) = NULL;
