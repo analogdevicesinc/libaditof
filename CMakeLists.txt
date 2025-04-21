@@ -175,55 +175,23 @@ if(WITH_GLOG_DEPENDENCY)
         endif()
 endif()
 
-if(WITH_ZMQ_DEPENDENCY)
-		add_definitions(-DUSE_ZMQ)
-		if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/.git")
-			    # Temporarily store the current compile options
-                set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
-                set(old_c_flags "${CMAKE_C_FLAGS}")
-                # Disable warnings for this subdirectory
-                set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-                set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-                set(BUILD_TESTS OFF CACHE BOOL "Disable building tests for libzmq")
-                set(POSITION_INDEPENDENT_CODE 1)
-				add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libzmq)
-				unset(POSITION_INDEPENDENT_CODE)
-				# Restore the old compile options
-                set(CMAKE_CXX_FLAGS "${old_cxx_flags}")
-                set(CMAKE_C_FLAGS "${old_c_flags}")
-		endif()
+
+if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/.git")
+		# Temporarily store the current compile options
+		set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
+		set(old_c_flags "${CMAKE_C_FLAGS}")
+		# Disable warnings for this subdirectory
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+		set(BUILD_TESTS OFF CACHE BOOL "Disable building tests for libzmq")
+		set(POSITION_INDEPENDENT_CODE 1)
+		add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libzmq)
+		unset(POSITION_INDEPENDENT_CODE)
+		# Restore the old compile options
+		set(CMAKE_CXX_FLAGS "${old_cxx_flags}")
+		set(CMAKE_C_FLAGS "${old_c_flags}")
 endif()
 
-if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets/.git" )
-        # Temporarily store the current compile options
-        set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
-        set(old_c_flags "${CMAKE_C_FLAGS}")
-
-        if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT (WIN32 OR ON_TARGET))
-            if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0.0")
-                message(STATUS "Applying flags for GCC/G++ version 13.x or higher")
-                set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-error=enum-int-mismatch")
-                set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-error=enum-int-mismatch")
-            else()
-                message(STATUS "Skipping flags for GCC/G++ version ${CMAKE_CXX_COMPILER_VERSION}")
-            endif()
-        endif()
-
-        # Disable warnings for this subdirectory
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-        set(LWS_WITH_SSL 0 CACHE BOOL "Disable SSL support in libwebsockets")
-        set(LWS_STATIC_PIC 1 CACHE BOOL "Enable static position independent code in libwebsockets")
-        set(POSITION_INDEPENDENT_CODE 1)
-        # Add the subdirectory
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets)
-        unset(LWS_WITH_SSL)
-        unset(LWS_STATIC_PIC)
-        unset(POSITION_INDEPENDENT_CODE)
-        # Restore the old compile options
-        set(CMAKE_CXX_FLAGS "${old_cxx_flags}")
-        set(CMAKE_C_FLAGS "${old_c_flags}")
-endif()
 
 if(NOT WITH_PROTOBUF_DEPENDENCY)
         if(NOT ON_TARGET)

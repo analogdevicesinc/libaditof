@@ -137,21 +137,6 @@ if(WITH_GLOG_DEPENDENCY)
     endif()
 endif()
 
-if( WITH_NETWORK )
-	if(WITH_ZMQ_DEPENDENCY)
-		# Include the cppzmq to use in c++
-		set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cppzmq")
-		
-		# Check if submodule exists, and build the library
-		if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../libzmq/.git")
-			find_package(ZeroMQ REQUIRED)
-		else()
-			include_directories(${CPPZMQ_INSTALL_DIR})
-			target_link_libraries(${PROJECT_NAME} PUBLIC libzmq-static)
-		endif()
-	endif()	
-endif()
-
 if(WITH_PROTOBUF_DEPENDENCY)
     # Check if submodule exists, and build the library
     if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../protobuf/.git")
@@ -172,11 +157,16 @@ if(WITH_PROTOBUF_DEPENDENCY)
 
     if ( WITH_NETWORK )
         # Check if submodule exists, and build the library
-        if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../libwebsockets/.git")
-                find_package(Libwebsockets REQUIRED)
-        else()
-            target_link_libraries(${PROJECT_NAME} PUBLIC websockets_shared)
-        endif()
+        # Include the cppzmq to use in c++
+		set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cppzmq")
+		
+		# Check if submodule exists, and build the library
+		if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../libzmq/.git")
+			find_package(ZeroMQ REQUIRED)
+		else()
+			include_directories(${CPPZMQ_INSTALL_DIR})
+			target_link_libraries(${PROJECT_NAME} PUBLIC libzmq-static)
+		endif()
         set(NET_PROTO_HRDS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.h")
         set(NET_PROTO_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.cc")
         add_custom_command(OUTPUT ${NET_PROTO_HRDS} ${NET_PROTO_SRCS}

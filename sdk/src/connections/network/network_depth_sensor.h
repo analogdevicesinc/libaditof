@@ -120,11 +120,7 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
     bool m_stopServerCheck;
     std::thread m_activityCheckThread;
 
-#ifdef USE_ZMQ
-
     static int frame_size;
-
-#endif
 };
 
 #endif // NETWORK_DEPTH_SENSOR_H

@@ -34,7 +34,6 @@
 #include <chrono>
 #include <condition_variable>
 #include <functional>
-#include <libwebsockets.h>
 #include <thread>
 #include <vector>
 #include <zmq.hpp>
