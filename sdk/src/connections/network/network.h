@@ -85,9 +85,8 @@ class Network {
     InterruptNotificationCallback m_intNotifCb;
     std::chrono::steady_clock::time_point m_latestActivityTimestamp;
 
-    //! call_lws_service - calls lws_service api to service any websocket
+    //! call_zmq_service - calls zmq_event_t  to service any zmq socket events
     //! activity
-    //void call_lws_service();
     void call_zmq_service(const std::string& ip);
 
   public:
@@ -97,8 +96,8 @@ class Network {
     static payload::ServerResponse recv_buff[MAX_CAMERA_NUM];
     int m_frameLength;
 
-    //! ServerConnect() - APi to initialize the websocket and connect to
-    //! websocket server
+    //! ServerConnect() - APi to initialize the zmq sockets and connect to
+    //! zmq server
     int ServerConnect(const std::string &ip);
 
     //! SendCommand() - APi to send SDK apis to connected server
@@ -110,7 +109,7 @@ class Network {
     //! recv_server_data() - APi to receive data from server
     int recv_server_data();
 
-    //! callback_function() - APi to handle websocket events
+    //! callback_function() - APi to handle zmq events
     static int callback_function(std::unique_ptr<zmq::socket_t> &stx,
                                  const zmq_event_t &event);
 

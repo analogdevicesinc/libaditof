@@ -141,11 +141,11 @@ bool Network::isData_Received() {
 }
 
 /*
-* ServerConnect():  intializes the websocket and connects to server
+* ServerConnect():  intializes the zmq sockets and connects to server
 * Parameters:       ip - the ip address of the server to connect to
 * returns:          0 - on success
                    -1 - on error
-* Desription:   This function initializes the websocket and connects to server.
+* Desription:   This function initializes the zmq sockets and connects to server.
 */
 int Network::ServerConnect(const std::string &ip) {
 
@@ -189,7 +189,6 @@ int Network::ServerConnect(const std::string &ip) {
         monitor_sockets.push_back(std::move(m_monitor));
     }
 
-    // Set up the monitor using the C API
     std::string monitor_endpoint =
         "inproc://monitor-client" + std::to_string(m_connectionId);
     zmq_socket_monitor(command_socket[m_connectionId]->handle(),
@@ -413,11 +412,11 @@ int Network::recv_server_data() {
 }
 
 /*
- * call_lws_service():  calls websockets library lws_service() api
- * Parameters:   None
+ * call_zmq_service():  calls zmq service zmq_event_t
+ * Parameters:   IP - the ip address of the server to connect to
  * returns:      None
- * Desription:   This function calls websockets library api to service any
- * pending websocket activity
+ * Desription:   This function calls zmq_event_t to monitor any event
+ * pending zmq activity
  */
 
 void Network::call_zmq_service(const std::string &ip) {
@@ -431,7 +430,7 @@ void Network::call_zmq_service(const std::string &ip) {
                 monitor_sockets[m_connectionId]->recv(msg);
             }
         } catch (const zmq::error_t &e) {
-            //LOG(ERROR) << "ZeroMQ monitor error: " << e.what() << std::endl;
+            monitor_sockets[m_connectionId]->close();
         }
 
         memcpy(&event, msg.data(), sizeof(event));
@@ -441,17 +440,15 @@ void Network::call_zmq_service(const std::string &ip) {
 }
 
 /*
-* callback_function():  Handles the websocket events
-* Parameters:           wsi - websocket instance pointer
-                        reasons - websocket event occurred for wsi instance
-                        user - pointer to per session user data allocated by
-libwebsocket in   - pointer to data len  - length of data
+* callback_function():  Handles the zmq events
+* Parameters:           stx - socket to monitor
+                        reasons - zmq event occurred for stx instance
 * returns:              0
-* Desription:           This function handles the websocket events and take
+* Desription:           This function handles the zmq events and take
 appropriate action
 */
 int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
-                               const zmq_event_t &event) {
+                               const zmq_event_t &reason) {
 
     int connectionId = 0;
     auto status = std::find(command_socket.begin(), command_socket.end(), stx);
@@ -461,7 +458,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
     }
 
     // Handle the event based on the connection ID
-    switch (event.event) {
+    switch (reason.event) {
     case ZMQ_EVENT_CONNECTED:
         LOG(INFO) << "Connected to server";
         Server_Connected[connectionId] = true;
