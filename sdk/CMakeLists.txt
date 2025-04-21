@@ -176,7 +176,6 @@ if(WITH_PROTOBUF_DEPENDENCY)
         target_include_directories(${PROJECT_NAME} PRIVATE
                 ${CMAKE_CURRENT_SOURCE_DIR}
         )
-        target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../libwebsockets/include)
     endif()
 endif()
 
@@ -196,7 +195,6 @@ target_include_directories(${PROJECT_NAME}
         ${GENERATED_NET_PROTO_FILES_DIR}
         ${GENERATED_PROTO_FILES_DIR}
         ${GENERATED_NET_PROTO_FILES_DIR}
-        ${LIBWEBSOCKETS_INCLUDE_DIRS}
         ${OPENSSL_INCLUDE_DIRS}
 )
 

@@ -41,13 +41,11 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <iostream>
 
-
 std::unique_ptr<zmq::socket_t> client_socket;
 std::unique_ptr<zmq::context_t> zmq_context;
 std::string zmq_ip;
 
-std::atomic<bool> running = true;
-
+static std::atomic<bool> running{true};
 
 #define RX_BUFFER_BYTES (20996420)
 #define MAX_RETRY_CNT 3
@@ -159,8 +157,10 @@ int Network::ServerConnect(const std::string &ip) {
     std::unique_ptr<zmq::socket_t> m_monitor;
     m_context = std::make_unique<zmq::context_t>(2);
     contexts.at(m_connectionId) = std::move(m_context);
-    m_command = std::make_unique<zmq::socket_t>(*contexts.at(m_connectionId), ZMQ_REQ);
-    m_monitor = std::make_unique<zmq::socket_t>(*contexts.at(m_connectionId), ZMQ_PAIR);  
+    m_command =
+        std::make_unique<zmq::socket_t>(*contexts.at(m_connectionId), ZMQ_REQ);
+    m_monitor =
+        std::make_unique<zmq::socket_t>(*contexts.at(m_connectionId), ZMQ_PAIR);
 
     if (!m_connectionId) {
 
@@ -189,8 +189,6 @@ int Network::ServerConnect(const std::string &ip) {
         monitor_sockets.push_back(std::move(m_monitor));
     }
 
-
-
     // Set up the monitor using the C API
     std::string monitor_endpoint =
         "inproc://monitor-client" + std::to_string(m_connectionId);
@@ -201,7 +199,8 @@ int Network::ServerConnect(const std::string &ip) {
     monitor_sockets[m_connectionId]->connect(monitor_endpoint);
 
     // Start a new thread to service any pending events on ZeroMQ socket
-    threadObj[m_connectionId] = std::thread(&Network::call_zmq_service,this, std::ref(ip));
+    threadObj[m_connectionId] =
+        std::thread(&Network::call_zmq_service, this, std::ref(ip));
 
     Network::Thread_Detached[m_connectionId] = true;
     threadObj[m_connectionId].detach();
@@ -228,7 +227,7 @@ int Network::ServerConnect(const std::string &ip) {
 
     std::unique_lock<std::recursive_mutex> mlock(m_mutex[m_connectionId]);
 
-       /*Wait till server is connected or timeout of 3 sec*/
+    /*Wait till server is connected or timeout of 3 sec*/
     if (Cond_Var[m_connectionId].wait_for(
             mlock, std::chrono::seconds(3),
             std::bind(&Network::isServer_Connected, this)) == false) {
@@ -293,10 +292,9 @@ int Network::SendCommand(void *rawPayload) {
 
     while (numRetry++ < MAX_RETRY_CNT && Server_Connected[m_connectionId]) {
 
-       
         zmq::message_t request(pkt, siz);
         if (command_socket[m_connectionId]->send(request,
-                                                    zmq::send_flags::none)) {
+                                                 zmq::send_flags::none)) {
             status = 0;
             Send_Successful[m_connectionId] = true;
             Cond_Var[m_connectionId].notify_all();
@@ -319,7 +317,6 @@ int Network::SendCommand(void *rawPayload) {
     return status;
 }
 
-
 /*
 * recv_server_data():  receive data from server
 * Parameters:   None
@@ -333,8 +330,6 @@ int Network::recv_server_data() {
 
     while (numRetry++ < MAX_RETRY_CNT &&
            Server_Connected[m_connectionId] != false) {
-
- 
 
         /*Acquire the lock*/
         std::unique_lock<std::mutex> mlock(mutex_recv[m_connectionId]);
@@ -438,11 +433,10 @@ void Network::call_zmq_service(const std::string &ip) {
         } catch (const zmq::error_t &e) {
             //LOG(ERROR) << "ZeroMQ monitor error: " << e.what() << std::endl;
         }
-        
+
         memcpy(&event, msg.data(), sizeof(event));
 
         callback_function(command_socket.at(m_connectionId), event);
-   
     }
 }
 
@@ -456,16 +450,15 @@ libwebsocket in   - pointer to data len  - length of data
 * Desription:           This function handles the websocket events and take
 appropriate action
 */
-int Network::callback_function(std::unique_ptr<zmq::socket_t>& stx,const zmq_event_t &event) {
+int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
+                               const zmq_event_t &event) {
 
     int connectionId = 0;
-    auto status = std::find(command_socket.begin(), command_socket.end(),
-                            stx);
+    auto status = std::find(command_socket.begin(), command_socket.end(), stx);
     if (status != command_socket.end()) {
         connectionId =
             static_cast<int>(std::distance(command_socket.begin(), status));
     }
-
 
     // Handle the event based on the connection ID
     switch (event.event) {
@@ -487,12 +480,11 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t>& stx,const zmq_eve
             command_socket.at(connectionId) = NULL;
             monitor_sockets.at(connectionId) = NULL;
             contexts.at(connectionId) = NULL;
-            
         }
         break;
     case ZMQ_EVENT_CONNECT_RETRIED:
         LOG(INFO) << "Connection retried to with connection ID: "
-                  << connectionId ;
+                  << connectionId;
         break;
     case ZMQ_EVENT_DISCONNECTED:
         LOG(INFO) << "Disconnected from server at with connection ID: "
@@ -508,7 +500,6 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t>& stx,const zmq_eve
             command_socket.at(connectionId) = NULL;
             monitor_sockets.at(connectionId) = NULL;
             contexts.at(connectionId) = NULL;
-            
         }
         break;
     case ZMQ_EVENT_CONNECT_DELAYED:
@@ -521,7 +512,8 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t>& stx,const zmq_eve
         break;
     default:
 #ifdef NW_DEBUG
-        LOG(INFO) << "Event: " << event.event << " on with connection ID: " << connectionId ;
+        LOG(INFO) << "Event: " << event.event
+                  << " on with connection ID: " << connectionId;
 #endif
         break;
     }
@@ -565,13 +557,15 @@ Network::Network(int connectionId)
  * Desription:   Destructor for network class
  */
 Network::~Network() {
-    if (contexts.at(m_connectionId) != NULL && Thread_Detached[m_connectionId]) {
+    if (contexts.at(m_connectionId) != NULL &&
+        Thread_Detached[m_connectionId]) {
 
         /*set a flag to complete the thread */
-       
+
         Thread_Detached[m_connectionId] = false;
         {
-            std::lock_guard<std::recursive_mutex> guard(m_mutex[m_connectionId]);
+            std::lock_guard<std::recursive_mutex> guard(
+                m_mutex[m_connectionId]);
             Server_Connected[m_connectionId] = false;
             running = false;
             command_socket.at(m_connectionId)->close();
@@ -583,8 +577,6 @@ Network::~Network() {
         }
     }
 }
-
-
 
 int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
     zmq::message_t message;
@@ -616,4 +608,3 @@ void zmq_closeConnection() {
 
     LOG(INFO) << "ZMQ Client Connection closed.";
 }
-
