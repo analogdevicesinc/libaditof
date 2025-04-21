@@ -29,6 +29,11 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include <thread>
+#include <queue>
+#include <vector>
+#include <mutex>
+#include <condition_variable>
 
 #include "v4l_buffer_access_interface.h"
 
@@ -78,6 +83,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     TofiConfig *getTofiCongfig();
     aditof::Status getDepthComputeVersion(uint8_t &enabled);
 
+    void startThreads();
+    void stopThreads();
+
   public:
     virtual aditof::Status waitForBuffer() override;
     virtual aditof::Status
@@ -101,6 +109,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
                                                 struct VideoDev *dev = nullptr);
 
+    void captureFrameThread();
+    void processThread();
+
   private:
     bool m_vidPropSet;
     bool m_processorPropSet;
@@ -120,4 +131,36 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     struct VideoDev *m_inputVideoDev;
     struct VideoDev *m_outputVideoDev;
+
+    struct Frame {
+        std::vector<uint8_t> data;
+        size_t size;
+        std::shared_ptr<uint16_t> tofiBuffer;
+
+        Frame() = default;
+        Frame(std::vector<uint8_t>&& d, size_t s) : data(std::move(d)), size(s), tofiBuffer(nullptr) {}
+
+    };
+
+    std::queue<Frame> bufferPool;
+    std::queue<Frame> processedBufferQueue;
+
+    std::mutex poolMutex, processedMutex;
+    std::condition_variable bufferNotEmpty, processedNotEmpty;
+    bool stopThreadsFlag = false;
+    bool streamRunning = false;
+
+    std::vector<std::vector<uint8_t>> preallocatedFrameBuffers;
+    std::queue<std::vector<uint8_t>*> freeFrameBuffers;
+    std::mutex preallocMutex;
+    std::condition_variable preallocNotEmpty;
+
+    std::thread captureThread;
+    std::thread processingThread;
+
+    std::queue<uint16_t*> tofiBufferfifo;
+    std::mutex tofiBufferMutex;
+    std::condition_variable tofiBufferNotEmpty;
+
+    static constexpr int TOFI_BUFFER_COUNT = 10;  // Or more depending on performance needs
 };

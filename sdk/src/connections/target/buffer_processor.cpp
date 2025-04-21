@@ -156,6 +156,29 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     }
     m_processedBuffer = new uint16_t[m_outputFrameWidth * m_outputFrameHeight];
 
+    size_t rawFrameSize = static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight;
+
+    preallocatedFrameBuffers.reserve(10);
+    {
+        std::lock_guard<std::mutex> lock(preallocMutex);
+        for (int i = 0; i < 10; ++i) {
+            preallocatedFrameBuffers.emplace_back(rawFrameSize);  // vector with rawFrameSize capacity
+            freeFrameBuffers.push(&preallocatedFrameBuffers.back());
+        }
+    }
+
+    ssize_t tofiBufferSize =  m_outputFrameWidth * m_outputFrameHeight * sizeof(uint16_t) +
+                             m_outputFrameWidth * m_outputFrameHeight * sizeof(uint8_t) +
+                             m_outputFrameWidth * m_outputFrameHeight * sizeof(float);
+
+    for (int i = 0; i < TOFI_BUFFER_COUNT; ++i) {
+        uint16_t* buffer = static_cast<uint16_t*>(aligned_alloc(64, tofiBufferSize));
+        if (buffer) {
+            std::lock_guard<std::mutex> lock(tofiBufferMutex);
+            tofiBufferfifo.push(buffer);
+        }
+    }
+
     return status;
 }
 
@@ -227,23 +250,88 @@ BufferProcessor::processBuffer(uint16_t *buffer = nullptr,
     if (status != Status::OK) {
         return status;
     }
+void BufferProcessor::captureFrameThread() {
+    LOG(INFO) << __func__ << ": Capture thread started";
 
-    status = dequeueInternalBufferPrivate(buf[0], dev);
-    if (status != Status::OK) {
-        return status;
+    long long totalCaptureTime = 0;
+    int totalV4L2Captured = 0;
+
+    size_t bufferIndex = 0;
+    size_t preallocSize = preallocatedFrameBuffers.size();
+
+    while (!stopThreadsFlag) {
+        aditof::Status status;
+        struct v4l2_buffer buf;
+        struct VideoDev *dev = m_inputVideoDev;
+        uint8_t *pdata = nullptr;
+        unsigned int buf_data_len = 0;
+
+        auto captureStart = std::chrono::high_resolution_clock::now();
+
+        status = waitForBufferPrivate(dev);
+        if (status != aditof::Status::OK){
+            LOG(ERROR) << __func__ << ": waitForBufferPrivate() Failed, retrying...";
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        status = dequeueInternalBufferPrivate(buf, dev);
+        if (status != aditof::Status::OK){
+            LOG(ERROR) << __func__ << ": dequeueInternalBufferPrivate() Failed, retrying...";
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        status = getInternalBufferPrivate(&pdata, buf_data_len, buf, dev);
+        if (status != aditof::Status::OK || !pdata || buf_data_len == 0) {
+            LOG(ERROR) << __func__ << ": dequeueInternalBufferPrivate() Failed. Buffer index: " << buf.index;
+            // Always requeue the buffer to avoid memory leak
+            enqueueInternalBufferPrivate(buf, dev);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            continue;
+        }
+
+        auto captureEnd = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> captureTime = captureEnd - captureStart;
+        totalCaptureTime += static_cast<long long>(captureTime.count());
+        totalV4L2Captured++;
+
+        Frame frame;
+        {
+            std::lock_guard<std::mutex> lock(poolMutex);
+            if (bufferPool.size() >= preallocSize)
+                bufferPool.pop();
+
+            std::vector<uint8_t>& targetBuffer = preallocatedFrameBuffers[bufferIndex];
+            targetBuffer.assign(pdata, pdata + buf_data_len);
+
+            frame.data = targetBuffer;
+            frame.size = buf_data_len;
+
+            bufferPool.push(std::move(frame));
+            bufferNotEmpty.notify_one();
+
+            bufferIndex = (bufferIndex + 1) % preallocSize;
+        }
+
+        status = enqueueInternalBufferPrivate(buf, dev);
+        if (status != aditof::Status::OK) {
+            LOG(ERROR) << __func__ << ": enqueueInternalBufferPrivate() Failed";
+        }
+        // (Optional) A short sleep to avoid hammering the device, if needed.
+        std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
-
-    status = getInternalBufferPrivate(&pdata, buf_data_len, buf[0], dev);
-    if (status != Status::OK) {
-        return status;
+    if (totalV4L2Captured > 0) {
+        double averageCaptureTime = static_cast<double>(totalCaptureTime) / totalV4L2Captured;
+        LOG(INFO) << __func__ << ": Average capture time: " << averageCaptureTime << " ms";
     }
+}
 
-    pdata_user_space = (uint8_t *)malloc(sizeof(uint8_t) * buf_data_len);
-    memcpy(pdata_user_space, pdata, buf_data_len);
+void BufferProcessor::processThread() {
+    LOG(INFO) << __func__ << ": Processing thread started";
 
-    uint16_t *tempDepthFrame = m_tofiComputeContext->p_depth_frame;
-    uint16_t *tempAbFrame = m_tofiComputeContext->p_ab_frame;
-    float *tempConfFrame = m_tofiComputeContext->p_conf_frame;
+    long long totalProcessTime = 0;
+    int totalProcessedFrame = 0;
 
     if (buffer != nullptr) {
 
@@ -275,21 +363,34 @@ BufferProcessor::processBuffer(uint16_t *buffer = nullptr,
 #else
         uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
                                    m_tofiComputeContext, NULL);
+    while (!stopThreadsFlag) {
+        Frame frame;
+        {
+            std::unique_lock<std::mutex> lock(poolMutex);
+            if (!bufferNotEmpty.wait_for(lock, std::chrono::seconds(2), [this] { return !bufferPool.empty() || stopThreadsFlag; })) {
+                LOG(WARNING) << __func__ << ": Timeout! No new frames.";
+                continue;
+            }
 
-        if (ret != ADI_TOFI_SUCCESS) {
-            LOG(ERROR) << "TofiCompute failed";
-            return Status::GENERIC_ERROR;
+            if (stopThreadsFlag) break;
+
+            frame = std::move(bufferPool.front());
+            bufferPool.pop();
         }
 #endif
 
-    } else {
+        // Fetch a buffer from tofiBufferPool
+        uint16_t* tofiBuffer = nullptr;
+        {
+            std::unique_lock<std::mutex> tofiLock(tofiBufferMutex);
+            if (!tofiBufferNotEmpty.wait_for(tofiLock, std::chrono::seconds(2), [this] { return !tofiBufferfifo.empty(); })) {
+                LOG(WARNING) << __func__ << ": No available ToFi buffers, skipping frame!";
+                continue;
+            }
 
-        m_tofiComputeContext->p_depth_frame = m_processedBuffer;
-        m_tofiComputeContext->p_ab_frame =
-            m_processedBuffer + m_outputFrameWidth * m_outputFrameHeight / 4;
-        m_tofiComputeContext->p_conf_frame =
-            (float *)(m_processedBuffer +
-                      m_outputFrameWidth * m_outputFrameHeight / 2);
+            tofiBuffer = tofiBufferfifo.front();
+            tofiBufferfifo.pop();
+        }
 
 #ifdef DUAL
         if (mode_num == 0 ||
@@ -316,30 +417,87 @@ BufferProcessor::processBuffer(uint16_t *buffer = nullptr,
 #else
         uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
                                    m_tofiComputeContext, NULL);
+        uint16_t *tempDepthFrame = m_tofiComputeContext->p_depth_frame;
+        uint16_t *tempAbFrame = m_tofiComputeContext->p_ab_frame;
+        float *tempConfFrame = m_tofiComputeContext->p_conf_frame;
 
-        if (ret != ADI_TOFI_SUCCESS) {
-            LOG(ERROR) << "TofiCompute failed";
-            return Status::GENERIC_ERROR;
+        if (tofiBuffer) {
+            m_tofiComputeContext->p_depth_frame = tofiBuffer;
+            m_tofiComputeContext->p_ab_frame = tofiBuffer + m_outputFrameWidth * m_outputFrameHeight / 4;
+            m_tofiComputeContext->p_conf_frame = (float *)(tofiBuffer + m_outputFrameWidth * m_outputFrameHeight / 2);
+
+            auto processStart = std::chrono::high_resolution_clock::now();
+
+            uint32_t ret = TofiCompute(reinterpret_cast<uint16_t *>(frame.data.data()), m_tofiComputeContext, NULL);
+            if (ret != ADI_TOFI_SUCCESS) {
+                LOG(ERROR) << __func__ << ": TofiCompute failed Skipping frame!";
+                 {
+                    std::lock_guard<std::mutex> lock(tofiBufferMutex);
+                    tofiBufferfifo.push(tofiBuffer);
+                    tofiBufferNotEmpty.notify_one();
+                }
+                continue;
+            }
+
+            auto processEnd = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> processTime = processEnd - processStart;
+            totalProcessTime += static_cast<long long>(processTime.count());
+            totalProcessedFrame++;
+
+            m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+            m_tofiComputeContext->p_ab_frame = tempAbFrame;
+            m_tofiComputeContext->p_conf_frame = tempConfFrame;
         }
 #endif
 
-        ::write(m_outputVideoDev->fd, m_processedBuffer,
-                m_outputFrameWidth * m_outputFrameHeight);
+        frame.tofiBuffer = std::shared_ptr<uint16_t>(
+            tofiBuffer,
+            [this](uint16_t* ptr) {
+                {
+                    std::lock_guard<std::mutex> lock(tofiBufferMutex);
+                    tofiBufferfifo.push(ptr);
+                }
+                tofiBufferNotEmpty.notify_one();
+            }
+        );
+        {
+            std::lock_guard<std::mutex> processedLock(processedMutex);
+            processedBufferQueue.push(std::move(frame));
+            processedNotEmpty.notify_one();
+        }
+    }
+    if (totalProcessedFrame > 0) {
+        double averageProcessTime = static_cast<double>(totalProcessTime) / totalProcessedFrame;
+        LOG(INFO) << __func__ << ": Average tofi_comupte process time: " << averageProcessTime << " ms";
+    }
+}
+
+aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
+    Frame frame;
+    {
+        std::unique_lock<std::mutex> processedLock(processedMutex);
+        if (!processedNotEmpty.wait_for(processedLock, std::chrono::seconds(2), [this] { return !processedBufferQueue.empty() || stopThreadsFlag; })) {
+            LOG(WARNING) << __func__ << ": Timeout! No processed frames.";
+            return aditof::Status::GENERIC_ERROR;
+        }
+
+        if (processedBufferQueue.empty()) {
+            LOG(ERROR) << __func__ << ": No processed frame available!";
+            return aditof::Status::GENERIC_ERROR;
+        }
+
+        frame = std::move(processedBufferQueue.front());
+        processedBufferQueue.pop();
     }
 
-    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
-    m_tofiComputeContext->p_ab_frame = tempAbFrame;
-    m_tofiComputeContext->p_conf_frame = tempConfFrame;
-
-    if (pdata_user_space)
-        free(pdata_user_space);
-
-    status = enqueueInternalBufferPrivate(buf[0], dev);
-    if (status != Status::OK) {
-        return status;
+    if (buffer && frame.tofiBuffer && frame.size > 0) {
+        memcpy(buffer, frame.tofiBuffer.get(), frame.size);
+    } else {
+        LOG(ERROR) << "Invalid buffer or size!";
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    return status;
+    return aditof::Status::OK;
 }
 
 aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
@@ -463,4 +621,42 @@ TofiConfig *BufferProcessor::getTofiCongfig() { return m_tofiConfig; }
 aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled) {
     enabled = depthComputeOpenSourceEnabled;
     return aditof::Status::OK;
+}
+
+void BufferProcessor::startThreads() {
+    stopThreadsFlag = false;
+    streamRunning = true;
+
+    LOG(INFO) << __func__ << ": Starting Threads..";
+    captureThread = std::thread(&BufferProcessor::captureFrameThread, this);
+    processingThread = std::thread(&BufferProcessor::processThread, this);
+}
+
+void BufferProcessor::stopThreads() {
+
+    {
+        std::lock_guard<std::mutex> lock(poolMutex);
+        stopThreadsFlag = true;
+        bufferNotEmpty.notify_all();
+    }
+    {
+        std::lock_guard<std::mutex> lock(tofiBufferMutex);
+        tofiBufferNotEmpty.notify_all();  // Wake up processThread from tofiBuffer wait
+    }
+
+    if (captureThread.joinable())
+        captureThread.join();
+    if (processingThread.joinable())
+        processingThread.join();
+
+    {
+        std::lock_guard<std::mutex> lock(tofiBufferMutex);
+        while (!tofiBufferfifo.empty()) {
+            free(tofiBufferfifo.front());
+            tofiBufferfifo.pop();
+        }
+    }
+
+    LOG(INFO) << __func__ << ": Threads Stopped..";
+    streamRunning = false;
 }

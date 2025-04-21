@@ -449,6 +449,7 @@ aditof::Status Adsd3500Sensor::start() {
 
         dev->started = true;
     }
+    m_bufferProcessor->startThreads();
 
     return status;
 }
