@@ -634,11 +634,6 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame) {
     }
 
     Metadata metadata;
-    status = frame->getMetadataStruct(metadata);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Could not get frame metadata!";
-        return status;
-    }
 
     uint16_t *metadataLocation;
     status = frame->getData("metadata", &metadataLocation);
@@ -652,6 +647,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame) {
         frame->getData("ab", &abFrame);
         memcpy(reinterpret_cast<uint8_t *>(&metadata), abFrame,
                sizeof(metadata));
+
         memset(abFrame, 0, sizeof(metadata));
     } else {
         // If metadata from ADSD3500 is not available/disabled, generate one here
