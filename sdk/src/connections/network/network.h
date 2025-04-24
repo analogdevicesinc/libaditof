@@ -38,7 +38,6 @@
 #include <vector>
 #include <zmq.hpp>
 
-
 #define MAX_CAMERA_NUM 10
 
 class Network;
@@ -48,13 +47,6 @@ struct NetworkHandle {
     std::mutex net_mutex;
 };
 
-
-
-void zmq_closeConnection();
-int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size);
-
-
-
 class Network {
   public:
     typedef std::function<void(void)> InterruptNotificationCallback;
@@ -63,6 +55,9 @@ class Network {
     static std::vector<std::unique_ptr<zmq::context_t>> contexts;
     static std::vector<std::unique_ptr<zmq::socket_t>> command_socket;
     static std::vector<std::unique_ptr<zmq::socket_t>> monitor_sockets;
+    int max_buffer_size = 10;
+    std::unique_ptr<zmq::socket_t> frame_socket;
+    std::unique_ptr<zmq::context_t> frame_context;
 
     std::thread threadObj[MAX_CAMERA_NUM];
     static std::recursive_mutex m_mutex[MAX_CAMERA_NUM];
@@ -87,7 +82,7 @@ class Network {
 
     //! call_zmq_service - calls zmq_event_t  to service any zmq socket events
     //! activity
-    void call_zmq_service(const std::string& ip);
+    void call_zmq_service(const std::string &ip);
 
   public:
     int m_connectionId;
@@ -132,6 +127,15 @@ class Network {
 
     //! isServer_Connected() - APi to check if server is connected successfully
     bool isServer_Connected();
+
+    //! closeConnectionFrameSocket() - APi to close the frame socket connection
+    void closeConnectionFrameSocket();
+
+    //! getFrame() - APi to get frame in Async
+    int32_t getFrame(uint16_t *buffer, uint32_t buf_size);
+
+    //! FrameSocketConnection() - APi to establish Frame Socket connection
+    void FrameSocketConnection(std::string &ip);
 
     void registerInterruptCallback(InterruptNotificationCallback &cb);
 

@@ -41,7 +41,7 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <iostream>
 
-std::unique_ptr<zmq::socket_t> client_socket;
+std::unique_ptr<zmq::socket_t> frame_socket;
 std::unique_ptr<zmq::context_t> zmq_context;
 std::string zmq_ip;
 
@@ -338,48 +338,38 @@ int Network::recv_server_data() {
             /*reset the flag value to receive again*/
             Data_Received[m_connectionId] = false;
 
-            // Poll the socket for incoming messages
-
-            zmq::pollitem_t items[] = {
-                {static_cast<void *>(*command_socket[m_connectionId]), 0,
-                 ZMQ_POLLIN, 0}};
-
-            zmq::poll(items, 1, 10000); // wait till 10 sec
-
             zmq::message_t message;
-            if (items[0].revents & ZMQ_POLLIN) {
 
-                if (command_socket[m_connectionId]->recv(
-                        message, zmq::recv_flags::none)) {
-                    // Check if data is received correctly
-                    if (message.size() >= 0) {
-                        google::protobuf::io::ArrayInputStream ais(
-                            static_cast<char *>(message.data()),
-                            static_cast<int>(message.size()));
-                        CodedInputStream coded_input(&ais);
-                        recv_buff[m_connectionId].ParseFromCodedStream(
-                            &coded_input);
+            if (command_socket[m_connectionId]->recv(message,
+                                                     zmq::recv_flags::none)) {
+                // Check if data is received correctly
+                if (message.size() >= 0) {
+                    google::protobuf::io::ArrayInputStream ais(
+                        static_cast<char *>(message.data()),
+                        static_cast<int>(message.size()));
+                    CodedInputStream coded_input(&ais);
+                    recv_buff[m_connectionId].ParseFromCodedStream(
+                        &coded_input);
 
-                        recv_data_error = 0;
-                        Data_Received[m_connectionId] = true;
+                    recv_data_error = 0;
+                    Data_Received[m_connectionId] = true;
 
-                        if (recv_buff[m_connectionId].interrupt_occured()) {
-                            InterruptDetected[m_connectionId] = true;
-                        }
-
-                        /*Notify the host SDK that data is received from server*/
-                        Cond_Var[m_connectionId].notify_all();
-                        status = 0;
-                        break;
+                    if (recv_buff[m_connectionId].interrupt_occured()) {
+                        InterruptDetected[m_connectionId] = true;
                     }
-                } else {
-                    /*No data received, retry sending command */
-                    LOG(INFO)
-                        << "Data not received from server going to send again";
-                    if (SendCommand() != 0) {
-                        status = -1;
-                        break;
-                    }
+
+                    /*Notify the host SDK that data is received from server*/
+                    Cond_Var[m_connectionId].notify_all();
+                    status = 0;
+                    break;
+                }
+            } else {
+                /*No data received, retry sending command */
+                LOG(INFO)
+                    << "Data not received from server going to send again";
+                if (SendCommand() != 0) {
+                    status = -1;
+                    break;
                 }
             }
         } else {
@@ -575,10 +565,10 @@ Network::~Network() {
     }
 }
 
-int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
+int32_t Network::getFrame(uint16_t *buffer, uint32_t buf_size) {
     zmq::message_t message;
-    if (client_socket != nullptr) {
-        client_socket->recv(message, zmq::recv_flags::none);
+    if (frame_socket != nullptr) {
+        frame_socket->recv(message, zmq::recv_flags::none);
     }
 
     if (buf_size == message.size()) {
@@ -592,16 +582,31 @@ int32_t zmq_getFrame(uint16_t *buffer, uint32_t buf_size) {
     return 0;
 }
 
-void zmq_closeConnection() {
+void Network::closeConnectionFrameSocket() {
 
-    if (client_socket) {
-        client_socket->close(); // Close the socket
-        client_socket.reset();  // Release the unique pointer
+    if (frame_socket) {
+        frame_socket->close(); // Close the socket
+        frame_socket.reset();  // Release the unique pointer
     }
 
     if (zmq_context) {
         zmq_context.reset(); // Release the ZMQ context
     }
 
-    LOG(INFO) << "ZMQ Client Connection closed.";
+    LOG(INFO) << "Frame socket connection closed.";
+}
+
+void Network::FrameSocketConnection(std::string &ip) {
+
+    // Create a ZMQ connection for capturning frame in Async
+    frame_context = std::make_unique<zmq::context_t>(1);
+    frame_socket =
+        std::make_unique<zmq::socket_t>(*frame_context, zmq::socket_type::pull);
+    frame_socket->setsockopt(ZMQ_RCVTIMEO,
+                             1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
+    frame_socket->setsockopt(ZMQ_RCVHWM, (int *)&max_buffer_size,
+                             sizeof(max_buffer_size));
+    std::string zmq_address = "tcp://" + ip + ":5555";
+    frame_socket->connect(zmq_address);
+    LOG(INFO) << "Frame Client Connection established.";
 }
