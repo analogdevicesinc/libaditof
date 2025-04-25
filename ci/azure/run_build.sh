@@ -24,7 +24,7 @@ build_default() {
 
     pushd ${BUILD_DIR}
     pwd
-    cmake ${DEFAULT_CMAKE_FLAGS} ${EXTRA_CMAKE_FLAGS} -DCMAKE_PREFIX_PATH="${DEPS_DIR}/installed/glog;${DEPS_DIR}/installed/protobuf;${DEPS_DIR}/installed/websockets;${DEPS_DIR}/installed/Open3D;${DEPS_DIR}/installed/opencv" .. 
+    cmake ${DEFAULT_CMAKE_FLAGS} ${EXTRA_CMAKE_FLAGS} -DCMAKE_PREFIX_PATH="${DEPS_DIR}/installed/glog;${DEPS_DIR}/installed/protobuf;${DEPS_DIR}/installed/libzmq;${DEPS_DIR}/installed/cppzmq;${DEPS_DIR}/installed/Open3D;${DEPS_DIR}/installed/opencv" .. 
     make -j${NUM_JOBS}
     popd
 }
@@ -48,7 +48,7 @@ build_deploy_doxygen() {
 }
 
 build_docker() {
-    run_docker ${DOCKER} /libaditof/ci/azure/inside_docker.sh "${DEFAULT_CMAKE_FLAGS} ${EXTRA_CMAKE_FLAGS}"
+    run_docker ${DOCKER} /ToF/ci/azure/inside_docker.sh "${DEFAULT_CMAKE_FLAGS} ${EXTRA_CMAKE_FLAGS}"
 }
 
 if [[ "${DOCKER}" != "" ]]; then export BUILD_TYPE="docker"; fi

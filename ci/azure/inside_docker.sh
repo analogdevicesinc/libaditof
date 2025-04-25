@@ -1,8 +1,9 @@
 #!/bin/bash
 git config --global --add safe.directory /libaditof
 git config --global --add safe.directory /libaditof/glog
-git config --global --add safe.directory /libaditof/libwebsockets
 git config --global --add safe.directory /libaditof/protobuf
+git config --global --add safe.directory /libaditof/libzmq
+git config --global --add safe.directory /libaditof/cppzmq
 
 project_dir=$1
 pushd ${project_dir}
