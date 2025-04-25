@@ -113,18 +113,20 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
         return Status::GENERIC_ERROR;
     }
 #else
+#ifndef HAS_NETWORK
     sensorEnumerator = SensorEnumeratorFactory::buildUsbSensorEnumerator();
     if (!sensorEnumerator) {
         LOG(ERROR) << "Could not create UsbSensorEnumerator";
         return Status::GENERIC_ERROR;
     }
 #endif
-
+#endif
+#ifndef HAS_NETWORK
     Status status = sensorEnumerator->searchSensors();
     if (status == Status::OK) {
         cameraList = buildCameras(std::move(sensorEnumerator));
     }
-
+#endif
     return Status::OK;
 }
 

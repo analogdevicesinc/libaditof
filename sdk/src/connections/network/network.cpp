@@ -36,6 +36,12 @@
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <iostream>
 
+#ifdef USE_GLOG
+#include <glog/logging.h>
+#else
+#include <aditof/log.h>
+#endif
+
 #define RX_BUFFER_BYTES (20996420)
 #define MAX_RETRY_CNT 3
 
@@ -82,6 +88,7 @@ bool Network::Thread_Detached[MAX_CAMERA_NUM];
 bool Network::InterruptDetected[MAX_CAMERA_NUM];
 
 void *Network::rawPayloads[MAX_CAMERA_NUM];
+void *Network::rawPayloadsSize[MAX_CAMERA_NUM];
 std::vector<std::string> m_connectionList;
 
 /*
@@ -237,7 +244,7 @@ int Network::ServerConnect(const std::string &ip) {
                 -1 -  on error
 * Desription:    This function is used to send the data to connected server.
 */
-int Network::SendCommand(void *rawPayload) {
+int Network::SendCommand(void *rawPayload, uint32_t *rawPayloadSize) {
     int status = -1;
     uint8_t numRetry = 0;
     int siz = send_buff[m_connectionId].ByteSize();
@@ -283,6 +290,9 @@ int Network::SendCommand(void *rawPayload) {
 #endif
             if (rawPayload) {
                 rawPayloads[m_connectionId] = rawPayload;
+            }
+            if (rawPayloadSize) {
+                rawPayloadsSize[m_connectionId] = rawPayloadSize;
             }
             status = 0;
             break;
@@ -466,10 +476,14 @@ int Network::callback_function(struct lws *wsi,
                 memcpy(rawPayloads[connectionId],
                        (pCharIn + FRAME_PREPADDING_BYTES),
                        len - FRAME_PREPADDING_BYTES);
+                uint32_t *sz =
+                    static_cast<uint32_t *>(rawPayloadsSize[connectionId]);
+                *sz = len - FRAME_PREPADDING_BYTES;
                 if (pCharIn[0] == 123) {
                     InterruptDetected[connectionId] = true;
                 }
                 rawPayloads[connectionId] = nullptr;
+                rawPayloadsSize[connectionId] = nullptr;
                 recv_data_error = 0;
                 Data_Received[connectionId] = true;
 

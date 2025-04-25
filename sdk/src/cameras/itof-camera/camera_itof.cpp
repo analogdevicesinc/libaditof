@@ -559,6 +559,14 @@ CameraItof::setFrameProcessParams(std::map<std::string, std::string> &params) {
     return status;
 }
 
+aditof::Status CameraItof::startRecording(std::string &filePath) {
+    return m_depthSensor->startRecording(filePath);
+}
+
+aditof::Status CameraItof::stopRecording() {
+    return m_depthSensor->stopRecording();
+}
+
 aditof::Status CameraItof::adsd3500ResetIniParamsForMode(const uint16_t mode) {
     return m_depthSensor->adsd3500_write_cmd(0x40, mode);
 }

@@ -37,6 +37,9 @@
 #include <memory>
 #include <thread>
 #include <unordered_map>
+#include <iostream>
+#include <fstream>
+
 
 class NetworkDepthSensor : public aditof::DepthSensorInterface {
   public:
@@ -119,6 +122,24 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
         m_interruptCallbackMap;
     bool m_stopServerCheck;
     std::thread m_activityCheckThread;
+
+  public:
+    // Stream record and playback support
+    aditof::Status startRecording(std::string &fileName) override;
+    aditof::Status stopRecording() override;
+    aditof::Status startPlayback(const std::string filePath) override;
+    aditof::Status stopPlayback() override;
+
+  private:
+    aditof::Status automaticStop();
+    aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize);
+    aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize);
+    enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;
+    const std::string m_folder_path = "./recordings";
+    std::ofstream m_stream_file_out;
+    std::ifstream m_stream_file_in;
+    std::string m_stream_file_name;
+    uint32_t m_frame_count;
 };
 
 #endif // NETWORK_DEPTH_SENSOR_H

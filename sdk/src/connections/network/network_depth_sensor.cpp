@@ -57,7 +57,8 @@ struct NetworkDepthSensor::ImplData {
 
 NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
                                        const std::string &ip)
-    : m_implData(new NetworkDepthSensor::ImplData), m_stopServerCheck(false) {
+    : m_implData(new NetworkDepthSensor::ImplData), m_stopServerCheck(false),
+      m_state(ST_STANDARD){
 
     extern std::vector<std::string> m_connectionList;
     m_sensorIndex = -1;
@@ -121,6 +122,8 @@ NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
 
 NetworkDepthSensor::~NetworkDepthSensor() {
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
+
+    automaticStop();
 
     // If channel communication has been opened, let the server know we're hanging up
     if (m_implData->opened) {
@@ -360,6 +363,8 @@ aditof::Status NetworkDepthSensor::stop() {
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     LOG(INFO) << "Stopping device";
+
+    automaticStop();
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
@@ -610,6 +615,11 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
     using namespace aditof;
 
+    if (m_state == ST_PLAYBACK) {
+
+        return Status::OK;
+    }
+
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
@@ -621,7 +631,8 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
     net->send_buff[m_sensorIndex].set_func_name("GetFrame");
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
-    if (net->SendCommand(static_cast<void *>(buffer)) != 0) {
+    uint32_t sz;
+    if (net->SendCommand(static_cast<void *>(buffer), &sz) != 0) {
         LOG(WARNING) << "Send Command Failed";
         return Status::INVALID_ARGUMENT;
     }
@@ -641,6 +652,10 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
     if (status != Status::OK) {
         LOG(WARNING) << "getFrame() failed on target";
         return status;
+    }
+
+    if (m_state == ST_RECORD) {
+        writeFrame((uint8_t*)buffer, sz);
     }
 
     return status;
@@ -1303,3 +1318,195 @@ NetworkDepthSensor::getIniParamsArrayForMode(int mode, std::string &iniStr) {
 
     return status;
 }
+
+#pragma region Stream_Recording_and_Playback
+
+#include <sys/stat.h>
+#include <sys/types.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
+#include <iostream>
+#include <iomanip>
+#include <sstream>
+#include <ctime>
+#include <cstdlib>
+#include <random>
+
+static bool folderExists(const std::string &path) {
+    struct stat info;
+    return (stat(path.c_str(), &info) == 0 && (info.st_mode & S_IFDIR));
+}
+
+static bool createFolder(const std::string &path) {
+#ifdef _WIN32
+    return _mkdir(path.c_str()) == 0 || errno == EEXIST;
+#else
+    return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
+#endif
+}
+
+static std::string generateFileName(const std::string &prefix = "aditof_",
+                                    const std::string &extension = ".adcam") {
+    // Get current UTC time
+    std::time_t now = std::time(nullptr);
+    std::tm utc_tm;
+#ifdef _WIN32
+    gmtime_s(&utc_tm, &now); // Windows
+#else
+    gmtime_r(&now, &utc_tm); // Linux/macOS
+#endif
+
+    std::ostringstream oss;
+
+    // Format time: YYYYMMDD_HHMMSS
+    oss << prefix;
+    oss << std::put_time(&utc_tm, "%Y%m%d_%H%M%S");
+
+    // Generate random 8-digit hex
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
+    uint32_t randNum = dis(gen);
+    oss << "_" << std::hex << std::setw(8) << std::setfill('0') << randNum;
+
+    oss << extension;
+
+    return oss.str();
+}
+
+aditof::Status NetworkDepthSensor::startRecording(std::string& fileName) {
+
+    m_state = ST_STANDARD;
+    if (!folderExists(m_folder_path)) {
+        if (!createFolder(m_folder_path)) {
+            LOG(ERROR) << "Failed to create folder for recordings: "
+                      << m_folder_path;
+            return aditof::Status::GENERIC_ERROR;
+        }
+    }
+
+    fileName = m_folder_path + "/" + generateFileName();
+
+    if (m_stream_file_out.is_open()) {
+        m_stream_file_out.close();
+    }
+
+    m_frame_count = 0;
+
+    m_stream_file_out = std::ofstream(fileName, std::ios::binary);
+
+    m_state = ST_RECORD;
+
+    return aditof::Status::OK;
+}
+
+aditof::Status NetworkDepthSensor::stopRecording() {
+    m_state = ST_STANDARD;
+    if (m_stream_file_out.is_open()) {
+        m_stream_file_out.close();
+        return aditof::Status::OK;
+    } 
+    LOG(ERROR) << "File stream is not open";
+    return aditof::Status::GENERIC_ERROR;
+}
+
+aditof::Status NetworkDepthSensor::startPlayback(const std::string filePath) {
+    m_state = ST_STANDARD;
+
+    if (m_stream_file_in.is_open()) {
+        m_stream_file_in.close();
+    }
+
+    m_stream_file_in = std::ifstream(filePath, std::ios::binary);
+
+    m_state = ST_PLAYBACK;
+
+    return aditof::Status::OK;
+}
+
+aditof::Status NetworkDepthSensor::stopPlayback() { 
+    m_state = ST_STANDARD;
+    if (m_stream_file_in.is_open()) {
+        m_stream_file_in.close();
+        return aditof::Status::OK;
+    }
+    LOG(ERROR) << "File stream is not open";
+    return aditof::Status::GENERIC_ERROR;
+}
+
+aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
+                                              uint32_t bufferSize) {
+    if (m_state != ST_RECORD) {
+        LOG(ERROR) << "Not in record mode";
+        return aditof::Status::GENERIC_ERROR;
+    }
+
+    try {
+        if (m_stream_file_out.is_open()) {
+            // Write size of buffer
+            m_stream_file_out.write((char *)&bufferSize,
+                                    sizeof(bufferSize));
+            // Write buffer data
+            m_stream_file_out.write((char *)(buffer),
+                                    bufferSize);
+
+            m_frame_count++;
+
+            return aditof::Status::OK;
+        }
+    } catch (const std::ofstream::failure &e) {
+        LOG(ERROR) << "File I/O exception caught: " << e.what();
+        m_stream_file_out.close();
+        m_state = ST_STANDARD;
+    }
+    return aditof::Status::GENERIC_ERROR;
+}
+
+aditof::Status NetworkDepthSensor::readFrame(uint8_t *buffer,
+                                             uint32_t &bufferSize) {
+
+    if (m_state != ST_PLAYBACK) {
+        LOG(ERROR) << "Not in playback mode";
+        return aditof::Status::GENERIC_ERROR;
+    }
+
+    try {
+        if (m_stream_file_in.is_open()) {
+            // Read size of buffer
+            uint32_t _bufferSize = 0;
+            m_stream_file_in.read(reinterpret_cast<char *>(_bufferSize),
+                                    sizeof(_bufferSize));
+
+            if (bufferSize < _bufferSize) {
+                LOG(ERROR) << "Buffer size is smaller than the data to be read";
+                return aditof::Status::GENERIC_ERROR;
+            }
+
+            bufferSize = _bufferSize;
+
+            // Read buffer data
+            m_stream_file_in.read(reinterpret_cast<char *>(buffer),
+                                    bufferSize);
+
+            return aditof::Status::OK;
+        }
+    } catch (const std::ofstream::failure &e) {
+        LOG(ERROR) << "File I/O exception caught: " << e.what();
+        m_stream_file_in.close();
+        m_state = ST_STANDARD;
+    }
+    return aditof::Status::GENERIC_ERROR;
+}
+
+aditof::Status NetworkDepthSensor::automaticStop() { 
+    if (m_state == ST_PLAYBACK) {
+        stopPlayback();
+    } else if (m_state == ST_RECORD) {
+        stopRecording();
+    }
+
+    return aditof::Status::OK;
+}
+
+#pragma endregion

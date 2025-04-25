@@ -37,9 +37,10 @@
 #ifdef TARGET
 #include "connections/target/target_sensor_enumerator.h"
 #else
-#include "connections/usb/usb_sensor_enumerator.h"
 #ifdef HAS_NETWORK
 #include "connections/network/network_sensor_enumerator.h"
+#else
+#include "connections/usb/usb_sensor_enumerator.h"
 #endif
 #endif
 
@@ -61,8 +62,10 @@ SensorEnumeratorFactory::buildTargetSensorEnumerator() {
 std::unique_ptr<SensorEnumeratorInterface>
 SensorEnumeratorFactory::buildUsbSensorEnumerator() {
 #ifndef TARGET
+#ifndef HAS_NETWORK
     return std::unique_ptr<SensorEnumeratorInterface>(
         new UsbSensorEnumerator());
+#endif
 #endif
     return nullptr;
 }

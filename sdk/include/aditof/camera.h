@@ -608,6 +608,9 @@ class SDK_API Camera {
      * @return void
      */
     virtual void dropFirstFrame(bool dropFrame) = 0;
+
+    virtual aditof::Status startRecording(std::string &filePath) = 0;
+    virtual aditof::Status stopRecording() = 0;
 };
 
 } // namespace aditof

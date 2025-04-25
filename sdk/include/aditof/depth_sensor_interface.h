@@ -322,6 +322,12 @@ class DepthSensorInterface {
     */
     virtual aditof::Status getIniParamsArrayForMode(int mode,
                                                     std::string &iniStr) = 0;
+
+    // Stream record and playback support
+    virtual aditof::Status startRecording(std::string &fileName) = 0;
+    virtual aditof::Status stopRecording() = 0;
+    virtual aditof::Status startPlayback(const std::string filePath) = 0;
+    virtual aditof::Status stopPlayback() = 0;
 };
 
 } // namespace aditof

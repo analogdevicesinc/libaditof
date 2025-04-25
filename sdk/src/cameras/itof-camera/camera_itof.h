@@ -201,6 +201,9 @@ class CameraItof : public aditof::Camera {
      */
     bool isConvertibleToDouble(const std::string &str);
 
+    aditof::Status startRecording(std::string &filePath) override;
+    aditof::Status stopRecording() override;
+
   private:
     using noArgCallable = std::function<aditof::Status()>;
 
