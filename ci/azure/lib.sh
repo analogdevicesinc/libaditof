@@ -288,7 +288,7 @@ install_doxygen() {
 
 
 ############################################################################
-# Get source code for dependencies: glog, protobuf, libwebsockets
+# Get source code for dependencies: glog, protobuf
 ############################################################################
 get_deps_source_code() {
     CLONE_DIRECTORY=$1
@@ -305,10 +305,6 @@ get_deps_source_code() {
 
     # [ -d "protobuf" ] || {
     #     git clone --branch v3.9.0 --depth 1 https://github.com/protocolbuffers/protobuf
-    # }
-
-    # [ -d "libwebsockets" ] || {
-    #     git clone --branch v3.1-stable --depth 1 https://github.com/warmcat/libwebsockets
     # }
 
     [ -d "opencv-${OPENCV}" ] || {

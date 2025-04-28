@@ -19,4 +19,4 @@ fi
 # build_and_install_glog "glog" ${GLOG_INSTALL_DIR}
 # build_and_install_protobuf "protobuf" ${PROTOBUF_INSTALL_DIR}
 # build_and_install_libzmq "libzmq" ${LIBZMQ_INSTALL_DIR}
-# build_and_install_cppzmq "cppzmq" ${LIBZMQ_INSTALL_DIR}
+# build_and_install_cppzmq "cppzmq" "libzmq"
