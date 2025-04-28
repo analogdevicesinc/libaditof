@@ -48,7 +48,7 @@ build_deploy_doxygen() {
 }
 
 build_docker() {
-    run_docker ${DOCKER} /ToF/ci/azure/inside_docker.sh "${DEFAULT_CMAKE_FLAGS} ${EXTRA_CMAKE_FLAGS}"
+    run_docker ${DOCKER} /libaditof/ci/azure/inside_docker.sh "${DEFAULT_CMAKE_FLAGS} ${EXTRA_CMAKE_FLAGS}"
 }
 
 if [[ "${DOCKER}" != "" ]]; then export BUILD_TYPE="docker"; fi
