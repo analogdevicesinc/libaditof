@@ -100,12 +100,36 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
 
     std::unique_ptr<SensorEnumeratorInterface> sensorEnumerator;
 #ifdef HAS_OFFLINE
-    DLOG(INFO) << "Creating offline sensor.";
-    sensorEnumerator = SensorEnumeratorFactory::buildOfflineSensorEnumerator();
-    if (!sensorEnumerator) {
-        LOG(ERROR) << "Could not create OfflineSensorEnumerator";
-        return Status::GENERIC_ERROR;
+    if (true) {
+        DLOG(INFO) << "Creating offline sensor.";
+        sensorEnumerator =
+            SensorEnumeratorFactory::buildOfflineSensorEnumerator();
+        if (!sensorEnumerator) {
+            LOG(ERROR) << "Could not create OfflineSensorEnumerator";
+            return Status::GENERIC_ERROR;
+        }
+
+        // TODO: Generate camera list for the offline camera.
+        Status status = sensorEnumerator->searchSensors();
+        {
+            std::vector<std::shared_ptr<Camera>> cameras;
+            std::vector<std::shared_ptr<DepthSensorInterface>> depthSensors;
+
+            sensorEnumerator->getDepthSensors(depthSensors);
+
+            std::string uboot;
+            std::string kernel;
+            std::string sd_ver;
+            std::string tmp;
+
+            for (const auto &dSensor : depthSensors) {
+                std::shared_ptr<Camera> camera = std::make_shared<CameraItof>(
+                    dSensor, uboot, kernel, sd_ver, tmp);
+                cameraList.emplace_back(camera);
+            }
+        }
     }
+
 #elif defined(NXP) || defined(NVIDIA)
     sensorEnumerator = SensorEnumeratorFactory::buildTargetSensorEnumerator();
     if (!sensorEnumerator) {

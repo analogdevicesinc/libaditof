@@ -615,11 +615,6 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
     using namespace aditof;
 
-    if (m_state == ST_PLAYBACK) {
-
-        return Status::OK;
-    }
-
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
@@ -1375,7 +1370,9 @@ static std::string generateFileName(const std::string &prefix = "aditof_",
     return oss.str();
 }
 
-aditof::Status NetworkDepthSensor::startRecording(std::string& fileName) {
+aditof::Status NetworkDepthSensor::startRecording(std::string &fileName,
+                                                  uint8_t *parameters,
+                                                  uint32_t paramSize) {
 
     m_state = ST_STANDARD;
     if (!folderExists(m_folder_path)) {
@@ -1398,12 +1395,23 @@ aditof::Status NetworkDepthSensor::startRecording(std::string& fileName) {
 
     m_state = ST_RECORD;
 
+    writeFrame(parameters, paramSize);
+
     return aditof::Status::OK;
 }
 
 aditof::Status NetworkDepthSensor::stopRecording() {
     m_state = ST_STANDARD;
     if (m_stream_file_out.is_open()) {
+        // Write the number of frames recorded at the end of the file
+
+        // Seek back to the beginning
+        m_stream_file_out.seekp(4, std::ios::beg); // Skip over the number of bytes to read.
+        // Overwrite the placeholder
+        m_frame_count--; // Take into account the header frame
+        m_stream_file_out.write(reinterpret_cast<const char *>(&m_frame_count),
+                                sizeof(m_frame_count));
+
         m_stream_file_out.close();
         return aditof::Status::OK;
     } 
@@ -1412,26 +1420,12 @@ aditof::Status NetworkDepthSensor::stopRecording() {
 }
 
 aditof::Status NetworkDepthSensor::startPlayback(const std::string filePath) {
-    m_state = ST_STANDARD;
-
-    if (m_stream_file_in.is_open()) {
-        m_stream_file_in.close();
-    }
-
-    m_stream_file_in = std::ifstream(filePath, std::ios::binary);
-
-    m_state = ST_PLAYBACK;
-
-    return aditof::Status::OK;
+    
+    return aditof::Status::GENERIC_ERROR;
 }
 
 aditof::Status NetworkDepthSensor::stopPlayback() { 
-    m_state = ST_STANDARD;
-    if (m_stream_file_in.is_open()) {
-        m_stream_file_in.close();
-        return aditof::Status::OK;
-    }
-    LOG(ERROR) << "File stream is not open";
+
     return aditof::Status::GENERIC_ERROR;
 }
 
@@ -1465,37 +1459,6 @@ aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
 
 aditof::Status NetworkDepthSensor::readFrame(uint8_t *buffer,
                                              uint32_t &bufferSize) {
-
-    if (m_state != ST_PLAYBACK) {
-        LOG(ERROR) << "Not in playback mode";
-        return aditof::Status::GENERIC_ERROR;
-    }
-
-    try {
-        if (m_stream_file_in.is_open()) {
-            // Read size of buffer
-            uint32_t _bufferSize = 0;
-            m_stream_file_in.read(reinterpret_cast<char *>(_bufferSize),
-                                    sizeof(_bufferSize));
-
-            if (bufferSize < _bufferSize) {
-                LOG(ERROR) << "Buffer size is smaller than the data to be read";
-                return aditof::Status::GENERIC_ERROR;
-            }
-
-            bufferSize = _bufferSize;
-
-            // Read buffer data
-            m_stream_file_in.read(reinterpret_cast<char *>(buffer),
-                                    bufferSize);
-
-            return aditof::Status::OK;
-        }
-    } catch (const std::ofstream::failure &e) {
-        LOG(ERROR) << "File I/O exception caught: " << e.what();
-        m_stream_file_in.close();
-        m_state = ST_STANDARD;
-    }
     return aditof::Status::GENERIC_ERROR;
 }
 

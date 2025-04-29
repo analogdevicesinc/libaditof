@@ -149,6 +149,8 @@ class CameraItof : public aditof::Camera {
     aditof::Status
     setFrameProcessParams(std::map<std::string, std::string> &params) override;
 
+    void CameraItof::setOffLine(bool offline = true) override;
+
   private:
     /**
      * @brief Opens the CCB file passed in as part of Json file using initialize(), and loads the calibration blocks into member variable
@@ -203,6 +205,9 @@ class CameraItof : public aditof::Camera {
 
     aditof::Status startRecording(std::string &filePath) override;
     aditof::Status stopRecording() override;
+
+    aditof::Status startPlayback(std::string &filePath) override;
+    aditof::Status stopPlayback() override;
 
   private:
     using noArgCallable = std::function<aditof::Status()>;

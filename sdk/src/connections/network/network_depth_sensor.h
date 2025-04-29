@@ -125,7 +125,7 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
 
   public:
     // Stream record and playback support
-    aditof::Status startRecording(std::string &fileName) override;
+    aditof::Status startRecording(std::string &fileName, uint8_t *parameters, uint32_t paramSize) override;
     aditof::Status stopRecording() override;
     aditof::Status startPlayback(const std::string filePath) override;
     aditof::Status stopPlayback() override;
