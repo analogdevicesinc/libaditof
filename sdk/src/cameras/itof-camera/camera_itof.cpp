@@ -73,6 +73,7 @@ static struct {
     uint16_t enableMetaDatainAB;
     TofiXYZDealiasData dealias;
     aditof::CameraDetails details;
+    aditof::DepthSensorModeDetails modeDetailsCache;
     uint32_t fdatadetailsCount;
     aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
 } offline_parameters;
@@ -373,6 +374,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             uint16_t enableMetaDatainAB;
             TofiXYZDealiasData dealias;
             aditof::CameraDetails details;
+            aditof::DepthSensorModeDetails modeDetailsCache;
             uint32_t fdatadetailsCount;
             aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
         } offline_parameters;
@@ -386,11 +388,14 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         // 0. Get the parameters
         memset(&offline_parameters, 0, sizeof(offline_parameters));
 
-        status = m_depthSensor->getFrame((uint16_t *) &offline_parameters);
+        status = m_depthSensor->getHeader((uint8_t *)&offline_parameters, sizeof(offline_parameters));
         if (status != Status::OK) {
             LOG(WARNING) << "Failed to get frame from device";
             return status;
         }
+
+        memcpy(&m_modeDetailsCache, &offline_parameters.modeDetailsCache,
+               sizeof(aditof::DepthSensorModeDetails));
 
         // 1. Frame details
         m_details.mode = offline_parameters.details.mode;
@@ -720,6 +725,7 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
             uint16_t enableMetaDatainAB;
             TofiXYZDealiasData dealias;
             aditof::CameraDetails details;
+            aditof::DepthSensorModeDetails modeDetailsCache;
             uint32_t fdatadetailsCount;
             aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
         } offline_parameters;
@@ -740,6 +746,10 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
 
         // offline_parameters.enableMetaDatainAB
         offline_parameters.enableMetaDatainAB = m_enableMetaDatainAB;
+
+        // aditof::DepthSensorModeDetails modeDetailsCache;
+        memcpy(&offline_parameters.modeDetailsCache, &m_modeDetailsCache,
+               sizeof(m_modeDetailsCache));
 
         // offline_parameters.details, offline_parameters.fdatadetailsCount & offline_parameters.fDataDetails
         offline_parameters.fdatadetailsCount = 0;
@@ -858,7 +868,7 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
     return status;
 }
 
-aditof::Status CameraItof::requestFrame(aditof::Frame *frame) {
+aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     using namespace aditof;
     Status status = Status::OK;
 
@@ -886,7 +896,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame) {
     }
 
     if (m_dropFirstFrame && m_dropFrameOnce) {
-        m_depthSensor->getFrame(frameDataLocation);
+        m_depthSensor->getFrame(frameDataLocation, index);
         m_dropFrameOnce = false;
         if (status != Status::OK) {
             LOG(INFO) << "Failed to drop first frame!";
@@ -895,7 +905,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame) {
         LOG(INFO) << "Dropped first frame";
     }
 
-    status = m_depthSensor->getFrame(frameDataLocation);
+    status = m_depthSensor->getFrame(frameDataLocation, index);
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get frame from device";
         return status;
@@ -2769,18 +2779,6 @@ aditof::Status CameraItof::setAdsd3500IniParams(
 }
 
 void CameraItof::cleanupXYZtables() {
-    if (m_xyzTable.p_x_table) {
-        free((void *)m_xyzTable.p_x_table);
-        m_xyzTable.p_x_table = nullptr;
-    }
-    if (m_xyzTable.p_y_table) {
-        free((void *)m_xyzTable.p_y_table);
-        m_xyzTable.p_y_table = nullptr;
-    }
-    if (m_xyzTable.p_z_table) {
-        free((void *)m_xyzTable.p_z_table);
-        m_xyzTable.p_z_table = nullptr;
-    }
 }
 
 aditof::Status CameraItof::getImagerType(aditof::ImagerType &imagerType) const {

@@ -58,7 +58,7 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
     virtual aditof::Status
     setMode(const aditof::DepthSensorModeDetails &type) override;
     virtual aditof::Status setMode(const uint8_t &mode) override;
-    virtual aditof::Status getFrame(uint16_t *buffer) override;
+    virtual aditof::Status getFrame(uint16_t *buffer, uint32_t index) override;
     virtual aditof::Status
     getAvailableControls(std::vector<std::string> &controls) const override;
     virtual aditof::Status setControl(const std::string &control,
@@ -129,6 +129,7 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
     aditof::Status stopRecording() override;
     aditof::Status startPlayback(const std::string filePath) override;
     aditof::Status stopPlayback() override;
+    aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) override;
 
   private:
     aditof::Status automaticStop();

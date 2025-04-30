@@ -612,7 +612,7 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
     return status;
 }
 
-aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
+aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     using namespace aditof;
 
     Network *net = m_implData->handle.net;
@@ -654,6 +654,11 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer) {
     }
 
     return status;
+}
+
+aditof::Status NetworkDepthSensor::getHeader(uint8_t *buffer,
+                                             uint32_t bufferSize) {
+    return aditof::Status::GENERIC_ERROR;
 }
 
 aditof::Status NetworkDepthSensor::getAvailableControls(
@@ -1406,7 +1411,7 @@ aditof::Status NetworkDepthSensor::stopRecording() {
         // Write the number of frames recorded at the end of the file
 
         // Seek back to the beginning
-        m_stream_file_out.seekp(4, std::ios::beg); // Skip over the number of bytes to read.
+        m_stream_file_out.seekp(8, std::ios::beg); // Skip over the number of bytes to read and the tag of 0xFFFF_FFFF
         // Overwrite the placeholder
         m_frame_count--; // Take into account the header frame
         m_stream_file_out.write(reinterpret_cast<const char *>(&m_frame_count),
@@ -1436,9 +1441,15 @@ aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
         return aditof::Status::GENERIC_ERROR;
     }
 
+    static uint32_t idx = 0;
     try {
         if (m_stream_file_out.is_open()) {
             // Write size of buffer
+            LOG(INFO) << "W: " << idx++ << ", " << m_stream_file_out.tellp() << ", " << bufferSize;
+
+            uint32_t x = 0xFFFFFFFF;
+            m_stream_file_out.write((char *)&x, sizeof(x));
+
             m_stream_file_out.write((char *)&bufferSize,
                                     sizeof(bufferSize));
             // Write buffer data

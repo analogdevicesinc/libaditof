@@ -118,7 +118,7 @@ class DepthSensorInterface {
      * time setMode() is called.
      * @return Status
      */
-    virtual aditof::Status getFrame(uint16_t *buffer) = 0;
+    virtual aditof::Status getFrame(uint16_t *buffer, uint32_t index = 0) = 0;
 
     /**
      * @brief Send a read command to adsd3500.
@@ -330,6 +330,7 @@ class DepthSensorInterface {
     virtual aditof::Status stopRecording() = 0;
     virtual aditof::Status startPlayback(const std::string filePath) = 0;
     virtual aditof::Status stopPlayback() = 0;
+    virtual aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) = 0;
 };
 
 } // namespace aditof

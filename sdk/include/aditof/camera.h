@@ -116,7 +116,7 @@ class SDK_API Camera {
      * @param frame - The frame to which the camera data should be assign
      * @return Status
      */
-    virtual Status requestFrame(Frame *frame) = 0;
+    virtual Status requestFrame(Frame *frame, uint32_t index = 0) = 0;
 
     /**
      * @brief Scale AB image with logarithmic base 10.

@@ -131,13 +131,17 @@ OfflineDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
     return status;
 }
 
-aditof::Status OfflineDepthSensor::getFrame(uint16_t *buffer) {
+/*
+* Maybe an index of frames is needed, using vectors to store the index.
+* This will make it easy to jump around.
+ */
+aditof::Status OfflineDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     using namespace aditof;
 
     Status status = Status::OK;
 
     uint32_t sz = 0;
-    readFrame((uint8_t *)buffer, sz);
+    readFrame((uint8_t *)buffer, sz, index);
 
     return status;
 }
@@ -356,6 +360,8 @@ OfflineDepthSensor::getIniParamsArrayForMode(int mode, std::string &iniStr) {
 #include <random>
 #include <sstream>
 
+static std::vector<std::streampos> m_frameIndex;
+
 static bool folderExists(const std::string &path) {
     struct stat info;
     return (stat(path.c_str(), &info) == 0 && (info.st_mode & S_IFDIR));
@@ -425,6 +431,7 @@ aditof::Status OfflineDepthSensor::startPlayback(const std::string filePath) {
         m_stream_file_in.close();
     }
 
+    m_frameIndex.clear();
     m_stream_file_in = std::ifstream(filePath, std::ios::binary);
 
     m_state = ST_PLAYBACK;
@@ -442,8 +449,74 @@ aditof::Status OfflineDepthSensor::stopPlayback() {
     return aditof::Status::GENERIC_ERROR;
 }
 
+aditof::Status OfflineDepthSensor::getHeader(uint8_t* buffer, uint32_t bufferSize) {
+
+        if (m_state != ST_PLAYBACK) {
+        LOG(ERROR) << "Not in playback mode";
+        return aditof::Status::GENERIC_ERROR;
+    }
+
+    try {
+        if (m_stream_file_in.is_open()) {
+
+            m_stream_file_in.seekg(0, std::ios::beg);
+
+            uint32_t x;
+            m_stream_file_in.read(reinterpret_cast<char *>(&x), sizeof(x));
+
+            // Read size of buffer
+            uint32_t _bufferSize = 0;
+            m_stream_file_in.read(reinterpret_cast<char *>(&_bufferSize),
+                                  sizeof(_bufferSize));
+
+            bufferSize = _bufferSize;
+
+            // Read buffer data
+            m_stream_file_in.read(reinterpret_cast<char *>(buffer), bufferSize);
+
+            m_frameIndex.clear();
+
+            std::streampos pos = m_stream_file_in.tellg();
+
+            static uint32_t idx = 0;
+            LOG(INFO) << "Building Index";
+            while (true) {
+
+                uint32_t _bufferSize = 0;
+
+                pos = m_stream_file_in.tellg();
+
+                m_frameIndex.emplace_back(m_stream_file_in.tellg());
+
+                uint32_t x;
+                m_stream_file_in.read(reinterpret_cast<char *>(&x), sizeof(x));
+
+                m_stream_file_in.read(reinterpret_cast<char *>(&_bufferSize),
+                                      sizeof(_bufferSize));
+
+                if (m_stream_file_in.eof()) {
+                    break;
+                }
+
+                m_stream_file_in.seekg(_bufferSize, std::ios::cur);
+            }
+
+            m_stream_file_in.clear();
+
+            m_stream_file_in.seekg(pos, std::ios::beg);
+
+            return aditof::Status::OK;
+        }
+    } catch (const std::ofstream::failure &e) {
+        LOG(ERROR) << "File I/O exception caught: " << e.what();
+        m_stream_file_in.close();
+        m_state = ST_STANDARD;
+    }
+    return aditof::Status::GENERIC_ERROR;
+}
+
 aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
-                                             uint32_t &bufferSize) {
+                                             uint32_t &bufferSize, uint32_t index) {
 
     if (m_state != ST_PLAYBACK) {
         LOG(ERROR) << "Not in playback mode";
@@ -452,6 +525,17 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
 
     try {
         if (m_stream_file_in.is_open()) {
+
+            m_stream_file_in.clear();
+
+            m_stream_file_in.seekg(m_frameIndex[index], std::ios::beg); 
+
+            auto p = m_stream_file_in.tellg();
+
+            uint32_t x;
+            m_stream_file_in.read(reinterpret_cast<char *>(&x),
+                                  sizeof(x));
+
             // Read size of buffer
             uint32_t _bufferSize = 0;
             m_stream_file_in.read(reinterpret_cast<char *>(&_bufferSize),
