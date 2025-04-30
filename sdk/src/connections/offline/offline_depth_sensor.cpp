@@ -442,11 +442,18 @@ aditof::Status OfflineDepthSensor::startPlayback(const std::string filePath) {
 aditof::Status OfflineDepthSensor::stopPlayback() {
     m_state = ST_STANDARD;
     if (m_stream_file_in.is_open()) {
+        m_frameIndex.clear();
         m_stream_file_in.close();
         return aditof::Status::OK;
     }
     LOG(ERROR) << "File stream is not open";
     return aditof::Status::GENERIC_ERROR;
+}
+
+aditof::Status OfflineDepthSensor::getFrameCount(uint32_t &frameCount) {
+    frameCount = m_frameIndex.size();
+
+    return aditof::Status::OK;
 }
 
 aditof::Status OfflineDepthSensor::getHeader(uint8_t* buffer, uint32_t bufferSize) {
@@ -486,10 +493,12 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t* buffer, uint32_t bufferSiz
 
                 pos = m_stream_file_in.tellg();
 
-                m_frameIndex.emplace_back(m_stream_file_in.tellg());
-
                 uint32_t x;
                 m_stream_file_in.read(reinterpret_cast<char *>(&x), sizeof(x));
+
+                if (m_stream_file_in.eof()) {
+                    break;
+                }
 
                 m_stream_file_in.read(reinterpret_cast<char *>(&_bufferSize),
                                       sizeof(_bufferSize));
@@ -497,6 +506,8 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t* buffer, uint32_t bufferSiz
                 if (m_stream_file_in.eof()) {
                     break;
                 }
+
+                m_frameIndex.emplace_back(pos);
 
                 m_stream_file_in.seekg(_bufferSize, std::ios::cur);
             }

@@ -739,7 +739,7 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
                sizeof(m_xyz_dealias_data[m_details.mode]));
 
         // offline_parameters.frameRate
-        status = adsd3500GetFrameRate(offline_parameters.frameRate);
+        offline_parameters.frameRate = m_cameraFps;
         if (status != Status::OK) {
             offline_parameters.frameRate = 0; // Unknown framerate
         }
@@ -2371,6 +2371,8 @@ aditof::Status CameraItof::adsd3500GetFrameRate(uint16_t &fps) {
 
     if (m_isOffline) {
 
+        fps = offline_parameters.frameRate;
+
     } else {
         status = m_depthSensor->adsd3500_read_cmd(
             0x0023, reinterpret_cast<uint16_t *>(&fps));
@@ -2779,6 +2781,18 @@ aditof::Status CameraItof::setAdsd3500IniParams(
 }
 
 void CameraItof::cleanupXYZtables() {
+    if (m_xyzTable.p_x_table) {
+        free((void *)m_xyzTable.p_x_table);
+        m_xyzTable.p_x_table = nullptr;
+    }
+    if (m_xyzTable.p_y_table) {
+        free((void *)m_xyzTable.p_y_table);
+        m_xyzTable.p_y_table = nullptr;
+    }
+    if (m_xyzTable.p_z_table) {
+        free((void *)m_xyzTable.p_z_table);
+        m_xyzTable.p_z_table = nullptr;
+    }
 }
 
 aditof::Status CameraItof::getImagerType(aditof::ImagerType &imagerType) const {

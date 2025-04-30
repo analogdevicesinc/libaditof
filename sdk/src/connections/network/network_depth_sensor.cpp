@@ -1434,6 +1434,11 @@ aditof::Status NetworkDepthSensor::stopPlayback() {
     return aditof::Status::GENERIC_ERROR;
 }
 
+aditof::Status NetworkDepthSensor::getFrameCount(uint32_t &frameCount) {
+    
+    return aditof::Status::GENERIC_ERROR;
+}
+
 aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
                                               uint32_t bufferSize) {
     if (m_state != ST_RECORD) {
@@ -1445,7 +1450,7 @@ aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
     try {
         if (m_stream_file_out.is_open()) {
             // Write size of buffer
-            LOG(INFO) << "W: " << idx++ << ", " << m_stream_file_out.tellp() << ", " << bufferSize;
+            LOG(INFO) << "Frame Written: " << idx++;
 
             uint32_t x = 0xFFFFFFFF;
             m_stream_file_out.write((char *)&x, sizeof(x));
