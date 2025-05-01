@@ -39,9 +39,17 @@ set(FRAME_DIR "cameras/itof-frame")
 set(COMMON_DIR "common/adi")
 
 if( WIN32 )
-    set(OS_SPECIFIC_DIR "connections/usb/windows")
+	if (WITH_UVC)
+		set(OS_SPECIFIC_DIR "connections/usb/windows")
+	endif()
 elseif( APPLE )
-    set(OS_SPECIFIC_DIR "connections/usb/macos")
+	if (WITH_UVC)
+		set(OS_SPECIFIC_DIR "connections/usb/macos")
+	endif()
+elseif ( UNIX )
+	if (WITH_UVC)
+		set(OS_SPECIFIC_DIR "connections/usb/linux")
+	endif()
 elseif ( NXP )
     # Add optimization for specific architecture
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -54,8 +62,6 @@ elseif ( NVIDIA )
     set(OS_SPECIFIC_DIR "connections/target")
     set(TARGET_SPECIFIC_DIR "soc/nvidia")
     add_definitions(-DNVIDIA)
-elseif ( UNIX )
-    set(OS_SPECIFIC_DIR "connections/usb/linux")
 else()
     message(FATAL_ERROR "Platform not supported")
 endif()
@@ -121,8 +127,8 @@ add_library(${PROJECT_NAME} SHARED
     $<$<BOOL:${WITH_NETWORK}>:${NETWORK_HEADERS}>
     $<$<BOOL:${WITH_OFFLINE}>:${OFFLINE_SOURCES}>
     $<$<BOOL:${WITH_OFFLINE}>:${OFFLINE_HEADERS}>
-    $<$<BOOL:${WITH_PROTOBUF_DEPENDENCY}>:${USB_SOURCES}>
-    $<$<BOOL:${WITH_PROTOBUF_DEPENDENCY}>:${USB_HEADERS}>
+    $<$<BOOL:${WITH_UVC}>:${USB_SOURCES}>
+    $<$<BOOL:${WITH_UVC}>:${USB_HEADERS}>
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE crc32)

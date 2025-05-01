@@ -130,6 +130,7 @@ class OfflineDepthSensor : public aditof::DepthSensorInterface {
     std::ifstream m_stream_file_in;
     std::string m_stream_file_name;
     uint32_t m_frame_count;
+    std::vector<std::streampos> m_frameIndex;
 };
 
 #endif // OFFLINE_DEPTH_SENSOR_H

@@ -29,7 +29,6 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "connections/network/network.h"
 #include "offline_depth_sensor.h"
 
 #ifdef USE_GLOG
@@ -49,8 +48,8 @@ OfflineDepthSensor::OfflineDepthSensor(std::string s) : m_state(ST_STANDARD), m_
     m_implData = std::make_unique<ImplData>();
 }
 
-OfflineDepthSensor::~OfflineDepthSensor() {
-
+OfflineDepthSensor::~OfflineDepthSensor() { 
+    automaticStop(); 
 }
 
 aditof::Status OfflineDepthSensor::getDepthComputeParams(
@@ -91,6 +90,8 @@ aditof::Status OfflineDepthSensor::stop() {
     using namespace aditof;
 
     Status status = Status::OK;
+
+    status = automaticStop(); 
 
     return status;
 }
@@ -359,8 +360,6 @@ OfflineDepthSensor::getIniParamsArrayForMode(int mode, std::string &iniStr) {
 #include <iostream>
 #include <random>
 #include <sstream>
-
-static std::vector<std::streampos> m_frameIndex;
 
 static bool folderExists(const std::string &path) {
     struct stat info;

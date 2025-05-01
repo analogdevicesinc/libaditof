@@ -347,7 +347,10 @@ aditof::Status CameraItof::stop() {
     aditof::Status status = aditof::Status::OK;
 
     if (m_isOffline) {
-
+        status = m_depthSensor->stop();
+        if (status != aditof::Status::OK) {
+            LOG(INFO) << "Failed to stop camera!";
+        }
     } else {
         status = m_depthSensor->stop();
         if (status != aditof::Status::OK) {
@@ -701,7 +704,7 @@ aditof::Status CameraItof::stopPlayback() {
     if (!m_isOffline) {
         status = aditof::Status::GENERIC_ERROR; // Invalid call
     } else {
-        status = m_depthSensor->stopRecording();
+        status = m_depthSensor->stopPlayback();
     }
 
     return status;
