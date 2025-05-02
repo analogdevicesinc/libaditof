@@ -613,8 +613,6 @@ class SDK_API Camera {
     virtual aditof::Status stopRecording() = 0;
     virtual aditof::Status startPlayback(std::string &filePath) = 0;
     virtual aditof::Status stopPlayback() = 0;
-
-    virtual void setOffLine(bool offline = true) = 0;
 };
 
 } // namespace aditof
