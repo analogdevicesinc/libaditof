@@ -266,9 +266,10 @@ class CameraItof : public aditof::Camera {
     bool m_dropFrameOnce;
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
 
-    static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;
-    static const uint32_t MAX_FRAME_CONTENT = 6;
+    
     struct {
+        static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;
+        static const uint32_t MAX_FRAME_CONTENT = 6;
         uint32_t numberOfFrames;
         const uint32_t formatVersion = 0x00000001;
         uint16_t frameRate;

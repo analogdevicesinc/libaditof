@@ -389,7 +389,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_modeDetailsCache.isPCM = m_offline_parameters.modeDetailsCache.isPCM;
 		m_modeDetailsCache.frameContent.clear();
 
-		for (uint32_t idx = 0; idx < MAX_FRAME_CONTENT; idx++) {
+		for (uint32_t idx = 0; idx < m_offline_parameters.MAX_FRAME_CONTENT; idx++) {
             std::string frameContent = m_offline_parameters.modeDetailsCache.frameContent[idx];
 			m_modeDetailsCache.frameContent.emplace_back(frameContent);
 		}
@@ -785,8 +785,7 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         m_offline_parameters.details.totalCaptures = 1;
         for (const auto &item : (*modeIt).frameContent) { 
 
-            if (m_offline_parameters.fdatadetailsCount >
-                MAX_FRAME_DATA_DETAILS_SAVE) {
+            if (m_offline_parameters.fdatadetailsCount > m_offline_parameters.MAX_FRAME_DATA_DETAILS_SAVE) {
 
                 LOG(ERROR) << "Frame data details count exceeded the limit";
                 break;
