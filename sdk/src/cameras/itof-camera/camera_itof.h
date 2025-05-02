@@ -149,8 +149,6 @@ class CameraItof : public aditof::Camera {
     aditof::Status
     setFrameProcessParams(std::map<std::string, std::string> &params) override;
 
-    void CameraItof::setOffLine(bool offline = true) override;
-
   private:
     /**
      * @brief Opens the CCB file passed in as part of Json file using initialize(), and loads the calibration blocks into member variable
@@ -220,7 +218,6 @@ class CameraItof : public aditof::Camera {
 
     bool m_devStarted;
     bool m_devStreaming;
-    bool m_tempSensorInitialized;
     bool m_adsd3500Enabled;
     bool m_adsd3500_master;
     bool m_isOffline;
@@ -231,7 +228,6 @@ class CameraItof : public aditof::Camera {
     FileData m_depthINIData;
     std::map<std::string, FileData> m_depthINIDataMap;
     TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
-    bool m_loadedConfigData;
 
     std::string m_sensorFirmwareFile;
     std::string m_ccb_calibrationFile;
@@ -269,6 +265,32 @@ class CameraItof : public aditof::Camera {
     bool m_dropFirstFrame;
     bool m_dropFrameOnce;
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
+
+    static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;
+    struct {
+        uint32_t numberOfFrames;
+        const uint32_t formatVersion = 0x00000001;
+        uint16_t frameRate;
+        uint16_t enableMetaDatainAB;
+        TofiXYZDealiasData dealias;
+        struct {
+            uint32_t mode;
+            uint32_t width;
+            uint32_t height;
+            uint32_t totalCaptures;
+        } details;
+        aditof::DepthSensorModeDetails modeDetailsCache;
+        uint32_t fdatadetailsCount;
+        //aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
+        struct {
+            char type[32];
+            uint32_t width;
+            uint32_t height;
+            uint32_t subelementSize;
+            uint32_t subelementsPerElement;
+            uint32_t bytesCount;
+        } fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
+    } m_offline_parameters;
 };
 
 #endif // CAMERA_ITOF_H

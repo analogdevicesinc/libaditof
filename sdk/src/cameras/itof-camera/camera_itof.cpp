@@ -64,26 +64,12 @@
 
 static const int skMetaDataBytesCount = 128;
 
-const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;
-
-static struct {
-    uint32_t numberOfFrames;
-    const uint32_t formatVersion = 0x00000001;
-    uint16_t frameRate;
-    uint16_t enableMetaDatainAB;
-    TofiXYZDealiasData dealias;
-    aditof::CameraDetails details;
-    aditof::DepthSensorModeDetails modeDetailsCache;
-    uint32_t fdatadetailsCount;
-    aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
-} offline_parameters;
-
 CameraItof::CameraItof(
     std::shared_ptr<aditof::DepthSensorInterface> depthSensor,
     const std::string &ubootVersion, const std::string &kernelVersion,
     const std::string &sdCardImageVersion, const std::string &netLinkTest)
     : m_depthSensor(depthSensor), m_devStarted(false), m_devStreaming(false),
-      m_adsd3500Enabled(false), m_loadedConfigData(false), m_xyzEnabled(true),
+      m_adsd3500Enabled(false), m_xyzEnabled(true),
       m_xyzSetViaApi(false), m_cameraFps(0), m_fsyncMode(-1),
       m_mipiOutputSpeed(-1), m_enableTempCompenstation(-1),
       m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
@@ -119,7 +105,9 @@ CameraItof::CameraItof(
     LOG(INFO) << "Sensor name = " << sensorName;
     if (sensorName == "adsd3500") {
         m_adsd3500Enabled = true;
+        m_isOffline = false;
     } else if (sensorName == "offline") {
+        m_adsd3500Enabled = false;
         m_isOffline = true;
     }
 
@@ -130,10 +118,6 @@ CameraItof::~CameraItof() {
     freeConfigData();
     // m_device->toggleFsync();
     cleanupXYZtables();
-}
-
-void CameraItof::setOffLine(bool offline) { 
-    m_isOffline = offline; 
 }
 
 aditof::Status CameraItof::initialize(const std::string &configFilepath) {
@@ -148,10 +132,10 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
 
     } else {
 
-        //if (!m_adsd3500Enabled && !m_isOffline) {
-        //    LOG(ERROR) << "This usecase is no longer supported.";
-        //    return aditof::Status::UNAVAILABLE;
-        //}
+        if (!m_adsd3500Enabled) {
+            LOG(ERROR) << "This usecase is no longer supported.";
+            return aditof::Status::UNAVAILABLE;
+        }
 
         m_initConfigFilePath = configFilepath;
 
@@ -237,26 +221,23 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
                        sizeof(CameraIntrinsics));
             }
 
-            if (!m_isOffline) {
-                std::string fwVersion;
-                std::string fwHash;
+            std::string fwVersion;
+            std::string fwHash;
 
-                status = adsd3500GetFirmwareVersion(fwVersion, fwHash);
+            status = adsd3500GetFirmwareVersion(fwVersion, fwHash);
 
-                if (status == Status::OK) {
-                    LOG(INFO) << "Current adsd3500 firmware version is: "
-                              << m_adsd3500FwGitHash.first;
-                    LOG(INFO) << "Current adsd3500 firmware git hash is: "
-                              << m_adsd3500FwGitHash.second;
-                } else
-                    return status;
+            if (status == Status::OK) {
+                LOG(INFO) << "Current adsd3500 firmware version is: "
+                            << m_adsd3500FwGitHash.first;
+                LOG(INFO) << "Current adsd3500 firmware git hash is: "
+                            << m_adsd3500FwGitHash.second;
+            } else {
+                return status;
             }
         }
 
         aditof::Status configStatus = loadConfigData();
-        if (configStatus == aditof::Status::OK) {
-            m_loadedConfigData = true;
-        } else {
+        if (configStatus != aditof::Status::OK) {
             LOG(ERROR) << "loadConfigData failed";
             return Status::GENERIC_ERROR;
         }
@@ -380,7 +361,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             aditof::DepthSensorModeDetails modeDetailsCache;
             uint32_t fdatadetailsCount;
             aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
-        } offline_parameters;
+        } m_offline_parameters;
         */
 
         // TODO:
@@ -389,38 +370,38 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             // 2. Frame dealias parameters
 
         // 0. Get the parameters
-        memset(&offline_parameters, 0, sizeof(offline_parameters));
+        memset(&m_offline_parameters, 0, sizeof(m_offline_parameters));
 
-        status = m_depthSensor->getHeader((uint8_t *)&offline_parameters, sizeof(offline_parameters));
+        status = m_depthSensor->getHeader((uint8_t *)&m_offline_parameters, sizeof(m_offline_parameters));
         if (status != Status::OK) {
             LOG(WARNING) << "Failed to get frame from device";
             return status;
         }
 
-        memcpy(&m_modeDetailsCache, &offline_parameters.modeDetailsCache,
+        memcpy(&m_modeDetailsCache, &m_offline_parameters.modeDetailsCache,
                sizeof(aditof::DepthSensorModeDetails));
 
         // 1. Frame details
-        m_details.mode = offline_parameters.details.mode;
-        m_details.frameType.width = offline_parameters.details.frameType.width;
-        m_details.frameType.height = offline_parameters.details.frameType.height;
-        m_details.frameType.totalCaptures = offline_parameters.details.frameType.totalCaptures;
+        m_details.mode = m_offline_parameters.details.mode;
+        m_details.frameType.width = m_offline_parameters.details.width;
+        m_details.frameType.height = m_offline_parameters.details.height;
+        m_details.frameType.totalCaptures = m_offline_parameters.details.totalCaptures;
         m_details.frameType.dataDetails.clear();
-        for (uint32_t idx = 0; idx < offline_parameters.fdatadetailsCount; idx++) {
+        for (uint32_t idx = 0; idx < m_offline_parameters.fdatadetailsCount; idx++) {
             FrameDataDetails fDataDetails;
-            fDataDetails.type = offline_parameters.fDataDetails[idx].type;
-            fDataDetails.width = offline_parameters.fDataDetails[idx].width;
-            fDataDetails.height = offline_parameters.fDataDetails[idx].height;
-            fDataDetails.subelementSize = offline_parameters.fDataDetails[idx].subelementSize;
-            fDataDetails.subelementsPerElement = offline_parameters.fDataDetails[idx].subelementsPerElement;
-            fDataDetails.bytesCount = offline_parameters.fDataDetails[idx].bytesCount;
+            fDataDetails.type = m_offline_parameters.fDataDetails[idx].type;
+            fDataDetails.width = m_offline_parameters.fDataDetails[idx].width;
+            fDataDetails.height = m_offline_parameters.fDataDetails[idx].height;
+            fDataDetails.subelementSize = m_offline_parameters.fDataDetails[idx].subelementSize;
+            fDataDetails.subelementsPerElement = m_offline_parameters.fDataDetails[idx].subelementsPerElement;
+            fDataDetails.bytesCount = m_offline_parameters.fDataDetails[idx].bytesCount;
             m_details.frameType.dataDetails.emplace_back(fDataDetails);
         }
 
 
         // 2. Frame dealias parameters
         const int GEN_XYZ_ITERATIONS = 20;
-        TofiXYZDealiasData *pDealias = &offline_parameters.dealias;
+        TofiXYZDealiasData *pDealias = &m_offline_parameters.dealias;
         cleanupXYZtables();
         int ret = Algorithms::GenerateXYZTables(
             &m_xyzTable.p_x_table, &m_xyzTable.p_y_table, &m_xyzTable.p_z_table,
@@ -731,31 +712,31 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
             aditof::DepthSensorModeDetails modeDetailsCache;
             uint32_t fdatadetailsCount;
             aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
-        } offline_parameters;
+        } m_offline_parameters;
         */
 
-        // offline_parameters.numberOfFrames
-        offline_parameters.numberOfFrames = 0;
+        // m_offline_parameters.numberOfFrames
+        m_offline_parameters.numberOfFrames = 0;
 
-        // offline_parameters.dealias
-        memcpy(&offline_parameters.dealias, &m_xyz_dealias_data[m_details.mode],
+        // m_offline_parameters.dealias
+        memcpy(&m_offline_parameters.dealias, &m_xyz_dealias_data[m_details.mode],
                sizeof(m_xyz_dealias_data[m_details.mode]));
 
-        // offline_parameters.frameRate
-        offline_parameters.frameRate = m_cameraFps;
+        // m_offline_parameters.frameRate
+        m_offline_parameters.frameRate = m_cameraFps;
         if (status != Status::OK) {
-            offline_parameters.frameRate = 0; // Unknown framerate
+            m_offline_parameters.frameRate = 0; // Unknown framerate
         }
 
-        // offline_parameters.enableMetaDatainAB
-        offline_parameters.enableMetaDatainAB = m_enableMetaDatainAB;
+        // m_offline_parameters.enableMetaDatainAB
+        m_offline_parameters.enableMetaDatainAB = m_enableMetaDatainAB;
 
         // aditof::DepthSensorModeDetails modeDetailsCache;
-        memcpy(&offline_parameters.modeDetailsCache, &m_modeDetailsCache,
+        memcpy(&m_offline_parameters.modeDetailsCache, &m_modeDetailsCache,
                sizeof(m_modeDetailsCache));
 
-        // offline_parameters.details, offline_parameters.fdatadetailsCount & offline_parameters.fDataDetails
-        offline_parameters.fdatadetailsCount = 0;
+        // m_offline_parameters.details, m_offline_parameters.fdatadetailsCount & m_offline_parameters.fDataDetails
+        m_offline_parameters.fdatadetailsCount = 0;
 
         uint32_t mode = m_details.mode;
         auto modeIt =
@@ -771,16 +752,15 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
             return Status::INVALID_ARGUMENT;
         }
 
-        offline_parameters.details.mode = mode;
-        offline_parameters.details.frameType.width =
+        m_offline_parameters.details.mode = mode;
+        m_offline_parameters.details.width =
             (*modeIt).baseResolutionWidth;
-        offline_parameters.details.frameType.height =
+        m_offline_parameters.details.height =
             (*modeIt).baseResolutionHeight;
-        offline_parameters.details.frameType.totalCaptures = 1;
-        offline_parameters.details.frameType.dataDetails.clear();
+        m_offline_parameters.details.totalCaptures = 1;
         for (const auto &item : (*modeIt).frameContent) { 
 
-            if (offline_parameters.fdatadetailsCount >
+            if (m_offline_parameters.fdatadetailsCount >
                 MAX_FRAME_DATA_DETAILS_SAVE) {
 
                 LOG(ERROR) << "Frame data details count exceeded the limit";
@@ -794,37 +774,36 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
                 continue;
             }
 
-            FrameDataDetails fDataDetails;
-            fDataDetails.type = item;
-            fDataDetails.width = m_modeDetailsCache.baseResolutionWidth;
-            fDataDetails.height = m_modeDetailsCache.baseResolutionHeight;
-            fDataDetails.subelementSize = sizeof(uint16_t);
-            fDataDetails.subelementsPerElement = 1;
+            uint32_t idx = m_offline_parameters.fdatadetailsCount;
+
+            memcpy(&m_offline_parameters.fDataDetails[idx].type, item.c_str(), sizeof(item)); // TODO: Validate memory space before copying
+
+            m_offline_parameters.fDataDetails[idx].width = m_modeDetailsCache.baseResolutionWidth;
+            m_offline_parameters.fDataDetails[idx].height = m_modeDetailsCache.baseResolutionHeight;
+            m_offline_parameters.fDataDetails[idx].subelementSize = sizeof(uint16_t);
+            m_offline_parameters.fDataDetails[idx].subelementsPerElement = 1;
 
             if (item == "metadata") {
-                fDataDetails.subelementSize = 1;
-                fDataDetails.width = 128;
-                fDataDetails.height = 1;
+                m_offline_parameters.fDataDetails[idx].subelementSize = 1;
+                m_offline_parameters.fDataDetails[idx].width = 128;
+                m_offline_parameters.fDataDetails[idx].height = 1;
             } else if (item == "conf") {
-                fDataDetails.subelementSize = sizeof(float);
+                m_offline_parameters.fDataDetails[idx].subelementSize = sizeof(float);
             }
-            fDataDetails.bytesCount = fDataDetails.width *
-                                        fDataDetails.height *
-                                        fDataDetails.subelementSize *
-                                        fDataDetails.subelementsPerElement;
+            m_offline_parameters.fDataDetails[idx].bytesCount = m_offline_parameters.fDataDetails[idx].width *
+                m_offline_parameters.fDataDetails[idx].height *
+                m_offline_parameters.fDataDetails[idx].subelementSize *
+                m_offline_parameters.fDataDetails[idx].subelementsPerElement;
 
-            m_details.frameType.dataDetails.emplace_back(fDataDetails);
+            //m_details.frameType.dataDetails.emplace_back(fDataDetails); // FIXME: Why is this being done? (2025-05-02)
 
-            memcpy(
-                &offline_parameters.fDataDetails[offline_parameters.fdatadetailsCount++],
-                &fDataDetails, 
-                sizeof(fDataDetails));
+            m_offline_parameters.fdatadetailsCount++;
         }
 
 
-        // Write offline_parameters to the recording file.
-        status = m_depthSensor->startRecording(filePath, (uint8_t *)&offline_parameters,
-                                               sizeof(offline_parameters));
+        // Write m_offline_parameters to the recording file.
+        status = m_depthSensor->startRecording(filePath, (uint8_t *)&m_offline_parameters,
+                                               sizeof(m_offline_parameters));
     }
 
     return status;
@@ -2374,7 +2353,7 @@ aditof::Status CameraItof::adsd3500GetFrameRate(uint16_t &fps) {
 
     if (m_isOffline) {
 
-        fps = offline_parameters.frameRate;
+        fps = m_offline_parameters.frameRate;
 
     } else {
         status = m_depthSensor->adsd3500_read_cmd(
