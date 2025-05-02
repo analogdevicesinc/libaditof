@@ -82,6 +82,10 @@ Status
 SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
                           const std::string &uri) const {
 
+    std::unique_ptr<SensorEnumeratorInterface> sensorEnumerator;
+
+    cameraList.clear();
+
 #if HAS_NETWORK
     static bool logged = false;
     if (!logged) {
@@ -89,62 +93,46 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
                   << LWS_LIBRARY_VERSION;
         logged = true;
     }
-#endif
-
-    cameraList.clear();
 
     if (uri.compare(0, 3, "ip:") == 0) {
         std::string ip(uri, 3);
         return getCameraListAtIp(cameraList, ip);
     }
+#endif
 
-    std::unique_ptr<SensorEnumeratorInterface> sensorEnumerator;
 #ifdef HAS_OFFLINE
-    if (true) {
-        DLOG(INFO) << "Creating offline sensor.";
-        sensorEnumerator =
-            SensorEnumeratorFactory::buildOfflineSensorEnumerator();
-        if (!sensorEnumerator) {
-            LOG(ERROR) << "Could not create OfflineSensorEnumerator";
-            return Status::GENERIC_ERROR;
-        }
-
-        // TODO: Generate camera list for the offline camera.
-        Status status = sensorEnumerator->searchSensors();
-        {
-            std::vector<std::shared_ptr<Camera>> cameras;
-            std::vector<std::shared_ptr<DepthSensorInterface>> depthSensors;
-
-            sensorEnumerator->getDepthSensors(depthSensors);
-
-            std::string uboot;
-            std::string kernel;
-            std::string sd_ver;
-            std::string tmp;
-
-            for (const auto &dSensor : depthSensors) {
-                std::shared_ptr<Camera> camera = std::make_shared<CameraItof>(
-                    dSensor, uboot, kernel, sd_ver, tmp);
-                cameraList.emplace_back(camera);
-            }
-        }
+    DLOG(INFO) << "Creating offline sensor.";
+    sensorEnumerator =
+        SensorEnumeratorFactory::buildOfflineSensorEnumerator();
+    if (!sensorEnumerator) {
+        LOG(ERROR) << "Could not create OfflineSensorEnumerator";
+        return Status::GENERIC_ERROR;
     }
 
-#elif defined(NXP) || defined(NVIDIA)
+    Status status = sensorEnumerator->searchSensors();
+    if (status == Status::OK) {
+        cameraList = buildCameras(std::move(sensorEnumerator), "");
+    }
+#endif
+
+#if defined(NXP) || defined(NVIDIA)
     sensorEnumerator = SensorEnumeratorFactory::buildTargetSensorEnumerator();
     if (!sensorEnumerator) {
         LOG(ERROR) << "Could not create TargetSensorEnumerator";
         return Status::GENERIC_ERROR;
     }
 #else
-#ifndef HAS_NETWORK
-    sensorEnumerator = SensorEnumeratorFactory::buildUsbSensorEnumerator();
-    if (!sensorEnumerator) {
-        LOG(ERROR) << "Could not create UsbSensorEnumerator";
-        return Status::GENERIC_ERROR;
-    }
+    // TODO: Deprecated - to be removed.
+    #ifndef HAS_NETWORK
+        sensorEnumerator = SensorEnumeratorFactory::buildUsbSensorEnumerator();
+        if (!sensorEnumerator) {
+            LOG(ERROR) << "Could not create UsbSensorEnumerator";
+            return Status::GENERIC_ERROR;
+        }
+    #endif
 #endif
-#endif
+
+// What is this for
 #ifndef HAS_NETWORK
     Status status = sensorEnumerator->searchSensors();
     if (status == Status::OK) {
