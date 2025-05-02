@@ -378,8 +378,22 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             return status;
         }
 
-        memcpy(&m_modeDetailsCache, &m_offline_parameters.modeDetailsCache,
-               sizeof(aditof::DepthSensorModeDetails));
+        m_modeDetailsCache.modeNumber = m_offline_parameters.modeDetailsCache.modeNumber;
+        m_modeDetailsCache.numberOfPhases = m_offline_parameters.modeDetailsCache.numberOfPhases;
+        m_modeDetailsCache.pixelFormatIndex = m_offline_parameters.modeDetailsCache.pixelFormatIndex;
+        m_modeDetailsCache.frameHeightInBytes = m_offline_parameters.modeDetailsCache.frameHeightInBytes;
+        m_modeDetailsCache.frameWidthInBytes = m_offline_parameters.modeDetailsCache.frameWidthInBytes;
+        m_modeDetailsCache.baseResolutionWidth = m_offline_parameters.modeDetailsCache.baseResolutionWidth;
+        m_modeDetailsCache.baseResolutionHeight = m_offline_parameters.modeDetailsCache.baseResolutionHeight;
+        m_modeDetailsCache.metadataSize = m_offline_parameters.modeDetailsCache.metadataSize;
+        m_modeDetailsCache.isPCM = m_offline_parameters.modeDetailsCache.isPCM;
+		m_modeDetailsCache.frameContent.clear();
+
+		for (uint32_t idx = 0; idx < MAX_FRAME_CONTENT; idx++) {
+            std::string frameContent = m_offline_parameters.modeDetailsCache.frameContent[idx];
+			m_modeDetailsCache.frameContent.emplace_back(frameContent);
+		}
+        
 
         // 1. Frame details
         m_details.mode = m_offline_parameters.details.mode;
@@ -731,9 +745,20 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         // m_offline_parameters.enableMetaDatainAB
         m_offline_parameters.enableMetaDatainAB = m_enableMetaDatainAB;
 
-        // aditof::DepthSensorModeDetails modeDetailsCache;
-        memcpy(&m_offline_parameters.modeDetailsCache, &m_modeDetailsCache,
-               sizeof(m_modeDetailsCache));
+		// modeDetailsCache
+		m_offline_parameters.modeDetailsCache.modeNumber = m_modeDetailsCache.modeNumber;
+        m_offline_parameters.modeDetailsCache.numberOfPhases = m_modeDetailsCache.numberOfPhases;
+		m_offline_parameters.modeDetailsCache.pixelFormatIndex = m_modeDetailsCache.pixelFormatIndex;
+        m_offline_parameters.modeDetailsCache.frameHeightInBytes = m_modeDetailsCache.frameHeightInBytes;
+        m_offline_parameters.modeDetailsCache.frameWidthInBytes = m_modeDetailsCache.frameWidthInBytes;
+		m_offline_parameters.modeDetailsCache.baseResolutionWidth = m_modeDetailsCache.baseResolutionWidth;
+		m_offline_parameters.modeDetailsCache.baseResolutionHeight = m_modeDetailsCache.baseResolutionHeight;
+		m_offline_parameters.modeDetailsCache.metadataSize= m_modeDetailsCache.metadataSize;
+		m_offline_parameters.modeDetailsCache.isPCM = m_modeDetailsCache.isPCM;
+        uint32_t idx = 0;
+		for (std::string val : m_modeDetailsCache.frameContent) {
+			memcpy((char *)m_offline_parameters.modeDetailsCache.frameContent[idx++], val.c_str(), val.length());
+		}
 
         // m_offline_parameters.details, m_offline_parameters.fdatadetailsCount & m_offline_parameters.fDataDetails
         m_offline_parameters.fdatadetailsCount = 0;

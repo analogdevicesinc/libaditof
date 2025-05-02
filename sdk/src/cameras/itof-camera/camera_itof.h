@@ -267,6 +267,7 @@ class CameraItof : public aditof::Camera {
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
 
     static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;
+    static const uint32_t MAX_FRAME_CONTENT = 6;
     struct {
         uint32_t numberOfFrames;
         const uint32_t formatVersion = 0x00000001;
@@ -279,7 +280,19 @@ class CameraItof : public aditof::Camera {
             uint32_t height;
             uint32_t totalCaptures;
         } details;
-        aditof::DepthSensorModeDetails modeDetailsCache;
+        //aditof::DepthSensorModeDetails modeDetailsCache;
+        struct {
+            uint8_t modeNumber;
+            char frameContent[MAX_FRAME_CONTENT][16];
+            uint8_t numberOfPhases;
+            int pixelFormatIndex;
+            int frameWidthInBytes;
+            int frameHeightInBytes;
+            int baseResolutionWidth;
+            int baseResolutionHeight;
+            int metadataSize;
+            int isPCM;
+        } modeDetailsCache;
         uint32_t fdatadetailsCount;
         //aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
         struct {
