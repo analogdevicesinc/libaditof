@@ -18,9 +18,6 @@ class OfflineSensorEnumerator : public aditof::SensorEnumeratorInterface {
     virtual aditof::Status
     getKernelVersion(std::string &kernelVersion) const override;
     virtual aditof::Status getSdVersion(std::string &sdVersion) const override;
-
-  private:
-    std::vector<std::string> m_sensorsInfo;
 };
 
 #endif // OFFLINE_SENSOR_ENUMERATOR_H

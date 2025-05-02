@@ -42,7 +42,7 @@
 
 class OfflineDepthSensor : public aditof::DepthSensorInterface {
   public:
-    OfflineDepthSensor(std::string s);
+    OfflineDepthSensor();
     ~OfflineDepthSensor();
 
   public: // implements DepthSensorInterface

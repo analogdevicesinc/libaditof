@@ -44,7 +44,7 @@ struct OfflineDepthSensor::ImplData {
 };
 
 
-OfflineDepthSensor::OfflineDepthSensor(std::string s) : m_state(ST_STANDARD), m_frame_count(0) {
+OfflineDepthSensor::OfflineDepthSensor() : m_state(ST_STANDARD), m_frame_count(0) {
     m_implData = std::make_unique<ImplData>();
 }
 
@@ -196,6 +196,8 @@ aditof::Status OfflineDepthSensor::getHandle(void **handle) {
 aditof::Status OfflineDepthSensor::getName(std::string &name) const {
 
     using namespace aditof;
+
+    name = "offline";
 
     Status status = Status::OK;
 
