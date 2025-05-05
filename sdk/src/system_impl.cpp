@@ -134,9 +134,11 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
 
 // What is this for
 #ifndef HAS_NETWORK
-    Status status = sensorEnumerator->searchSensors();
-    if (status == Status::OK) {
-        cameraList = buildCameras(std::move(sensorEnumerator));
+    {
+        Status status = sensorEnumerator->searchSensors();
+        if (status == Status::OK) {
+            cameraList = buildCameras(std::move(sensorEnumerator));
+        }
     }
 #endif
     return Status::OK;
