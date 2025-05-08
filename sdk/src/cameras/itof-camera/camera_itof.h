@@ -150,19 +150,6 @@ class CameraItof : public aditof::Camera {
     setFrameProcessParams(std::map<std::string, std::string> &params) override;
 
   private:
-    /**
-     * @brief Opens the CCB file passed in as part of Json file using initialize(), and loads the calibration blocks into member variable
-     * @return aditof::Status
-     * @see aditof::Status
-     * @see <a href='../config/config_default.json'>config_default.json</a>
-     */
-    aditof::Status loadConfigData(void);
-
-    /**
-     * @brief Frees the calibration member variables created while loading the CCB contents
-     * @return None
-     */
-    void freeConfigData(void);
 
     // Methods available only when Adsd3500 is detected as part of the entire setup
 
@@ -207,6 +194,14 @@ class CameraItof : public aditof::Camera {
     aditof::Status startPlayback(std::string &filePath) override;
     aditof::Status stopPlayback() override;
 
+    void freeCfgData() {
+        for (auto it = m_depth_params_ini_map.begin(); it != m_depth_params_ini_map.end();
+            ++it) {
+            delete[] it->second.p_data;
+        }
+        m_depth_params_ini_map.clear();
+    }
+
   private:
     using noArgCallable = std::function<aditof::Status()>;
 
@@ -223,17 +218,11 @@ class CameraItof : public aditof::Camera {
     bool m_isOffline;
     std::string m_netLinkTest;
 
-    FileData m_calData = {NULL, 0};
+    std::map<std::string, FileData> m_depth_params_ini_map;
+    std::map<int, std::map<std::string, std::string>> m_depth_params_map;
 
-    FileData m_depthINIData;
-    std::map<std::string, FileData> m_depthINIDataMap;
     TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
 
-    std::string m_sensorFirmwareFile;
-    std::string m_ccb_calibrationFile;
-    std::string m_ini_depth;
-    std::map<std::string, std::string> m_ini_depth_map;
-    std::map<int, std::map<std::string, std::string>> m_depth_params_map;
     bool m_abEnabled;
     uint8_t m_depthBitsPerPixel;
     uint8_t m_abBitsPerPixel;

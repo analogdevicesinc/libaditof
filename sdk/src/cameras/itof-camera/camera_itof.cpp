@@ -115,8 +115,8 @@ CameraItof::CameraItof(
 }
 
 CameraItof::~CameraItof() {
-    freeConfigData();
-    // m_device->toggleFsync();
+    freeCfgData();
+    m_depth_params_ini_map.clear();
     cleanupXYZtables();
 }
 
@@ -236,12 +236,8 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             }
         }
 
-        aditof::Status configStatus = loadConfigData();
-        if (configStatus != aditof::Status::OK) {
-            LOG(ERROR) << "loadConfigData failed";
-            return Status::GENERIC_ERROR;
-        }
-
+		//Note: m_depth_params_ini_map is created by retrieveDepthProcessParams
+		//Note: m_depth_params_map is created by retrieveDepthProcessParams
         aditof::Status paramsStatus = retrieveDepthProcessParams();
         if (paramsStatus != Status::OK) {
             LOG(ERROR) << "Failed to load process parameters!";
@@ -451,6 +447,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             }
         }
 
+		//NOTE: m_depth_params_map is a used here
         m_iniKeyValPairs = m_depth_params_map[mode];
         configureSensorModeDetails();
         status = m_depthSensor->setMode(mode);
@@ -562,9 +559,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             size_t dataSize = 0;
             unsigned char *pData = nullptr;
 
-            if (m_depthINIDataMap.size() > 1) {
-                dataSize = m_depthINIDataMap[std::to_string(mode)].size;
-                pData = m_depthINIDataMap[std::to_string(mode)].p_data;
+            //NOTE: m_depth_params_ini_map is used here
+            if (m_depth_params_ini_map.size() > 1) {
+                dataSize = m_depth_params_ini_map[std::to_string(mode)].size;
+                pData = m_depth_params_ini_map[std::to_string(mode)].p_data;
             }
 
             std::string s(reinterpret_cast<const char *>(pData), dataSize);
@@ -649,6 +647,9 @@ CameraItof::getFrameProcessParams(std::map<std::string, std::string> &params) {
     if (m_isOffline) {
 
     } else {
+
+        //params = m_depth_params_map[m_details.mode]; Should really be this
+
         status = m_depthSensor->getDepthComputeParams(params);
         if (status != aditof::Status::OK) {
             LOG(ERROR) << "get ini parameters failed.";
@@ -1154,59 +1155,6 @@ aditof::Status CameraItof::getControl(const std::string &control,
     return status;
 }
 
-aditof::Status CameraItof::loadConfigData(void) {
-
-    using namespace aditof;
-
-    if (m_isOffline) {
-
-    } else {
-        freeConfigData();
-        if (m_availableModes.size() > 0) {
-            for (auto it = m_availableModes.begin();
-                 it != m_availableModes.end(); ++it) {
-
-                std::string iniArray;
-                int mode = *it;
-                m_depthSensor->getIniParamsArrayForMode(mode, iniArray);
-
-                unsigned char *p = NULL;
-                p = (unsigned char *)malloc(iniArray.size());
-                memcpy(p, iniArray.c_str(), iniArray.size());
-
-                FileData fval = {(unsigned char *)p, iniArray.size()};
-
-                m_depthINIDataMap.emplace(std::to_string(mode), fval);
-            }
-        }
-
-        if (!m_ccb_calibrationFile.empty()) {
-            m_calData = LoadFileContents(
-                const_cast<char *>(m_ccb_calibrationFile.c_str()));
-        } else {
-            m_calData.p_data = NULL;
-            m_calData.size = 0;
-        }
-    }
-    return aditof::Status::OK;
-}
-
-void CameraItof::freeConfigData(void) {
-
-    if (m_depthINIDataMap.size() > 0) {
-        for (auto it = m_depthINIDataMap.begin(); it != m_depthINIDataMap.end();
-             ++it) {
-            free((void *)(it->second.p_data));
-        }
-        m_depthINIDataMap.clear();
-    }
-    if (m_calData.p_data) {
-        free((void *)(m_calData.p_data));
-        m_calData.p_data = nullptr;
-        m_calData.size = 0;
-    }
-}
-
 aditof::Status CameraItof::readSerialNumber(std::string &serialNumber,
                                             bool useCacheValue) {
     using namespace aditof;
@@ -1697,12 +1645,34 @@ aditof::Status CameraItof::retrieveDepthProcessParams() {
 
                 std::string iniArray;
                 m_depthSensor->getIniParamsArrayForMode(mode, iniArray);
+
+                // 1. Build m_depth_params_ini_map
                 std::map<std::string, std::string> paramsMap;
                 UtilsIni::getKeyValuePairsFromString(iniArray, paramsMap);
                 m_depth_params_map.emplace(mode, paramsMap);
             }
         } else {
             loadDepthParamsFromJsonFile(m_initConfigFilePath);
+        }
+
+        // TODO: Build m_depth_params_ini_map from m_depth_params_map 
+        //       - it will be faster and more efficent.
+        freeCfgData();
+        for (const auto& mode : m_availableModes) {
+
+            std::string iniArray;
+            m_depthSensor->getIniParamsArrayForMode(mode, iniArray);
+
+            // 2. m_depth_params_ini_map
+            uint8_t* p = new uint8_t[iniArray.size()];
+            if (!p) {
+                LOG(ERROR) << "Failed to allocate memory for ini array";
+                return aditof::Status::GENERIC_ERROR;
+            }
+
+            memcpy(p, iniArray.c_str(), iniArray.size());
+            FileData fval = { (unsigned char*)p, iniArray.size() };
+            m_depth_params_ini_map.emplace(std::to_string(mode), fval);
         }
     }
     return status;
