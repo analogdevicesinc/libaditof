@@ -152,6 +152,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     std::queue<uint8_t*> freeFrameBuffers;
     std::mutex preallocMutex;
     std::condition_variable preallocNotEmpty;
+    std::condition_variable bufferNotFull, processedNotFull;
 
     size_t rawFrameBufferSize = 0;
 
