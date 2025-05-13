@@ -331,6 +331,31 @@ aditof::Status NetworkDepthSensor::start() {
         return Status::UNREACHABLE;
     }
 
+    #ifdef RECV_ASYNC
+    LOG(INFO) << "Configuring to receive frame in async mode";
+    std::string reply_async = "send_async";
+    net->send_buff[m_sensorIndex].set_func_name("RecvAsync");
+    net->send_buff[m_sensorIndex].set_expect_reply(true);
+
+    if (net->SendCommand() != 0) {
+        LOG(WARNING) << "Send Command Failed";
+        return Status::INVALID_ARGUMENT;
+    }
+
+    if (net->recv_server_data() != 0) {
+        LOG(WARNING) << "Receive Data Failed";
+        return Status::GENERIC_ERROR;
+    }
+
+    if (net->recv_buff[m_sensorIndex].message().c_str() != reply_async) {
+        LOG(WARNING) << "Target is not build to send in async mode";
+        return Status::GENERIC_ERROR;
+    }
+
+#endif
+
+    // Start the sensor
+
     net->send_buff[m_sensorIndex].set_func_name("Start");
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
