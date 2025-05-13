@@ -331,7 +331,7 @@ aditof::Status NetworkDepthSensor::start() {
         return Status::UNREACHABLE;
     }
 
-    #ifdef RECV_ASYNC
+#ifdef RECV_ASYNC
     LOG(INFO) << "Configuring to receive frame in async mode";
     std::string reply_async = "send_async";
     net->send_buff[m_sensorIndex].set_func_name("RecvAsync");
