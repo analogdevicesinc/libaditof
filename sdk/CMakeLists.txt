@@ -147,9 +147,6 @@ if(WITH_PROTOBUF_DEPENDENCY)
     endif()
     set(PROTO_HDRS "${CMAKE_CURRENT_SOURCE_DIR}/usb_buffer.pb.h")
     set(PROTO_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/usb_buffer.pb.cc")
-    add_custom_command(OUTPUT ${PROTO_HDRS} ${PROTO_SRCS}
-                        COMMAND protoc usb_buffer.proto -I${CMAKE_CURRENT_SOURCE_DIR}/src/connections/usb --cpp_out=.
-                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     target_sources(${PROJECT_NAME} PRIVATE ${PROTO_HDRS} ${PROTO_SRCS})
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -169,9 +166,6 @@ if(WITH_PROTOBUF_DEPENDENCY)
 		endif()
         set(NET_PROTO_HRDS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.h")
         set(NET_PROTO_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.cc")
-        add_custom_command(OUTPUT ${NET_PROTO_HRDS} ${NET_PROTO_SRCS}
-                            COMMAND protoc buffer.proto -I ${CMAKE_CURRENT_SOURCE_DIR}/src/connections/network --cpp_out=.
-                            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         target_sources(${PROJECT_NAME} PRIVATE ${NET_PROTO_HRDS} ${NET_PROTO_SRCS})
         target_include_directories(${PROJECT_NAME} PRIVATE
                 ${CMAKE_CURRENT_SOURCE_DIR}
