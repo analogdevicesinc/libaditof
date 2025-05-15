@@ -433,6 +433,7 @@ aditof::Status Adsd3500Sensor::stop() {
     Status status = Status::OK;
     struct VideoDev *dev;
 
+    m_bufferProcessor->stopThreads();
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
 
@@ -450,7 +451,6 @@ aditof::Status Adsd3500Sensor::stop() {
 
         dev->started = false;
     }
-    m_bufferProcessor->stopThreads();
 
     return status;
 }
