@@ -727,7 +727,7 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
     if (!type.isPCM) {
         //TO DO: update this values when frame_impl gets restructured
         status = m_bufferProcessor->setVideoProperties(
-            type.baseResolutionWidth * 4, type.baseResolutionHeight);
+            type.baseResolutionWidth, type.baseResolutionHeight);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             return status;

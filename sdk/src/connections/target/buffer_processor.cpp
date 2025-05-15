@@ -139,26 +139,7 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
 
     LOG(INFO) << __func__ << ": Width : " << m_outputFrameWidth << " Height: " << m_outputFrameHeight;
 
-    //m_videoFormat.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
-    //m_videoFormat.fmt.pix.width = frameWidth / 2;
-    //m_videoFormat.fmt.pix.height = frameHeight;
-    //m_videoFormat.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
-    //m_videoFormat.fmt.pix.sizeimage = frameWidth * frameHeight;
-    //m_videoFormat.fmt.pix.field = V4L2_FIELD_NONE;
-    //m_videoFormat.fmt.pix.bytesperline = frameWidth;
-    //m_videoFormat.fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
-
-    //if (xioctl(m_outputVideoDev->fd, VIDIOC_S_FMT, &m_videoFormat) == -1) {
-    //    LOG(ERROR) << "Failed to set format!";
-    //    return Status::GENERIC_ERROR;
-    //}
-
-    if (m_processedBuffer != nullptr) {
-        delete[] m_processedBuffer;
-    }
-    m_processedBuffer = new uint16_t[m_outputFrameWidth * m_outputFrameHeight];
-
-    size_t rawFrameSize = static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight * 1.625;
+    size_t rawFrameSize = static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight * 6.5;
 
     rawFrameBufferSize = rawFrameSize;
     preallocatedFrameBuffers.reserve(10);
@@ -176,12 +157,10 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
         }
     }
 
-    ssize_t tofiBufferSize =  m_outputFrameWidth * m_outputFrameHeight+
-                             m_outputFrameWidth * m_outputFrameHeight +
-                             m_outputFrameWidth * m_outputFrameHeight ;
-
-	//tofiBufferSize *= 4;
-
+    uint32_t depthSize = m_outputFrameWidth * m_outputFrameHeight * 2;		/* | Depth Frame ( W * H * 2 (type: uint16_t)) |   */
+    uint32_t abSize = depthSize;						/* | AB Frame ( W * H * 2 (type: uint16_t)) |      */
+    uint32_t confSize = m_outputFrameWidth * m_outputFrameHeight * 4;		/* | Confidance Frame ( W * H * 4 (type: float)) | */
+    tofiBufferSize = depthSize + abSize + confSize;
 
     for (int i = 0; i < TOFI_BUFFER_COUNT; ++i) {
         uint16_t* buffer = static_cast<uint16_t*>(aligned_alloc(64, tofiBufferSize));
@@ -316,14 +295,12 @@ void BufferProcessor::captureFrameThread() {
             memcpy(targetBuffer, pdata, buf_data_len);
 
             frame.data = targetBuffer;
-            frame.size = buf_data_len;
 
             bufferPool.push(std::move(frame));
             bufferNotEmpty.notify_one();
 
             bufferIndex = (bufferIndex + 1) % preallocSize;
 
-            LOG(INFO) << __func__ << ": bufferPool size: " << bufferPool.size();
         }
 
         status = enqueueInternalBufferPrivate(buf, dev);
@@ -381,8 +358,8 @@ void BufferProcessor::processThread() {
 
         if (tofiBuffer) {
             m_tofiComputeContext->p_depth_frame = tofiBuffer;
-            m_tofiComputeContext->p_ab_frame = tofiBuffer + m_outputFrameWidth * m_outputFrameHeight / 4;
-            m_tofiComputeContext->p_conf_frame = (float *)(tofiBuffer + m_outputFrameWidth * m_outputFrameHeight / 2);
+            m_tofiComputeContext->p_ab_frame = tofiBuffer + (m_outputFrameWidth * m_outputFrameHeight);
+            m_tofiComputeContext->p_conf_frame = (float *)(tofiBuffer + (m_outputFrameWidth * m_outputFrameHeight * 2));
 
             auto processStart = std::chrono::high_resolution_clock::now();
 
@@ -413,7 +390,6 @@ void BufferProcessor::processThread() {
                 {
                     std::lock_guard<std::mutex> lock(tofiBufferMutex);
                     tofiBufferfifo.push(ptr);
-                    LOG(INFO) << __func__ << ": Returned tofiBuffer to fifo, size: " << tofiBufferfifo.size();
                 }
                 tofiBufferNotEmpty.notify_one();
             }
@@ -426,15 +402,15 @@ void BufferProcessor::processThread() {
                 processedNotFull.notify_one();
             }
 
+	    frame.size = tofiBufferSize;
             processedBufferQueue.push(std::move(frame));
             processedNotEmpty.notify_one();
 
-            LOG(INFO) << __func__ << ": processedBufferQueue size: " << processedBufferQueue.size() << ", tofiBufferfifo size: " << tofiBufferfifo.size();
         }
     }
     if (totalProcessedFrame > 0) {
         double averageProcessTime = static_cast<double>(totalProcessTime) / totalProcessedFrame;
-        LOG(INFO) << __func__ << ": Average tofi_comupte process time: " << averageProcessTime << " ms";
+        //LOG(INFO) << __func__ << ": Average tofi_comupte process time: " << averageProcessTime << " ms";
     }
 }
 
@@ -456,11 +432,8 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
         processedBufferQueue.pop();
         processedNotFull.notify_one();
 
-        LOG(INFO) << __func__ << ": processedBufferQueue size: " << processedBufferQueue.size();
-        LOG(INFO) << __func__ << ": processBuffer called";
     }
 
-    frame.size= 7340160;
     if (buffer && frame.tofiBuffer && frame.size > 0) {
         memcpy(buffer, frame.tofiBuffer.get(), frame.size);
     } else {
