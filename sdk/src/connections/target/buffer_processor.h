@@ -155,6 +155,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     std::condition_variable bufferNotFull, processedNotFull;
 
     size_t rawFrameBufferSize = 0;
+    uint32_t tofiBufferSize = 0;
 
     std::thread captureThread;
     std::thread processingThread;
