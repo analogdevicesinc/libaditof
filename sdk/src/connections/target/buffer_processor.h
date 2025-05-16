@@ -37,6 +37,7 @@
 #include "tofi/tofi_util.h"
 #include <atomic>
 #include <condition_variable>
+#include <future>
 #include <mutex>
 #include <queue>
 #include <thread>
@@ -136,6 +137,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     bool frameProcessed = true; // Start as true so capture can begin
     std::atomic<bool> stopThreads{false};
     int bufferCount = 0;
+    std::future<void> futureCapture;
+    std::future<void> futureProcess;
 
     std::thread captureThread;
     std::thread processThread;

@@ -69,7 +69,7 @@ static map<string, string> adsd3100_partialDepth = {
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
     {"xyzEnable", "1"},
-    {"fps", "10"},
+    {"fps", "20"},
     {"multiCoreEnable", "1"},
     {"numCores", "4"}};
 

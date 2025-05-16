@@ -156,7 +156,8 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
         delete[] m_processedBuffer;
     }
     m_processedBuffer = new uint16_t[m_outputFrameWidth * m_outputFrameHeight];
-    uint32_t buffer_size = m_outputFrameWidth * m_outputFrameHeight;
+
+    stopThreads = false; // Allow threads to execute again
 
     return status;
 }
@@ -212,7 +213,8 @@ aditof::Status BufferProcessor::setProcessorProperties(
     return aditof::Status::OK;
 }
 
-void BufferProcessor::storeProcessedFrame(uint16_t *processedFrame, size_t size) {
+void BufferProcessor::storeProcessedFrame(uint16_t *processedFrame,
+                                          size_t size) {
     std::lock_guard<std::mutex> lock(bufferMutex);
 
     processedFramesBuffer[bufferWriteIndex].resize(size);
@@ -227,25 +229,19 @@ void BufferProcessor::storeProcessedFrame(uint16_t *processedFrame, size_t size)
     LOG(INFO) << "Stored the frame";
 }
 
-
-bool BufferProcessor::getProcessedFrame(uint16_t* frameOut) {
-std::unique_lock<std::mutex> lock(bufferMutex);
+bool BufferProcessor::getProcessedFrame(uint16_t *frameOut) {
+    std::unique_lock<std::mutex> lock(bufferMutex);
 
     // Wait until there is at least one frame in the buffer
-    cvProcessedBufferNotEmpty.wait(lock, [this] {
-        return bufferCount > 0 || stopThreads;
-    });
+    cvProcessedBufferNotEmpty.wait(
+        lock, [this] { return bufferCount > 0 || stopThreads; });
 
     if (stopThreads && bufferCount == 0)
         return false;
 
-    size_t readIndex = (bufferWriteIndex + BUFFER_SIZE - bufferCount) % BUFFER_SIZE;
-    const std::vector<uint16_t>& storedFrame = processedFramesBuffer[readIndex];
-
-    // actualSize = storedFrame.size();
-    // if (maxSize < actualSize) {
-    //     return false; // Not enough space in frameOut
-    // }
+    size_t readIndex =
+        (bufferWriteIndex + BUFFER_SIZE - bufferCount) % BUFFER_SIZE;
+    const std::vector<uint16_t> &storedFrame = processedFramesBuffer[readIndex];
 
     std::copy(storedFrame.begin(), storedFrame.end(), frameOut);
     bufferCount--;
@@ -254,10 +250,9 @@ std::unique_lock<std::mutex> lock(bufferMutex);
     return true;
 }
 
-
-
 void BufferProcessor::startThreads() {
-    std::thread captureThread([this] {
+
+    futureCapture = std::async(std::launch::async, [this] {
         while (!stopThreads) {
             std::unique_lock<std::mutex> processedLock(processedBufferMutex);
             cvProcessedBufferNotFull.wait(processedLock, [this] {
@@ -284,7 +279,7 @@ void BufferProcessor::startThreads() {
         }
     });
 
-    std::thread processThread([this] {
+    futureProcess = std::async(std::launch::async, [this] {
         while (!stopThreads) {
             std::unique_lock<std::mutex> lock(queueMutex);
             cvNotEmpty.wait(
@@ -303,9 +298,6 @@ void BufferProcessor::startThreads() {
             storeProcessedFrame(tempBuffer.data(), tempBuffer.size());
         }
     });
-
-    captureThread.detach();
-    processThread.detach();
 }
 
 void BufferProcessor::stopThread() {
@@ -313,10 +305,15 @@ void BufferProcessor::stopThread() {
     cvNotFull.notify_all();
     cvNotEmpty.notify_all();
 
-    if (captureThread.joinable())
-        captureThread.join();
-    if (processThread.joinable())
-        processThread.join();
+    // Ensure futures complete execution
+    if (futureCapture.valid()) {
+        futureCapture.get();
+    }
+    if (futureProcess.valid()) {
+        futureProcess.get();
+    }
+
+    LOG(INFO) << "Async tasks stopped!";
 }
 
 aditof::Status BufferProcessor::captureFrames(std::vector<uint8_t> &buffer) {
