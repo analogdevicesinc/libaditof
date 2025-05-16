@@ -32,13 +32,13 @@
 #ifndef NETWORK_DEPTH_SENSOR_H
 #define NETWORK_DEPTH_SENSOR_H
 
-#include "aditof/depth_sensor_interface.h"
-
 #include <memory>
 #include <thread>
 #include <unordered_map>
 #include <iostream>
 #include <fstream>
+#include "aditof/depth_sensor_interface.h"
+#include "aditof/utils.h"
 
 
 class NetworkDepthSensor : public aditof::DepthSensorInterface {
@@ -137,7 +137,8 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
     aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize);
     aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize);
     enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;
-    const std::string m_folder_path = "./recordings";
+    const std::string m_folder_path_folder = (aditof::Utils::getExecutableFolder() + "/recordings");
+    std::string m_folder_path;
     std::ofstream m_stream_file_out;
     std::ifstream m_stream_file_in;
     std::string m_stream_file_name;

@@ -223,10 +223,12 @@ class CameraItof : public aditof::Camera {
 
     TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
 
-    bool m_abEnabled;
     uint8_t m_depthBitsPerPixel;
     uint8_t m_abBitsPerPixel;
     uint8_t m_confBitsPerPixel;
+    bool m_depthEnabled;
+    bool m_abEnabled;
+    bool m_confEnabled;
     bool m_xyzEnabled;
     bool m_xyzSetViaApi;
     bool m_pcmFrame;

@@ -1380,6 +1380,7 @@ aditof::Status NetworkDepthSensor::startRecording(std::string &fileName,
                                                   uint32_t paramSize) {
 
     m_state = ST_STANDARD;
+    m_folder_path = m_folder_path_folder;
     if (!folderExists(m_folder_path)) {
         if (!createFolder(m_folder_path)) {
             LOG(ERROR) << "Failed to create folder for recordings: "

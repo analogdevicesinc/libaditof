@@ -39,7 +39,7 @@
 #include "tofi/algorithms.h"
 #include "tofi/floatTolin.h"
 #include "tofi/tofi_config.h"
-#include "utils.h"
+#include "aditof/utils.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -390,6 +390,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 			m_modeDetailsCache.frameContent.emplace_back(frameContent);
 		}
         
+        m_pcmFrame = m_modeDetailsCache.isPCM;
 
         // 1. Frame details
         m_details.mode = m_offline_parameters.details.mode;
@@ -425,6 +426,9 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             LOG(ERROR) << "Failed to generate the XYZ tables";
             return Status::GENERIC_ERROR;
         }
+
+        configureSensorModeDetails();
+
 
     } else {
 
@@ -808,7 +812,9 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
             m_offline_parameters.fDataDetails[idx].subelementSize = sizeof(uint16_t);
             m_offline_parameters.fDataDetails[idx].subelementsPerElement = 1;
 
-            if (item == "metadata") {
+            if (item == "xyz") {
+                m_offline_parameters.fDataDetails[idx].subelementsPerElement = 3;
+            } else if (item == "metadata") {
                 m_offline_parameters.fDataDetails[idx].subelementSize = 1;
                 m_offline_parameters.fDataDetails[idx].width = 128;
                 m_offline_parameters.fDataDetails[idx].height = 1;
@@ -875,7 +881,8 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
     return status;
 }
 
-aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
+#pragma optimize("", off)
+aditof::Status CameraItof::requestFrame(aditof::Frame* frame, uint32_t index) {
     using namespace aditof;
     Status status = Status::OK;
 
@@ -890,10 +897,11 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         frame->setDetails(m_details.frameType);
     }
 
-    uint16_t *frameDataLocation = nullptr;
+    uint16_t* frameDataLocation = nullptr;
     if (!m_pcmFrame) {
         frame->getData("frameData", &frameDataLocation);
-    } else {
+    }
+    else {
         frame->getData("ab", &frameDataLocation);
     }
 
@@ -902,7 +910,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         return status;
     }
 
-    if (m_dropFirstFrame && m_dropFrameOnce) {
+    if (m_dropFirstFrame && m_dropFrameOnce && !m_isOffline) {
         m_depthSensor->getFrame(frameDataLocation, index);
         m_dropFrameOnce = false;
         if (status != Status::OK) {
@@ -919,7 +927,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     }
 
     // The incoming sensor frames are already processed. Need to just create XYZ data
-    if (m_xyzEnabled) {
+    if (m_xyzEnabled && m_depthEnabled) {
         uint16_t *depthFrame;
         uint16_t *xyzFrame;
 
@@ -930,6 +938,38 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                                (int16_t *)xyzFrame,
                                m_modeDetailsCache.baseResolutionHeight,
                                m_modeDetailsCache.baseResolutionWidth);
+    } else {
+        uint16_t* xyzFrame;
+
+        frame->getData("xyz", &xyzFrame);
+
+		memset(xyzFrame, 
+                0,
+			    m_modeDetailsCache.baseResolutionHeight *
+			    m_modeDetailsCache.baseResolutionWidth *
+			    3 * sizeof(uint16_t));
+    }
+
+    if (!m_depthEnabled) {
+        uint16_t* depthFrame;
+
+        frame->getData("depth", &depthFrame);
+        memset(depthFrame,
+            0,
+            m_modeDetailsCache.baseResolutionHeight *
+            m_modeDetailsCache.baseResolutionWidth *
+            sizeof(uint16_t));
+    }
+
+    if (!m_abEnabled) {
+        uint16_t* abFrame;
+
+        frame->getData("ab", &abFrame);
+        memset(abFrame,
+            0,
+            m_modeDetailsCache.baseResolutionHeight *
+            m_modeDetailsCache.baseResolutionWidth *
+            sizeof(uint16_t));
     }
 
     Metadata metadata;
@@ -941,12 +981,11 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         return status;
     }
 
-    if (m_enableMetaDatainAB) {
+    if (m_enableMetaDatainAB && m_abEnabled) {
         uint16_t *abFrame;
         frame->getData("ab", &abFrame);
         memcpy(reinterpret_cast<uint8_t *>(&metadata), abFrame,
                sizeof(metadata));
-
         memset(abFrame, 0, sizeof(metadata));
     } else {
         // If metadata from ADSD3500 is not available/disabled, generate one here
@@ -970,6 +1009,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
 
     return Status::OK;
 }
+#pragma optimize("", on)
 
 void CameraItof::normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
                                    uint16_t abHeight, bool advanceScaling,
@@ -1512,9 +1552,18 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
 void CameraItof::configureSensorModeDetails() {
 
     if (m_isOffline) {
+        m_depthEnabled = true;
+        m_abEnabled = true;
+        m_confEnabled = true;
 
     } else {
         std::string value;
+
+        m_depthEnabled = true;
+        m_abEnabled = true;
+        m_confEnabled = true;
+        //m_xyzEnabled = false;
+        //m_xyzSetViaApi = true;
 
         auto it = m_iniKeyValPairs.find("bitsInPhaseOrDepth");
         if (it != m_iniKeyValPairs.end()) {
@@ -1530,8 +1579,10 @@ void CameraItof::configureSensorModeDetails() {
                 value = "3";
             else if (value == "8")
                 value = "2";
-            else
+            else {
                 value = "0";
+                m_depthEnabled = false;
+            }
             m_depthSensor->setControl("phaseDepthBits", value);
         } else {
             LOG(WARNING)
@@ -1546,8 +1597,10 @@ void CameraItof::configureSensorModeDetails() {
                 value = "2";
             else if (value == "4")
                 value = "1";
-            else
+            else {
                 value = "0";
+                m_confEnabled = false;
+            }
             m_depthSensor->setControl("confidenceBits", value);
         } else {
             LOG(WARNING) << "bitsInConf was not found in parameter list";
@@ -1556,7 +1609,6 @@ void CameraItof::configureSensorModeDetails() {
         it = m_iniKeyValPairs.find("bitsInAB");
         if (it != m_iniKeyValPairs.end()) {
             value = it->second;
-            m_abEnabled = 1;
             m_abBitsPerPixel = std::stoi(value);
             if (value == "16")
                 value = "6";
@@ -1570,7 +1622,7 @@ void CameraItof::configureSensorModeDetails() {
                 value = "2";
             else {
                 value = "0";
-                m_abEnabled = 0;
+                m_abEnabled = false;
             }
             m_depthSensor->setControl("abBits", value);
         } else {
@@ -1609,7 +1661,7 @@ void CameraItof::configureSensorModeDetails() {
         it = m_iniKeyValPairs.find("headerSize");
         if (it != m_iniKeyValPairs.end()) {
             value = it->second;
-            if (std::stoi(value) == 128) {
+            if (std::stoi(value) == 128 && m_abEnabled) {
                 m_enableMetaDatainAB = 1;
             } else {
                 m_enableMetaDatainAB = 0;

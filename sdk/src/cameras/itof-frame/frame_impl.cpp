@@ -147,23 +147,22 @@ FrameImpl::getFrameDetailByName(const aditof::FrameDetails &details,
 
 void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
     using namespace aditof;
-    unsigned int totalSize = 0;
-    unsigned int pos = 0;
+    unsigned long int totalSize = 0;
+    unsigned long int pos = 0;
     uint16_t embed_hdr_length = 0;
     uint8_t total_captures = 0;
 
     auto getSubframeSize = [embed_hdr_length,
                             total_captures](FrameDataDetails frameDetail) {
         if (frameDetail.type == "header") {
-            return (unsigned long int)(embed_hdr_length / 2) * total_captures;
+            return (unsigned long int)((embed_hdr_length / sizeof(uint16_t)) * total_captures);
         } else if (frameDetail.type == "xyz") {
-            return (unsigned long int)(frameDetail.height * frameDetail.width *
-                                       sizeof(Point3I_sdk) / 2);
+            return (unsigned long int)(frameDetail.height * frameDetail.width * 3);
         } else if (frameDetail.type == "conf") {
             return (unsigned long int)(frameDetail.height * frameDetail.width *
-                                       2);
+                                       sizeof(float) / sizeof(uint16_t));
         } else {
-            return (unsigned long int)frameDetail.height * frameDetail.width;
+            return (unsigned long int)(frameDetail.height * frameDetail.width);
         }
     };
 
