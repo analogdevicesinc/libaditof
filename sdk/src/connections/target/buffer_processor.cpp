@@ -210,7 +210,10 @@ aditof::Status BufferProcessor::setProcessorProperties(
     return aditof::Status::OK;
 }
 
-aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
+aditof::Status
+BufferProcessor::processBuffer(uint16_t *buffer = nullptr,
+                               const uint16_t &chipID = CHIP_ID_SINGLE,
+                               const uint8_t &mode_num = DEFAULT_MODE) {
     using namespace aditof;
     struct v4l2_buffer buf[4];
     struct VideoDev *dev;
@@ -243,12 +246,35 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
     float *tempConfFrame = m_tofiComputeContext->p_conf_frame;
 
     if (buffer != nullptr) {
+
         m_tofiComputeContext->p_depth_frame = buffer;
         m_tofiComputeContext->p_ab_frame =
             buffer + m_outputFrameWidth * m_outputFrameHeight / 4;
         m_tofiComputeContext->p_conf_frame =
             (float *)(buffer + m_outputFrameWidth * m_outputFrameHeight / 2);
+#ifdef DUAL
+        if (mode_num == 0 ||
+            mode_num ==
+                1) { // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
+            memcpy(m_tofiComputeContext->p_depth_frame, pdata_user_space,
+                   m_outputFrameWidth * m_outputFrameHeight / 2);
+            memcpy(m_tofiComputeContext->p_ab_frame,
+                   pdata_user_space +
+                       m_outputFrameWidth * m_outputFrameHeight / 2,
+                   m_outputFrameWidth * m_outputFrameHeight / 2);
+            memset(m_tofiComputeContext->p_conf_frame, 0,
+                   m_outputFrameWidth * m_outputFrameHeight / 2);
+        } else {
+            uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
+                                       m_tofiComputeContext, NULL);
 
+            if (ret != ADI_TOFI_SUCCESS) {
+                LOG(ERROR) << "TofiCompute failed";
+                return Status::GENERIC_ERROR;
+            }
+        }
+
+#else
         uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
                                    m_tofiComputeContext, NULL);
 
@@ -256,6 +282,7 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
             LOG(ERROR) << "TofiCompute failed";
             return Status::GENERIC_ERROR;
         }
+#endif
 
     } else {
 
@@ -266,6 +293,29 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
             (float *)(m_processedBuffer +
                       m_outputFrameWidth * m_outputFrameHeight / 2);
 
+#ifdef DUAL
+        if (mode_num == 0 ||
+            mode_num ==
+                1) { // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
+            memcpy(m_tofiComputeContext->p_depth_frame, pdata_user_space,
+                   m_outputFrameWidth * m_outputFrameHeight / 2);
+            memcpy(m_tofiComputeContext->p_ab_frame,
+                   pdata_user_space +
+                       m_outputFrameWidth * m_outputFrameHeight / 2,
+                   m_outputFrameWidth * m_outputFrameHeight / 2);
+            memset(m_tofiComputeContext->p_conf_frame, 0,
+                   m_outputFrameWidth * m_outputFrameHeight / 2);
+        } else {
+            uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
+                                       m_tofiComputeContext, NULL);
+
+            if (ret != ADI_TOFI_SUCCESS) {
+                LOG(ERROR) << "TofiCompute failed";
+                return Status::GENERIC_ERROR;
+            }
+        }
+
+#else
         uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
                                    m_tofiComputeContext, NULL);
 
@@ -273,6 +323,7 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
             LOG(ERROR) << "TofiCompute failed";
             return Status::GENERIC_ERROR;
         }
+#endif
 
         ::write(m_outputVideoDev->fd, m_processedBuffer,
                 m_outputFrameWidth * m_outputFrameHeight);

@@ -65,6 +65,9 @@
 #define NR_OF_MODES_FROM_CCB 10
 #define SIZE_OF_MODES_FROM_CCB 256
 
+uint16_t chip_id;
+uint8_t mode_num;
+
 struct CalibrationData {
     std::string mode;
     float gain;
@@ -325,13 +328,18 @@ aditof::Status Adsd3500Sensor::open() {
             dealiasCheck[0] = 1;
 
             for (int i = 0; i < 10; i++) {
+#ifdef DUAL
+                chipIDStatus = adsd3500_read_cmd(0x0116, &chipID, 110 * 1000);
+#else
                 chipIDStatus = adsd3500_read_cmd(0x0112, &chipID);
+#endif
                 if (chipIDStatus != Status::OK) {
                     LOG(INFO) << "Could not read chip ID. Resetting ADSD3500 "
                                  "to handle previous error.";
                     adsd3500_reset();
-                    continue;
                 }
+
+                chip_id = chipID;
 
                 dealiasStatus =
                     adsd3500_read_payload_cmd(0x02, dealiasCheck, 32);
@@ -598,6 +606,7 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
             ctrl.id = CTRL_SET_MODE;
             ctrl.value = type.modeNumber;
+            mode_num = type.modeNumber;
 
             if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
                 LOG(WARNING)
@@ -654,7 +663,6 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             fmt.fmt.pix.pixelformat = pixelFormat;
             fmt.fmt.pix.width = type.frameWidthInBytes;
             fmt.fmt.pix.height = type.frameHeightInBytes;
-
             if (xioctl(dev->fd, VIDIOC_S_FMT, &fmt) == -1) {
                 LOG(WARNING) << "Setting Pixel Format error, errno: " << errno
                              << " error: " << strerror(errno);
@@ -741,7 +749,9 @@ aditof::Status Adsd3500Sensor::getFrame(uint16_t *buffer) {
     Status status;
 
     if (m_depthComputeOnTarget && !m_implData->modeDetails.isPCM) {
-        status = m_bufferProcessor->processBuffer(buffer);
+
+        status = m_bufferProcessor->processBuffer(buffer, chip_id, mode_num);
+
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to process buffer!";
             return status;
@@ -1358,13 +1368,19 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     status = adsd3500_register_interrupt_callback(cb);
     bool interruptsAvailable = (status == Status::OK);
 
+#ifdef DUAL
+    system("echo 0 > /sys/class/gpio/gpio64/value");
+    usleep(1000000);
+    system("echo 1 > /sys/class/gpio/gpio64/value");
+#else
     system("echo 0 > /sys/class/gpio/gpio122/value");
     usleep(1000000);
     system("echo 1 > /sys/class/gpio/gpio122/value");
+#endif
 
     if (interruptsAvailable) {
         LOG(INFO) << "Waiting for ADSD3500 to reset.";
-        int secondsTimeout = 7;
+        int secondsTimeout = 10;
         int secondsWaited = 0;
         int secondsWaitingStep = 1;
         while (!m_chipResetDone && secondsWaited < secondsTimeout) {
@@ -1848,13 +1864,13 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
 
     if (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3100) {
         status = DeviceParameters::createIniParams(
-            m_iniFileStructList, m_availableModes, "adsd3100");
+            m_iniFileStructList, m_availableModes, "adsd3100", chip_id);
     } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3030) {
         status = DeviceParameters::createIniParams(
-            m_iniFileStructList, m_availableModes, "adsd3030");
+            m_iniFileStructList, m_availableModes, "adsd3030", chip_id);
     } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3080) {
         status = DeviceParameters::createIniParams(
-            m_iniFileStructList, m_availableModes, "adtf3080");
+            m_iniFileStructList, m_availableModes, "adtf3080", chip_id);
     }
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to populate ini params struct!";
