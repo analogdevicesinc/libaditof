@@ -103,10 +103,10 @@ struct Adsd3500Sensor::ImplData {
     std::string fw_ver;
 
     ImplData()
-        : numVideoDevs(1),
-          videoDevs(nullptr), imagerType{SensorImagerType::IMAGER_UNKNOWN},
-          ccbVersion{CCBVersion::CCB_UNKNOWN}, modeDetails{0, {}, 0, 0, 0, 0,
-                                                           0, 0,  0, 0, {}} {}
+        : numVideoDevs(1), videoDevs(nullptr),
+          imagerType{SensorImagerType::IMAGER_UNKNOWN},
+          ccbVersion{CCBVersion::CCB_UNKNOWN},
+          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {}
 };
 
 // TO DO: This exists in linux_utils.h which is not included on Dragoboard.
@@ -425,6 +425,9 @@ aditof::Status Adsd3500Sensor::start() {
         dev->started = true;
     }
 
+    // start the parallel thread
+    m_bufferProcessor->startThreads();
+
     return status;
 }
 
@@ -432,6 +435,9 @@ aditof::Status Adsd3500Sensor::stop() {
     using namespace aditof;
     Status status = Status::OK;
     struct VideoDev *dev;
+
+    // stop the parallel thread
+    m_bufferProcessor->stopThread();
 
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
@@ -450,6 +456,7 @@ aditof::Status Adsd3500Sensor::stop() {
 
         dev->started = false;
     }
+
     return status;
 }
 

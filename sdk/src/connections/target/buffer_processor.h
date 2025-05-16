@@ -35,6 +35,12 @@
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
 #include "tofi/tofi_util.h"
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <vector>
 
 #define OUTPUT_DEVICE "/dev/video1"
 
@@ -74,6 +80,12 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status processBuffer(uint16_t *buffer);
     TofiConfig *getTofiCongfig();
     aditof::Status getDepthComputeVersion(uint8_t &enabled);
+    aditof::Status captureFrames(std::vector<uint8_t> &buffer);
+    aditof::Status processFrames(uint8_t *captured_buffer, uint16_t *buffer);
+    void storeProcessedFrame(uint16_t *processedFrame, size_t size);
+    void startThreads();
+    void stopThread();
+    bool getProcessedFrame(uint16_t *frameOut);
 
   public:
     virtual aditof::Status waitForBuffer() override;
@@ -106,6 +118,27 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     uint16_t m_outputFrameHeight;
 
     uint16_t *m_processedBuffer;
+    uint8_t *pdata_user_space = nullptr;
+    static const int BUFFER_SIZE = 10;
+    std::array<std::vector<uint16_t>, BUFFER_SIZE> processedFramesBuffer;
+    int bufferWriteIndex = 0;
+    std::mutex bufferMutex;
+    std::mutex mtx;
+    std::queue<std::vector<uint8_t>> frameQueue;
+    std::mutex queueMutex;
+    std::condition_variable cvNotFull;
+    std::condition_variable cvNotEmpty;
+    std::condition_variable cvProcessedBufferNotFull;
+    std::condition_variable cvProcessedBufferNotEmpty;
+    std::mutex processedBufferMutex;
+
+    bool frameCaptured = false;
+    bool frameProcessed = true; // Start as true so capture can begin
+    std::atomic<bool> stopThreads{false};
+    int bufferCount = 0;
+
+    std::thread captureThread;
+    std::thread processThread;
 
     TofiConfig *m_tofiConfig;
     TofiComputeContext *m_tofiComputeContext;

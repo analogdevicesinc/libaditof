@@ -44,6 +44,7 @@
 #else
 #include <aditof/log.h>
 #endif
+#include <atomic>
 #include <linux/videodev2.h>
 #include <memory>
 #include <sstream>
@@ -155,6 +156,7 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
         delete[] m_processedBuffer;
     }
     m_processedBuffer = new uint16_t[m_outputFrameWidth * m_outputFrameHeight];
+    uint32_t buffer_size = m_outputFrameWidth * m_outputFrameHeight;
 
     return status;
 }
@@ -210,7 +212,114 @@ aditof::Status BufferProcessor::setProcessorProperties(
     return aditof::Status::OK;
 }
 
-aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
+void BufferProcessor::storeProcessedFrame(uint16_t *processedFrame, size_t size) {
+    std::lock_guard<std::mutex> lock(bufferMutex);
+
+    processedFramesBuffer[bufferWriteIndex].resize(size);
+    std::copy(processedFrame, processedFrame + size,
+              processedFramesBuffer[bufferWriteIndex].begin());
+
+    bufferWriteIndex = (bufferWriteIndex + 1) % BUFFER_SIZE;
+    if (bufferCount < BUFFER_SIZE)
+        bufferCount++;
+
+    cvProcessedBufferNotEmpty.notify_one(); // Notify getProcessedFrame
+    LOG(INFO) << "Stored the frame";
+}
+
+
+bool BufferProcessor::getProcessedFrame(uint16_t* frameOut) {
+std::unique_lock<std::mutex> lock(bufferMutex);
+
+    // Wait until there is at least one frame in the buffer
+    cvProcessedBufferNotEmpty.wait(lock, [this] {
+        return bufferCount > 0 || stopThreads;
+    });
+
+    if (stopThreads && bufferCount == 0)
+        return false;
+
+    size_t readIndex = (bufferWriteIndex + BUFFER_SIZE - bufferCount) % BUFFER_SIZE;
+    const std::vector<uint16_t>& storedFrame = processedFramesBuffer[readIndex];
+
+    // actualSize = storedFrame.size();
+    // if (maxSize < actualSize) {
+    //     return false; // Not enough space in frameOut
+    // }
+
+    std::copy(storedFrame.begin(), storedFrame.end(), frameOut);
+    bufferCount--;
+
+    cvProcessedBufferNotFull.notify_one(); // Notify capture thread
+    return true;
+}
+
+
+
+void BufferProcessor::startThreads() {
+    std::thread captureThread([this] {
+        while (!stopThreads) {
+            std::unique_lock<std::mutex> processedLock(processedBufferMutex);
+            cvProcessedBufferNotFull.wait(processedLock, [this] {
+                return bufferCount == 0 || stopThreads;
+            });
+            processedLock.unlock();
+
+            while (bufferCount < BUFFER_SIZE && !stopThreads) {
+                std::vector<uint8_t> recentframe(10);
+
+                if (captureFrames(recentframe) == aditof::Status::OK) {
+                    std::unique_lock<std::mutex> lock(queueMutex);
+                    cvNotFull.wait(lock, [this] {
+                        return frameQueue.size() < BUFFER_SIZE || stopThreads;
+                    });
+
+                    if (stopThreads)
+                        break;
+
+                    frameQueue.push(std::move(recentframe));
+                    cvNotEmpty.notify_one(); // Notify processing thread
+                }
+            }
+        }
+    });
+
+    std::thread processThread([this] {
+        while (!stopThreads) {
+            std::unique_lock<std::mutex> lock(queueMutex);
+            cvNotEmpty.wait(
+                lock, [this] { return !frameQueue.empty() || stopThreads; });
+
+            if (stopThreads && frameQueue.empty())
+                break;
+
+            std::vector<uint8_t> frame = std::move(frameQueue.front());
+            frameQueue.pop();
+            cvNotFull.notify_one(); // Notify capture thread
+
+            std::vector<uint16_t> tempBuffer(m_outputFrameWidth *
+                                             m_outputFrameHeight);
+            processFrames(frame.data(), tempBuffer.data());
+            storeProcessedFrame(tempBuffer.data(), tempBuffer.size());
+        }
+    });
+
+    captureThread.detach();
+    processThread.detach();
+}
+
+void BufferProcessor::stopThread() {
+    stopThreads = true;
+    cvNotFull.notify_all();
+    cvNotEmpty.notify_all();
+
+    if (captureThread.joinable())
+        captureThread.join();
+    if (processThread.joinable())
+        processThread.join();
+}
+
+aditof::Status BufferProcessor::captureFrames(std::vector<uint8_t> &buffer) {
     using namespace aditof;
     struct v4l2_buffer buf[4];
     struct VideoDev *dev;
@@ -218,8 +327,8 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
     unsigned int buf_data_len;
     uint8_t *pdata;
     dev = m_inputVideoDev;
-    uint8_t *pdata_user_space = nullptr;
 
+    LOG(INFO) << "Capturing Frame";
     status = waitForBufferPrivate(dev);
     if (status != Status::OK) {
         return status;
@@ -235,12 +344,28 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
         return status;
     }
 
-    pdata_user_space = (uint8_t *)malloc(sizeof(uint8_t) * buf_data_len);
-    memcpy(pdata_user_space, pdata, buf_data_len);
+    buffer.resize(buf_data_len);
+    memcpy(buffer.data(), pdata, buf_data_len);
 
+    status = enqueueInternalBufferPrivate(buf[0], dev);
+    if (status != Status::OK) {
+        return status;
+    }
+
+    return status;
+}
+
+aditof::Status
+BufferProcessor::processFrames(uint8_t *captured_buffer = nullptr,
+                               uint16_t *buffer = nullptr) {
+
+    using namespace aditof;
+    Status status = Status::OK;
     uint16_t *tempDepthFrame = m_tofiComputeContext->p_depth_frame;
     uint16_t *tempAbFrame = m_tofiComputeContext->p_ab_frame;
     float *tempConfFrame = m_tofiComputeContext->p_conf_frame;
+
+    LOG(INFO) << "Processing Frames";
 
     if (buffer != nullptr) {
         m_tofiComputeContext->p_depth_frame = buffer;
@@ -249,46 +374,101 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
         m_tofiComputeContext->p_conf_frame =
             (float *)(buffer + m_outputFrameWidth * m_outputFrameHeight / 2);
 
-        uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
+        uint32_t ret = TofiCompute((uint16_t *)captured_buffer,
                                    m_tofiComputeContext, NULL);
 
         if (ret != ADI_TOFI_SUCCESS) {
             LOG(ERROR) << "TofiCompute failed";
             return Status::GENERIC_ERROR;
         }
-
-    } else {
-
-        m_tofiComputeContext->p_depth_frame = m_processedBuffer;
-        m_tofiComputeContext->p_ab_frame =
-            m_processedBuffer + m_outputFrameWidth * m_outputFrameHeight / 4;
-        m_tofiComputeContext->p_conf_frame =
-            (float *)(m_processedBuffer +
-                      m_outputFrameWidth * m_outputFrameHeight / 2);
-
-        uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
-                                   m_tofiComputeContext, NULL);
-
-        if (ret != ADI_TOFI_SUCCESS) {
-            LOG(ERROR) << "TofiCompute failed";
-            return Status::GENERIC_ERROR;
-        }
-
-        ::write(m_outputVideoDev->fd, m_processedBuffer,
-                m_outputFrameWidth * m_outputFrameHeight);
     }
-
     m_tofiComputeContext->p_depth_frame = tempDepthFrame;
     m_tofiComputeContext->p_ab_frame = tempAbFrame;
     m_tofiComputeContext->p_conf_frame = tempConfFrame;
+    return status;
+}
 
-    if (pdata_user_space)
-        free(pdata_user_space);
+aditof::Status BufferProcessor::processBuffer(uint16_t *buffer = nullptr) {
+    using namespace aditof;
+    struct v4l2_buffer buf[4];
+    struct VideoDev *dev;
+    Status status = Status::OK;
+    unsigned int buf_data_len;
+    uint8_t *pdata;
+    dev = m_inputVideoDev;
+    uint8_t *pdata_user_space_t = nullptr;
 
-    status = enqueueInternalBufferPrivate(buf[0], dev);
-    if (status != Status::OK) {
-        return status;
-    }
+    getProcessedFrame(buffer);
+
+    // status = waitForBufferPrivate(dev);
+    // if (status != Status::OK) {
+    //     return status;
+    // }
+
+    // status = dequeueInternalBufferPrivate(buf[0], dev);
+    // if (status != Status::OK) {
+    //     return status;
+    // }
+
+    // status = getInternalBufferPrivate(&pdata, buf_data_len, buf[0], dev);
+    // if (status != Status::OK) {
+    //     return status;
+    // }
+
+    // pdata_user_space_t = (uint8_t *)malloc(sizeof(uint8_t) * buf_data_len);
+    // memcpy(pdata_user_space_t, pdata, buf_data_len);
+
+    // uint16_t *tempDepthFrame = m_tofiComputeContext->p_depth_frame;
+    // uint16_t *tempAbFrame = m_tofiComputeContext->p_ab_frame;
+    // float *tempConfFrame = m_tofiComputeContext->p_conf_frame;
+
+    // if (buffer != nullptr) {
+    //     m_tofiComputeContext->p_depth_frame = buffer;
+    //     m_tofiComputeContext->p_ab_frame =
+    //         buffer + m_outputFrameWidth * m_outputFrameHeight / 4;
+    //     m_tofiComputeContext->p_conf_frame =
+    //         (float *)(buffer + m_outputFrameWidth * m_outputFrameHeight / 2);
+
+    //     uint32_t ret = TofiCompute((uint16_t *)pdata_user_space_t,
+    //                                m_tofiComputeContext, NULL);
+
+    //     if (ret != ADI_TOFI_SUCCESS) {
+    //         LOG(ERROR) << "TofiCompute failed";
+    //         return Status::GENERIC_ERROR;
+    //     }
+
+    // } else {
+
+    //     m_tofiComputeContext->p_depth_frame = m_processedBuffer;
+    //     m_tofiComputeContext->p_ab_frame =
+    //         m_processedBuffer + m_outputFrameWidth * m_outputFrameHeight / 4;
+    //     m_tofiComputeContext->p_conf_frame =
+    //         (float *)(m_processedBuffer +
+    //                   m_outputFrameWidth * m_outputFrameHeight / 2);
+
+    //     uint32_t ret = TofiCompute((uint16_t *)pdata_user_space_t,
+    //                                m_tofiComputeContext, NULL);
+
+    //     if (ret != ADI_TOFI_SUCCESS) {
+    //         LOG(ERROR) << "TofiCompute failed";
+    //         return Status::GENERIC_ERROR;
+    //     }
+
+    //     ::write(m_outputVideoDev->fd, m_processedBuffer,
+    //             m_outputFrameWidth * m_outputFrameHeight);
+    // }
+
+    // m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+    // m_tofiComputeContext->p_ab_frame = tempAbFrame;
+    // m_tofiComputeContext->p_conf_frame = tempConfFrame;
+
+    // if (pdata_user_space_t)
+    //     free(pdata_user_space_t);
+
+    // status = enqueueInternalBufferPrivate(buf[0], dev);
+    // if (status != Status::OK) {
+    //     return status;
+    // }
 
     return status;
 }
