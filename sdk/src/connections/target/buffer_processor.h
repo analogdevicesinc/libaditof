@@ -33,6 +33,7 @@
 #include <queue>
 #include <vector>
 #include <mutex>
+#include <atomic>
 #include <condition_variable>
 
 #include "v4l_buffer_access_interface.h"
@@ -62,6 +63,49 @@ struct VideoDev {
     VideoDev()
         : fd(-1), sfd(-1), videoBuffers(nullptr), nVideoBuffers(0),
           started(false) {}
+};
+
+template <typename T>
+class ThreadSafeQueue {
+private:
+    std::queue<T> queue_;
+    mutable std::mutex mutex_;
+    std::condition_variable not_empty_;
+    std::condition_variable not_full_;
+    size_t max_size_;
+
+public:
+    explicit ThreadSafeQueue(size_t max_size) : max_size_(max_size) {}
+
+    bool push(T item, std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        if (!not_full_.wait_until(lock, deadline, [this] { return queue_.size() < max_size_; })) {
+            return false;
+        }
+        queue_.push(std::move(item));
+        lock.unlock();
+        not_empty_.notify_all();
+        return true;
+    }
+
+    bool pop(T& item, std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        if (!not_empty_.wait_until(lock, deadline, [this] { return !queue_.empty(); })) {
+            return false;
+        }
+        item = std::move(queue_.front());
+        queue_.pop();
+        lock.unlock();
+        not_full_.notify_all();
+        return true;
+    }
+
+    size_t size() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return queue_.size();
+    }
 };
 
 class BufferProcessor : public aditof::V4lBufferAccessInterface {
@@ -132,37 +176,31 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     struct VideoDev *m_inputVideoDev;
     struct VideoDev *m_outputVideoDev;
 
+
     struct Frame {
         uint8_t* data = nullptr;
         size_t size = 0;
-        std::shared_ptr<uint16_t> tofiBuffer;
-
-        Frame() = default;
+        uint16_t* tofiBuffer = nullptr;
     };
 
-    std::queue<Frame> bufferPool;
-    std::queue<Frame> processedBufferQueue;
-
-    std::mutex poolMutex, processedMutex;
-    std::condition_variable bufferNotEmpty, processedNotEmpty;
-    bool stopThreadsFlag = false;
-    bool streamRunning = false;
+    ThreadSafeQueue<Frame> bufferPool;
+    ThreadSafeQueue<Frame> processedBufferQueue;
+    ThreadSafeQueue<uint16_t*> tofiBufferQueue;
+    ThreadSafeQueue<uint8_t*> freeFrameBufferQueue;
 
     std::vector<uint8_t*> preallocatedFrameBuffers;
-    std::queue<uint8_t*> freeFrameBuffers;
+    std::vector<uint16_t*> tofiBuffers;
     std::mutex preallocMutex;
-    std::condition_variable preallocNotEmpty;
-    std::condition_variable bufferNotFull, processedNotFull;
 
-    size_t rawFrameBufferSize = 0;
-    uint32_t tofiBufferSize = 0;
-
+    size_t rawFrameBufferSize;
+    uint32_t tofiBufferSize;
     std::thread captureThread;
     std::thread processingThread;
+    std::atomic<bool> stopThreadsFlag;
+    std::atomic<size_t> processedFrames;
+    bool streamRunning = false;
 
-    std::queue<uint16_t*> tofiBufferfifo;
-    std::mutex tofiBufferMutex;
-    std::condition_variable tofiBufferNotEmpty;
+    static constexpr int TOFI_BUFFER_COUNT = 10;
+    static constexpr size_t MAX_QUEUE_SIZE = 50;
 
-    static constexpr int TOFI_BUFFER_COUNT = 10;  // Or more depending on performance needs
 };
