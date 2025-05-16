@@ -174,7 +174,7 @@ if(WITH_GLOG_DEPENDENCY)
         endif()
 endif()
 
-if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets/.git" )
+if(WITH_SUBMODULES AND WITH_NETWORK AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets/.git" )
         # Temporarily store the current compile options
         set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
         set(old_c_flags "${CMAKE_C_FLAGS}")
