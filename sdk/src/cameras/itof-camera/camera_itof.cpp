@@ -869,7 +869,6 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
     return status;
 }
 
-#pragma optimize("", off)
 aditof::Status CameraItof::requestFrame(aditof::Frame* frame, uint32_t index) {
     using namespace aditof;
     Status status = Status::OK;
@@ -997,7 +996,6 @@ aditof::Status CameraItof::requestFrame(aditof::Frame* frame, uint32_t index) {
 
     return Status::OK;
 }
-#pragma optimize("", on)
 
 void CameraItof::normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
                                    uint16_t abHeight, bool advanceScaling,
