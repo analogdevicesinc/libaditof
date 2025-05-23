@@ -177,14 +177,14 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     struct VideoDev *m_outputVideoDev;
 
 
-    struct Frame {
+    struct Tofi_v4l2_buffer {
         uint8_t* data = nullptr;
         size_t size = 0;
         uint16_t* tofiBuffer = nullptr;
     };
 
-    ThreadSafeQueue<Frame> bufferPool;
-    ThreadSafeQueue<Frame> processedBufferQueue;
+    ThreadSafeQueue<Tofi_v4l2_buffer> bufferPool;
+    ThreadSafeQueue<Tofi_v4l2_buffer> processedBufferQueue;
     ThreadSafeQueue<uint16_t*> tofiBufferQueue;
     ThreadSafeQueue<uint8_t*> freeFrameBufferQueue;
 
