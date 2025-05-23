@@ -1451,8 +1451,6 @@ aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
     try {
         if (m_stream_file_out.is_open()) {
             // Write size of buffer
-            LOG(INFO) << "Frame Written: " << idx++;
-
             uint32_t x = 0xFFFFFFFF;
             m_stream_file_out.write((char *)&x, sizeof(x));
 
