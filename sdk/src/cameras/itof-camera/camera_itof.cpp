@@ -641,7 +641,7 @@ CameraItof::getFrameProcessParams(std::map<std::string, std::string> &params) {
 
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     //params = m_depth_params_map[m_details.mode]; Should really be this
 
@@ -846,7 +846,7 @@ aditof::Status CameraItof::stopRecording() {
 aditof::Status CameraItof::adsd3500ResetIniParamsForMode(const uint16_t mode) {
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x40, mode);
 
@@ -1144,7 +1144,7 @@ aditof::Status CameraItof::setControl(const std::string &control,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     if (m_controls.count(control) > 0) {
         if (value == "call") {
@@ -1165,7 +1165,7 @@ aditof::Status CameraItof::getControl(const std::string &control,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     if (m_controls.count(control) > 0) {
         value = m_controls.at(control);
@@ -1182,7 +1182,7 @@ aditof::Status CameraItof::readSerialNumber(std::string &serialNumber,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     if (m_adsd3500FwVersionInt < 4710) {
         LOG(WARNING) << "Serial read is not supported in this firmware!";
@@ -1218,7 +1218,7 @@ aditof::Status CameraItof::saveModuleCCB(const std::string &filepath) {
     aditof::Status status =
         aditof::Status::GENERIC_ERROR; //Defining with error for ccb read
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     if (filepath.empty()) {
         LOG(ERROR) << "File path where CCB should be written is empty.";
@@ -1246,7 +1246,7 @@ aditof::Status CameraItof::saveModuleCCB(const std::string &filepath) {
 
 aditof::Status CameraItof::saveModuleCFG(const std::string &filepath) const {
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     if (filepath.empty()) {
         LOG(ERROR) << "File path where CFG should be written is empty.";
@@ -1289,7 +1289,7 @@ CameraItof::adsd3500UpdateFirmware(const std::string &fwFilePath) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     m_fwUpdated = false;
     m_adsd3500Status = Adsd3500Status::OK;
@@ -1434,7 +1434,7 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     uint8_t ccbHeader[16] = {0};
     ccbHeader[0] = 1;
@@ -1657,7 +1657,7 @@ aditof::Status CameraItof::retrieveDepthProcessParams() {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     if (m_initConfigFilePath == "") {
 
@@ -1703,7 +1703,7 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     cJSON *rootjson = cJSON_CreateObject();
 
@@ -1801,7 +1801,7 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     m_depth_params_map.clear();
 
@@ -1954,7 +1954,7 @@ bool CameraItof::isConvertibleToDouble(const std::string &str) {
 }
 
 void CameraItof::dropFirstFrame(bool dropFrame) {
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
     m_dropFirstFrame = dropFrame;
 }
 
@@ -1962,7 +1962,7 @@ aditof::Status
 CameraItof::setSensorConfiguration(const std::string &sensorConf) {
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     return m_depthSensor->setSensorConfiguration(sensorConf);
 
@@ -1974,7 +1974,7 @@ aditof::Status CameraItof::adsd3500SetToggleMode(int mode) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     /*mode = 2, adsd3500 fsync does not automatically toggle - Pin set as input (Slave)*/
     /*mode = 1, adsd3500 fsync automatically toggles at user specified framerate*/
@@ -1997,7 +1997,7 @@ aditof::Status CameraItof::adsd3500ToggleFsync() {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     if (!m_adsd3500_master) {
         LOG(ERROR) << "ADSD3500 not set as master - cannot toggle FSYNC";
@@ -2018,7 +2018,7 @@ aditof::Status CameraItof::adsd3500GetFirmwareVersion(std::string &fwVersion,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     uint8_t fwData[44] = {0};
     fwData[0] = uint8_t(1);
@@ -2053,7 +2053,7 @@ aditof::Status CameraItof::adsd3500SetABinvalidationThreshold(int threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0010, threshold);
 
@@ -2064,7 +2064,7 @@ aditof::Status CameraItof::adsd3500GetABinvalidationThreshold(int &threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     threshold = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2078,7 +2078,7 @@ aditof::Status CameraItof::adsd3500SetConfidenceThreshold(int threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0011, threshold);
 
@@ -2104,7 +2104,7 @@ aditof::Status CameraItof::adsd3500SetJBLFfilterEnableState(bool enable) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0013, enable ? 1 : 0);
 
@@ -2115,7 +2115,7 @@ aditof::Status CameraItof::adsd3500GetJBLFfilterEnableState(bool &enabled) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     int intEnabled = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2130,7 +2130,7 @@ aditof::Status CameraItof::adsd3500SetJBLFfilterSize(int size) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0014, size);
 
@@ -2141,7 +2141,7 @@ aditof::Status CameraItof::adsd3500GetJBLFfilterSize(int &size) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     size = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2155,7 +2155,7 @@ aditof::Status CameraItof::adsd3500SetRadialThresholdMin(int threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0027, threshold);
 
@@ -2166,7 +2166,7 @@ aditof::Status CameraItof::adsd3500GetRadialThresholdMin(int &threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     threshold = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2180,7 +2180,7 @@ aditof::Status CameraItof::adsd3500SetRadialThresholdMax(int threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0029, threshold);
 
@@ -2192,7 +2192,7 @@ aditof::Status CameraItof::adsd3500GetRadialThresholdMax(int &threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     threshold = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2206,7 +2206,7 @@ aditof::Status CameraItof::adsd3500SetMIPIOutputSpeed(uint16_t speed) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0031, speed);
 
@@ -2218,7 +2218,7 @@ aditof::Status CameraItof::adsd3500GetMIPIOutputSpeed(uint16_t &speed) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_read_cmd(0x0034, reinterpret_cast<uint16_t *>(&speed));
 
@@ -2230,7 +2230,7 @@ aditof::Status CameraItof::adsd3500GetImagerErrorCode(uint16_t &errcode) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_read_cmd(0x0038, reinterpret_cast<uint16_t *>(&errcode));
 
@@ -2242,7 +2242,7 @@ aditof::Status CameraItof::adsd3500SetVCSELDelay(uint16_t delay) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0066, delay);
 
@@ -2254,7 +2254,7 @@ aditof::Status CameraItof::adsd3500GetVCSELDelay(uint16_t &delay) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_read_cmd(0x0068, reinterpret_cast<uint16_t *>(&delay));
 
@@ -2266,7 +2266,7 @@ aditof::Status CameraItof::adsd3500SetJBLFMaxEdgeThreshold(uint16_t threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0074, threshold);
 
@@ -2278,7 +2278,7 @@ aditof::Status CameraItof::adsd3500SetJBLFABThreshold(uint16_t threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0075, threshold);
 
@@ -2290,7 +2290,7 @@ aditof::Status CameraItof::adsd3500SetJBLFGaussianSigma(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
     
     status = m_depthSensor->adsd3500_write_cmd(0x006B, value);
 
@@ -2302,7 +2302,7 @@ aditof::Status CameraItof::adsd3500GetJBLFGaussianSigma(uint16_t &value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     value = 0;
     status = m_depthSensor->adsd3500_read_cmd(0x0069, reinterpret_cast<uint16_t *>(&value));
@@ -2315,7 +2315,7 @@ aditof::Status CameraItof::adsd3500SetJBLFExponentialTerm(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x006C, value);
 
@@ -2327,7 +2327,7 @@ aditof::Status CameraItof::adsd3500GetJBLFExponentialTerm(uint16_t &value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_read_cmd(0x006A, reinterpret_cast<uint16_t *>(&value));
     
@@ -2355,7 +2355,7 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     if (fps == 0) {
         fps = 10;
@@ -2379,7 +2379,7 @@ aditof::Status CameraItof::adsd3500SetEnableEdgeConfidence(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0062, value);
 
@@ -2393,7 +2393,7 @@ CameraItof::adsd3500GetTemperatureCompensationStatus(uint16_t &value) {
     Status status = Status::OK;
 
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
     
     status = m_depthSensor->adsd3500_read_cmd(0x0076, reinterpret_cast<uint16_t *>(&value));
 
@@ -2405,7 +2405,7 @@ aditof::Status CameraItof::adsd3500SetEnablePhaseInvalidation(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0072, value);
 
@@ -2418,7 +2418,7 @@ CameraItof::adsd3500SetEnableTemperatureCompensation(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0021, value);
 
@@ -2430,7 +2430,7 @@ aditof::Status CameraItof::adsd3500SetEnableMetadatainAB(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0036, value);
 
@@ -2442,7 +2442,7 @@ aditof::Status CameraItof::adsd3500GetEnableMetadatainAB(uint16_t &value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_read_cmd(0x0037, reinterpret_cast<uint16_t *>(&value));
 
@@ -2455,7 +2455,7 @@ aditof::Status CameraItof::adsd3500SetGenericTemplate(uint16_t reg,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(reg, value);
 
@@ -2468,7 +2468,7 @@ aditof::Status CameraItof::adsd3500GetGenericTemplate(uint16_t reg,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_read_cmd(
         reg, reinterpret_cast<uint16_t *>(&value));
@@ -2481,7 +2481,7 @@ aditof::Status CameraItof::adsd3500DisableCCBM(bool disable) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->setControl("disableCCBM",
                                         std::to_string(disable));
@@ -2493,7 +2493,7 @@ aditof::Status CameraItof::adsd3500IsCCBMsupported(bool &supported) {
     
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     std::string availableCCMB;
 
@@ -2517,7 +2517,7 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
                                              int &imagerStatus) {
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_get_status(chipStatus, imagerStatus);
     if (status != aditof::Status::OK) {
@@ -2533,10 +2533,10 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
             if (m_imagerType == aditof::ImagerType::ADSD3100) {
                 LOG(ERROR) << "ADSD3100 imager error detected: "
                            << m_adsdErrors.GetStringADSD3100(imagerStatus);
-            } else if (m_imagerType == ImagerType::ADSD3030) {
+            } else if (m_imagerType == aditof::ImagerType::ADSD3030) {
                 LOG(ERROR) << "ADSD3030 imager error detected: "
                            << m_adsdErrors.GetStringADSD3030(imagerStatus);
-            } else if (m_imagerType == ImagerType::ADTF3080) {
+            } else if (m_imagerType == aditof::ImagerType::ADTF3080) {
                 LOG(ERROR) << "ADSD3030 imager error detected: "
                             << m_adsdErrors.GetStringADSD3030(imagerStatus);
             } else {
@@ -2555,7 +2555,7 @@ aditof::Status CameraItof::adsd3500GetSensorTemperature(uint16_t &tmpValue) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     unsigned int usDelay = 0;
     if (m_cameraFps > 0) {
@@ -2574,7 +2574,7 @@ aditof::Status CameraItof::adsd3500GetLaserTemperature(uint16_t &tmpValue) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     unsigned int usDelay = 0;
     if (m_cameraFps > 0) {
@@ -2595,7 +2595,7 @@ aditof::Status CameraItof::setAdsd3500IniParams(
 
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     auto it = iniKeyValPairs.find("abThreshMin");
     if (it != iniKeyValPairs.end()) {
@@ -2760,7 +2760,7 @@ aditof::Status CameraItof::getImagerType(aditof::ImagerType &imagerType) const {
 
 aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
 
-    assert(!m_isOffline, "Code should not be here.");
+    assert(!m_isOffline);
 
     return m_depthSensor->adsd3500_write_cmd(0x0080, en ? 0x0001 : 0x0000);
 }
@@ -2771,7 +2771,7 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
 
     Status status = Status::OK;
 
-	assert(!m_isOffline, "Code should not be here.");
+	assert(!m_isOffline);
 
     uint32_t entireSequence = 0xFFFFFFFF;
     uint32_t entireRepCount = 0x00000000;
