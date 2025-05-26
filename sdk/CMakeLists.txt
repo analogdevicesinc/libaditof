@@ -153,7 +153,7 @@ if(WITH_PROTOBUF_DEPENDENCY)
     endif()
     set(PROTO_HDRS "${CMAKE_CURRENT_SOURCE_DIR}/usb_buffer.pb.h")
     set(PROTO_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/usb_buffer.pb.cc")
-    add_custom_command(OUTPUT ${PROTO_HDRS} ${PROTO_SRCS}
+	add_custom_command(OUTPUT ${PROTO_HDRS} ${PROTO_SRCS}
                         COMMAND protoc usb_buffer.proto -I${CMAKE_CURRENT_SOURCE_DIR}/src/connections/usb --cpp_out=.
                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     target_sources(${PROJECT_NAME} PRIVATE ${PROTO_HDRS} ${PROTO_SRCS})
@@ -163,21 +163,25 @@ if(WITH_PROTOBUF_DEPENDENCY)
 
     if ( WITH_NETWORK )
         # Check if submodule exists, and build the library
-        if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../libwebsockets/.git")
-                find_package(Libwebsockets REQUIRED)
-        else()
-            target_link_libraries(${PROJECT_NAME} PUBLIC websockets_shared)
-        endif()
+        # Include the cppzmq to use in c++
+		set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cppzmq")
+		
+		# Check if submodule exists, and build the library
+		if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../libzmq/.git")
+			find_package(ZeroMQ REQUIRED)
+		else()
+			include_directories(${CPPZMQ_INSTALL_DIR})
+			target_link_libraries(${PROJECT_NAME} PUBLIC libzmq-static)
+		endif()
         set(NET_PROTO_HRDS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.h")
         set(NET_PROTO_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.cc")
-        add_custom_command(OUTPUT ${NET_PROTO_HRDS} ${NET_PROTO_SRCS}
+		add_custom_command(OUTPUT ${NET_PROTO_HRDS} ${NET_PROTO_SRCS}
                             COMMAND protoc buffer.proto -I ${CMAKE_CURRENT_SOURCE_DIR}/src/connections/network --cpp_out=.
                             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         target_sources(${PROJECT_NAME} PRIVATE ${NET_PROTO_HRDS} ${NET_PROTO_SRCS})
         target_include_directories(${PROJECT_NAME} PRIVATE
                 ${CMAKE_CURRENT_SOURCE_DIR}
         )
-        target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../libwebsockets/include)
     endif()
 endif()
 
@@ -197,7 +201,6 @@ target_include_directories(${PROJECT_NAME}
         ${GENERATED_NET_PROTO_FILES_DIR}
         ${GENERATED_PROTO_FILES_DIR}
         ${GENERATED_NET_PROTO_FILES_DIR}
-        ${LIBWEBSOCKETS_INCLUDE_DIRS}
         ${OPENSSL_INCLUDE_DIRS}
 )
 

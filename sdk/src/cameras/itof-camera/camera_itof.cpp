@@ -157,19 +157,21 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             m_depthSensor->setControl("netlinktest", "1");
         }
 
-        // get imager type that is used toghether with ADSD3500
-        std::string controlValue;
-        status = m_depthSensor->getControl("imagerType", controlValue);
-        if (status == Status::OK) {
-            if (controlValue == "1") {
-                m_imagerType = ImagerType::ADSD3100;
-            } else if (controlValue == "2") {
-                m_imagerType = ImagerType::ADSD3030;
-            } else {
-                m_imagerType = ImagerType::UNSET;
-                LOG(ERROR) << "Unkown imager type: " << controlValue;
-                return Status::UNAVAILABLE;
-            }
+    // get imager type that is used toghether with ADSD3500
+    std::string controlValue;
+    status = m_depthSensor->getControl("imagerType", controlValue);
+    if (status == Status::OK) {
+        if (controlValue == ControlValue.at(ImagerType::ADSD3100)) {
+            m_imagerType = ImagerType::ADSD3100;
+        } else if (controlValue == ControlValue.at(ImagerType::ADSD3030)) {
+            m_imagerType = ImagerType::ADSD3030;
+        } else if (controlValue == ControlValue.at(ImagerType::ADTF3080)) {
+            m_imagerType = ImagerType::ADTF3080;
+        } else {
+            m_imagerType = ImagerType::UNSET;
+            LOG(ERROR) << "Unkown imager type: " << controlValue;
+            return Status::UNAVAILABLE;
+        }
 
             status = m_depthSensor->getAvailableModes(m_availableModes);
             if (status != Status::OK) {
@@ -2530,8 +2532,11 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
         if (chipStatus == m_adsdErrors.ADSD3500_STATUS_IMAGER_ERROR) {
             if (m_imagerType == aditof::ImagerType::ADSD3100) {
                 LOG(ERROR) << "ADSD3100 imager error detected: "
-                            << m_adsdErrors.GetStringADSD3100(imagerStatus);
-            } else if (m_imagerType == aditof::ImagerType::ADSD3030) {
+                           << m_adsdErrors.GetStringADSD3100(imagerStatus);
+            } else if (m_imagerType == ImagerType::ADSD3030) {
+                LOG(ERROR) << "ADSD3030 imager error detected: "
+                           << m_adsdErrors.GetStringADSD3030(imagerStatus);
+            } else if (m_imagerType == ImagerType::ADTF3080) {
                 LOG(ERROR) << "ADSD3030 imager error detected: "
                             << m_adsdErrors.GetStringADSD3030(imagerStatus);
             } else {

@@ -37,6 +37,8 @@
 #include "tofi/tofi_util.h"
 
 #define OUTPUT_DEVICE "/dev/video1"
+#define CHIP_ID_SINGLE 0x5931
+#define DEFAULT_MODE 0
 
 struct buffer {
     void *start;
@@ -71,7 +73,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
                                           uint8_t *calData,
                                           uint16_t calDataLength, uint16_t mode,
                                           bool ispEnabled);
-    aditof::Status processBuffer(uint16_t *buffer);
+    aditof::Status processBuffer(uint16_t *buffer, const uint16_t &chipID,
+                                 const uint8_t &mode_num);
     TofiConfig *getTofiCongfig();
     aditof::Status getDepthComputeVersion(uint8_t &enabled);
 

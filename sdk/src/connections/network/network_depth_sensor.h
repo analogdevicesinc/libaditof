@@ -143,6 +143,8 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
     std::ifstream m_stream_file_in;
     std::string m_stream_file_name;
     uint32_t m_frame_count;
+
+    static int frame_size;
 };
 
 #endif // NETWORK_DEPTH_SENSOR_H

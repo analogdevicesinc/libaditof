@@ -34,9 +34,9 @@
 #include <chrono>
 #include <condition_variable>
 #include <functional>
-#include <libwebsockets.h>
 #include <thread>
 #include <vector>
+#include <zmq.hpp>
 
 #define MAX_CAMERA_NUM 10
 
@@ -52,8 +52,12 @@ class Network {
     typedef std::function<void(void)> InterruptNotificationCallback;
 
   private:
-    static std::vector<lws_context *> context;
-    static std::vector<lws *> web_socket;
+    static std::vector<std::unique_ptr<zmq::context_t>> contexts;
+    static std::vector<std::unique_ptr<zmq::socket_t>> command_socket;
+    static std::vector<std::unique_ptr<zmq::socket_t>> monitor_sockets;
+    int max_buffer_size = 10;
+    std::unique_ptr<zmq::socket_t> frame_socket;
+    std::unique_ptr<zmq::context_t> frame_context;
 
     std::thread threadObj[MAX_CAMERA_NUM];
     static std::recursive_mutex m_mutex[MAX_CAMERA_NUM];
@@ -77,9 +81,9 @@ class Network {
     InterruptNotificationCallback m_intNotifCb;
     std::chrono::steady_clock::time_point m_latestActivityTimestamp;
 
-    //! call_lws_service - calls lws_service api to service any websocket
+    //! call_zmq_service - calls zmq_event_t  to service any zmq socket events
     //! activity
-    void call_lws_service();
+    void call_zmq_service(const std::string &ip);
 
   public:
     int m_connectionId;
@@ -88,8 +92,8 @@ class Network {
     static payload::ServerResponse recv_buff[MAX_CAMERA_NUM];
     int m_frameLength;
 
-    //! ServerConnect() - APi to initialize the websocket and connect to
-    //! websocket server
+    //! ServerConnect() - APi to initialize the zmq sockets and connect to
+    //! zmq server
     int ServerConnect(const std::string &ip);
 
     //! SendCommand() - APi to send SDK apis to connected server
@@ -101,10 +105,9 @@ class Network {
     //! recv_server_data() - APi to receive data from server
     int recv_server_data();
 
-    //! callback_function() - APi to handle websocket events
-    static int callback_function(struct lws *wsi,
-                                 enum lws_callback_reasons reason, void *user,
-                                 void *in, size_t len);
+    //! callback_function() - APi to handle zmq events
+    static int callback_function(std::unique_ptr<zmq::socket_t> &stx,
+                                 const zmq_event_t &event);
 
     //! Network() - APi to initialize network parameters
     Network(int connectionId);
@@ -125,6 +128,15 @@ class Network {
 
     //! isServer_Connected() - APi to check if server is connected successfully
     bool isServer_Connected();
+
+    //! closeConnectionFrameSocket() - APi to close the frame socket connection
+    void closeConnectionFrameSocket();
+
+    //! getFrame() - APi to get frame in Async
+    int32_t getFrame(uint16_t *buffer, uint32_t buf_size);
+
+    //! FrameSocketConnection() - APi to establish Frame Socket connection
+    void FrameSocketConnection(std::string &ip);
 
     void registerInterruptCallback(InterruptNotificationCallback &cb);
 

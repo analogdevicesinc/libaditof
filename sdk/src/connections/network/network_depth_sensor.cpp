@@ -55,6 +55,8 @@ struct NetworkDepthSensor::ImplData {
     Network::InterruptNotificationCallback cb;
 };
 
+int NetworkDepthSensor::frame_size = 0;
+
 NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
                                        const std::string &ip)
     : m_implData(new NetworkDepthSensor::ImplData), m_stopServerCheck(false),
@@ -332,6 +334,31 @@ aditof::Status NetworkDepthSensor::start() {
         return Status::UNREACHABLE;
     }
 
+#ifdef RECV_ASYNC
+    LOG(INFO) << "Configuring to receive frame in async mode";
+    std::string reply_async = "send_async";
+    net->send_buff[m_sensorIndex].set_func_name("RecvAsync");
+    net->send_buff[m_sensorIndex].set_expect_reply(true);
+
+    if (net->SendCommand() != 0) {
+        LOG(WARNING) << "Send Command Failed";
+        return Status::INVALID_ARGUMENT;
+    }
+
+    if (net->recv_server_data() != 0) {
+        LOG(WARNING) << "Receive Data Failed";
+        return Status::GENERIC_ERROR;
+    }
+
+    if (net->recv_buff[m_sensorIndex].message().c_str() != reply_async) {
+        LOG(WARNING) << "Target is not build to send in async mode";
+        return Status::GENERIC_ERROR;
+    }
+
+#endif
+
+    // Start the sensor
+
     net->send_buff[m_sensorIndex].set_func_name("Start");
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
@@ -352,6 +379,8 @@ aditof::Status NetworkDepthSensor::start() {
     }
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+
+    net->FrameSocketConnection(m_implData->ip);
 
     return status;
 }
@@ -391,6 +420,9 @@ aditof::Status NetworkDepthSensor::stop() {
     }
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+
+    // close the frame socket
+    net->closeConnectionFrameSocket();
 
     return status;
 }
@@ -506,6 +538,10 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
                                               .frame_content(i));
     }
 
+    frame_size =
+        (details.baseResolutionWidth * details.baseResolutionHeight * 4) *
+        sizeof(uint16_t);
+
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
     return status;
 }
@@ -587,6 +623,9 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
+    frame_size = (type.baseResolutionWidth * type.baseResolutionHeight * 4) *
+                 sizeof(uint16_t);
+
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
         return Status::INVALID_ARGUMENT;
@@ -618,6 +657,15 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
+#ifdef RECV_ASYNC
+    int ret = net->getFrame(buffer, frame_size);
+    if (ret == -1) {
+        return Status::GENERIC_ERROR;
+    }
+    return Status::OK;
+
+#else
+
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
         return Status::UNREACHABLE;
@@ -634,6 +682,11 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
+        return Status::GENERIC_ERROR;
+    }
+
+    int ret = net->getFrame(buffer, frame_size);
+    if (ret == -1) {
         return Status::GENERIC_ERROR;
     }
 
@@ -654,6 +707,8 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     }
 
     return status;
+
+#endif
 }
 
 aditof::Status NetworkDepthSensor::getHeader(uint8_t *buffer,

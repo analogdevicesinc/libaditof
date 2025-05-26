@@ -38,12 +38,14 @@
 #include <aditof/status_definitions.h>
 #include <vector>
 
+#define CHIP_ID_SINGLE 0x5931
+
 class DeviceParameters {
   public:
     static aditof::Status createIniParams(
         std::vector<iniFileStruct> &iniFileStructList,
         std::vector<aditof::DepthSensorModeDetails> &modeDetailsList,
-        std::string imagerType);
+        std::string imagerType, const uint16_t &chipID);
 };
 
 using namespace std;
@@ -69,7 +71,32 @@ static map<string, string> adsd3100_partialDepth = {
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
     {"xyzEnable", "1"},
-    {"fps", "10"}};
+    {"fps", "10"},
+    {"multiCoreEnable", "1"},
+    {"numCores", "4"}};
+
+static map<string, string> adsd3100_dual_fullDepth = {
+    {"abThreshMin", "3.0"},
+    {"confThresh", "25.0"},
+    {"radialThreshMin", "100.0"},
+    {"radialThreshMax", "10000.0"},
+    {"jblfApplyFlag", "1"},
+    {"jblfWindowSize", "7"},
+    {"jblfGaussianSigma", "10.0"},
+    {"jblfExponentialTerm", "5.0"},
+    {"jblfMaxEdge", "12.0"},
+    {"jblfABThreshold", "10.0"},
+    {"headerSize", "128"},
+    {"inputFormat", "mipiRaw12_8"},
+    {"depthComputeIspEnable", "1"},
+    {"partialDepthEnable", "1"},
+    {"interleavingEnable", "0"},
+    {"bitsInPhaseOrDepth", "16"},
+    {"bitsInConf", "0"},
+    {"bitsInAB", "16"},
+    {"phaseInvalid", "0"},
+    {"xyzEnable", "1"},
+    {"fps", "20"}};
 
 static map<string, string> adsd3100_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"confThresh", "25.0"},
@@ -91,7 +118,9 @@ static map<string, string> adsd3100_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"bitsInAB", "16"},
                                                  {"phaseInvalid", "0"},
                                                  {"xyzEnable", "1"},
-                                                 {"fps", "40"}};
+                                                 {"fps", "40"},
+                                                 {"multiCoreEnable", "1"},
+                                                 {"numCores", "4"}};
 
 static map<string, string> adsd_PCM = {{"abThreshMin", "3.0"},
                                        {"confThresh", "25.0"},
@@ -113,7 +142,9 @@ static map<string, string> adsd_PCM = {{"abThreshMin", "3.0"},
                                        {"bitsInAB", "0"},
                                        {"phaseInvalid", "0"},
                                        {"xyzEnable", "0"},
-                                       {"fps", "15"}};
+                                       {"fps", "15"},
+                                       {"multiCoreEnable", "1"},
+                                       {"numCores", "4"}};
 
 static map<string, string> adsd3030_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"confThresh", "25.0"},
@@ -135,6 +166,32 @@ static map<string, string> adsd3030_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"bitsInAB", "16"},
                                                  {"phaseInvalid", "0"},
                                                  {"xyzEnable", "1"},
-                                                 {"fps", "40"}};
+                                                 {"fps", "40"},
+                                                 {"multiCoreEnable", "1"},
+                                                 {"numCores", "4"}};
+
+static map<string, string> adtf3080_fullDepth = {{"abThreshMin", "3.0"},
+                                                 {"confThresh", "25.0"},
+                                                 {"radialThreshMin", "100.0"},
+                                                 {"radialThreshMax", "10000.0"},
+                                                 {"jblfApplyFlag", "1"},
+                                                 {"jblfWindowSize", "7"},
+                                                 {"jblfGaussianSigma", "10.0"},
+                                                 {"jblfExponentialTerm", "5.0"},
+                                                 {"jblfMaxEdge", "12.0"},
+                                                 {"jblfABThreshold", "10.0"},
+                                                 {"headerSize", "128"},
+                                                 {"inputFormat", "raw8"},
+                                                 {"depthComputeIspEnable", "1"},
+                                                 {"partialDepthEnable", "0"},
+                                                 {"interleavingEnable", "1"},
+                                                 {"bitsInPhaseOrDepth", "16"},
+                                                 {"bitsInConf", "8"},
+                                                 {"bitsInAB", "16"},
+                                                 {"phaseInvalid", "0"},
+                                                 {"xyzEnable", "1"},
+                                                 {"fps", "40"},
+                                                 {"multiCoreEnable", "1"},
+                                                 {"numCores", "4"}};
 
 #endif

@@ -34,6 +34,7 @@
 
 #include "sensor-tables/driver_configuration_table.h"
 
+#include <aditof/camera_definitions.h>
 #include <aditof/status_definitions.h>
 
 #include <map>
