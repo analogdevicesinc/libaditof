@@ -661,6 +661,10 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     int ret = net->getFrame(buffer, frame_size);
     if (ret == -1) {
         return Status::GENERIC_ERROR;
+    } else {
+        if (m_state == ST_RECORD) {
+            writeFrame((uint8_t*)buffer, frame_size);
+        }
     }
     return Status::OK;
 
@@ -703,7 +707,7 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     }
 
     if (m_state == ST_RECORD) {
-        writeFrame((uint8_t*)buffer, sz);
+        writeFrame((uint8_t*)buffer, frame_size);
     }
 
     return status;
