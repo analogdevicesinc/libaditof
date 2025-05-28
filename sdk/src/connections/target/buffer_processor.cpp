@@ -262,8 +262,6 @@ BufferProcessor::processBuffer(uint16_t *buffer = nullptr,
                    pdata_user_space +
                        m_outputFrameWidth * m_outputFrameHeight / 2,
                    m_outputFrameWidth * m_outputFrameHeight / 2);
-            memset(m_tofiComputeContext->p_conf_frame, 0,
-                   m_outputFrameWidth * m_outputFrameHeight / 2);
         } else {
             uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
                                        m_tofiComputeContext, NULL);
