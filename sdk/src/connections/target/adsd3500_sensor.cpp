@@ -423,6 +423,7 @@ aditof::Status Adsd3500Sensor::start() {
 
         dev->started = true;
     }
+    m_bufferProcessor->startThreads();
 
     return status;
 }
@@ -432,6 +433,7 @@ aditof::Status Adsd3500Sensor::stop() {
     Status status = Status::OK;
     struct VideoDev *dev;
 
+    m_bufferProcessor->stopThreads();
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
 
@@ -449,6 +451,7 @@ aditof::Status Adsd3500Sensor::stop() {
 
         dev->started = false;
     }
+
     return status;
 }
 
@@ -724,7 +727,8 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
     if (!type.isPCM) {
         //TO DO: update this values when frame_impl gets restructured
         status = m_bufferProcessor->setVideoProperties(
-            type.baseResolutionWidth * 4, type.baseResolutionHeight);
+            type.baseResolutionWidth, type.baseResolutionHeight,
+            type.frameWidthInBytes, type.frameHeightInBytes);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             return status;
