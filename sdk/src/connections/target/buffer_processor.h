@@ -179,19 +179,19 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     struct VideoDev *m_outputVideoDev;
 
     struct Tofi_v4l2_buffer {
-        uint8_t *data = nullptr;
+        std::shared_ptr<uint8_t> data;
         size_t size = 0;
-        uint16_t *tofiBuffer = nullptr;
+        std::shared_ptr<uint16_t> tofiBuffer;
     };
 
     // Thread-safe pool of empty raw frame buffers for use by capture thread
-    ThreadSafeQueue<uint8_t *> m_v4l2_input_buffer_Q;
+    ThreadSafeQueue<std::shared_ptr<uint8_t>> m_v4l2_input_buffer_Q;
 
     // Thread-safe queue to transfer captured raw frames to the process thread
     ThreadSafeQueue<Tofi_v4l2_buffer> m_capture_to_process_Q;
 
     // Thread-safe pool of ToFi compute output buffers (depth + AB + confidence)
-    ThreadSafeQueue<uint16_t *> m_tofi_io_Buffer_Q;
+    ThreadSafeQueue<std::shared_ptr<uint16_t>> m_tofi_io_Buffer_Q;
 
     // Thread-safe queue for frames that have been fully processed (compute done)
     ThreadSafeQueue<Tofi_v4l2_buffer> m_process_done_Q;
