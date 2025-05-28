@@ -167,8 +167,6 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     uint16_t m_outputFrameWidth;
     uint16_t m_outputFrameHeight;
 
-    uint16_t *m_processedBuffer;
-
     TofiConfig *m_tofiConfig;
     TofiComputeContext *m_tofiComputeContext;
     TofiXYZDealiasData m_xyzDealiasData[11];
@@ -186,23 +184,28 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
         uint16_t *tofiBuffer = nullptr;
     };
 
-    ThreadSafeQueue<Tofi_v4l2_buffer> bufferPool;
-    ThreadSafeQueue<Tofi_v4l2_buffer> processedBufferQueue;
-    ThreadSafeQueue<uint16_t *> tofiBufferQueue;
-    ThreadSafeQueue<uint8_t *> freeFrameBufferQueue;
+    // Thread-safe pool of empty raw frame buffers for use by capture thread
+    ThreadSafeQueue<uint8_t *> m_v4l2_input_buffer_Q;
 
-    std::vector<uint8_t *> preallocatedFrameBuffers;
-    std::vector<uint16_t *> tofiBuffers;
-    std::mutex preallocMutex;
+    // Thread-safe queue to transfer captured raw frames to the process thread
+    ThreadSafeQueue<Tofi_v4l2_buffer> m_capture_to_process_Q;
 
-    size_t rawFrameBufferSize;
-    uint32_t tofiBufferSize;
-    std::thread captureThread;
-    std::thread processingThread;
+    // Thread-safe pool of ToFi compute output buffers (depth + AB + confidence)
+    ThreadSafeQueue<uint16_t *> m_tofi_io_Buffer_Q;
+
+    // Thread-safe queue for frames that have been fully processed (compute done)
+    ThreadSafeQueue<Tofi_v4l2_buffer> m_process_done_Q;
+
+    uint32_t m_rawFrameBufferSize;
+    uint32_t m_tofiBufferSize;
+
+    std::thread m_captureThread;
+    std::thread m_processingThread;
+
     std::atomic<bool> stopThreadsFlag;
-    std::atomic<size_t> processedFrames;
     bool streamRunning = false;
 
     static constexpr int TOFI_BUFFER_COUNT = 10;
-    static constexpr size_t MAX_QUEUE_SIZE = 50;
+    static constexpr size_t MAX_QUEUE_SIZE = 10;
+    static constexpr int TIME_OUT_DELAY = 5;
 };
