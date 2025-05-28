@@ -533,9 +533,22 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
                                               .frame_content(i));
     }
 
+#ifdef DUAL
+    if (mode == 0 || mode == 1) {
+        frame_size =
+            (details.baseResolutionWidth * details.baseResolutionHeight * 2) *
+            sizeof(uint16_t);
+    } else {
+
+        frame_size =
+            (details.baseResolutionWidth * details.baseResolutionHeight * 4) *
+            sizeof(uint16_t);
+    }
+#else
     frame_size =
         (details.baseResolutionWidth * details.baseResolutionHeight * 4) *
         sizeof(uint16_t);
+#endif // DUAL
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
     return status;
