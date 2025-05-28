@@ -139,9 +139,24 @@ aditof::Status BufferProcessor::setInputDevice(VideoDev *inputVideoDev) {
     return aditof::Status::OK;
 }
 
-
+/**
+ * @function BufferProcessor::setVideoProperties
+ *
+ * Initializes and configures internal buffer properties based on the given
+ * frame resolution and memory layout. Allocates raw and ToFi processing buffers
+ * aligned to 64 bytes for optimal performance.
+ *
+ * @param frameWidth         The width of the output frame in pixels.
+ * @param frameHeight        The height of the output frame in pixels.
+ * @param WidthInBytes       The width of the raw frame in bytes (stride).
+ * @param HeightInBytes      The height of the raw frame in bytes.
+ *
+ * @return aditof::Status    Returns OK on success, GENERIC_ERROR on allocation failure.
+ */
 aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
-                                                   int frameHeight) {
+                                                   int frameHeight,
+                                                   int WidthInBytes,
+                                                   int HeightInBytes) {
     using namespace aditof;
     Status status = Status::OK;
     m_vidPropSet = true;
@@ -149,16 +164,13 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     m_outputFrameWidth = frameWidth;
     m_outputFrameHeight = frameHeight;
 
-    LOG(INFO) << __func__ << ": Width : " << m_outputFrameWidth << " Height: " << m_outputFrameHeight;
-
-    size_t rawFrameSize = static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight * 6.5;
-    rawFrameBufferSize = rawFrameSize;
+    rawFrameBufferSize = static_cast<size_t>(WidthInBytes) * HeightInBytes;
     {
         preallocatedFrameBuffers.clear();
         preallocatedFrameBuffers.reserve(TOFI_BUFFER_COUNT);
         std::lock_guard<std::mutex> lock(preallocMutex);
         for (int i = 0; i < TOFI_BUFFER_COUNT; ++i) {
-            uint8_t* buffer = static_cast<uint8_t*>(aligned_alloc(64, rawFrameSize));
+            uint8_t* buffer = static_cast<uint8_t*>(aligned_alloc(64, rawFrameBufferSize));
             if (!buffer) {
                 LOG(ERROR) << __func__ << ": Failed to allocate raw buffer!";
                 status = Status::GENERIC_ERROR;
@@ -185,7 +197,7 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
         tofiBufferQueue.push(buffer);
     }
 
-    LOG(INFO) << __func__ << ": RawBufferSize: " << rawFrameBufferSize << "  tofiBufferSize: " << tofiBufferSize;
+    //LOG(INFO) << __func__ << ": RawBufferSize: " << rawFrameBufferSize << "  tofiBufferSize: " << tofiBufferSize;
     return status;
 }
 
@@ -239,10 +251,14 @@ aditof::Status BufferProcessor::setProcessorProperties(
 
     return aditof::Status::OK;
 }
-
+/**
+ * @function BufferProcessor::captureFrameThread
+ *
+ * Thread function that captures raw frames from a V4L2 video device.
+ * It manages buffer queuing/dequeuing, performs sanity checks, copies
+ * the captured data into a target buffer, and pushes it to a shared buffer pool.
+ */
 void BufferProcessor::captureFrameThread() {
-    LOG(INFO) << __func__ << ": Capture thread started";
-
     long long totalCaptureTime = 0;
     int totalV4L2Captured = 0;
 
@@ -294,8 +310,6 @@ void BufferProcessor::captureFrameThread() {
         std::chrono::duration<double, std::milli> captureTime = captureEnd - captureStart;
         totalCaptureTime += static_cast<long long>(captureTime.count());
 
-	    if(totalV4L2Captured == 0)
-		    LOG(INFO) << __func__ << ": V4l2 frame size: " << buf_data_len;
         totalV4L2Captured++;
 
         Tofi_v4l2_buffer v4l2_frame;
@@ -318,14 +332,18 @@ void BufferProcessor::captureFrameThread() {
     }
     if (totalV4L2Captured > 0) {
         double averageCaptureTime = static_cast<double>(totalCaptureTime) / totalV4L2Captured;
-        LOG(INFO) << __func__ << ": Total frames captured from v4l2: " << totalV4L2Captured;
         //LOG(INFO) << __func__ << ": Average capture time: " << averageCaptureTime << " ms";
     }
 }
 
+/**
+ * @function BufferProcessor::processThread
+ *
+ * Thread function that processes raw frames using the TofiCompute engine.
+ * It dequeues captured frames, prepares compute buffers, performs the computation,
+ * and enqueues the processed result into the processed buffer queue.
+ */
 void BufferProcessor::processThread() {
-    LOG(INFO) << __func__ << ": Processing thread started";
-
     long long totalProcessTime = 0;
     int totalProcessedFrame = 0;
 
@@ -392,6 +410,13 @@ void BufferProcessor::processThread() {
     }
 }
 
+/**
+ * @function BufferProcessor::processBuffer
+ *
+ * Function to retrieve the next available processed buffer.
+ * It copies the computed output into the user-provided buffer and manages buffer reuse.
+ * Returns a status indicating success, busy (no frames), or error.
+ */
 aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     Tofi_v4l2_buffer tof_processed_frame;
     if (!processedBufferQueue.pop(tof_processed_frame)) {

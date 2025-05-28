@@ -114,7 +114,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
   public:
     aditof::Status open();
     aditof::Status setInputDevice(VideoDev *inputVideoDev);
-    aditof::Status setVideoProperties(int frameWidth, int frameHeight);
+    aditof::Status setVideoProperties(int frameWidth, int frameHeight, int WidthInBytes, int HeightInBytes);
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
