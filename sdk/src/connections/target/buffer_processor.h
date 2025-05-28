@@ -29,12 +29,12 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include <thread>
-#include <queue>
-#include <vector>
-#include <mutex>
 #include <atomic>
 #include <condition_variable>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <vector>
 
 #include "v4l_buffer_access_interface.h"
 
@@ -65,20 +65,23 @@ struct VideoDev {
 
 template <typename T>
 class ThreadSafeQueue {
-private:
+  private:
     std::queue<T> queue_;
     mutable std::mutex mutex_;
     std::condition_variable not_empty_;
     std::condition_variable not_full_;
     size_t max_size_;
 
-public:
+  public:
     explicit ThreadSafeQueue(size_t max_size) : max_size_(max_size) {}
 
-    bool push(T item, std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
+    bool
+    push(T item,
+         std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
         std::unique_lock<std::mutex> lock(mutex_);
         auto deadline = std::chrono::steady_clock::now() + timeout;
-        if (!not_full_.wait_until(lock, deadline, [this] { return queue_.size() < max_size_; })) {
+        if (!not_full_.wait_until(
+                lock, deadline, [this] { return queue_.size() < max_size_; })) {
             return false;
         }
         queue_.push(std::move(item));
@@ -87,10 +90,13 @@ public:
         return true;
     }
 
-    bool pop(T& item, std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
+    bool
+    pop(T &item,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
         std::unique_lock<std::mutex> lock(mutex_);
         auto deadline = std::chrono::steady_clock::now() + timeout;
-        if (!not_empty_.wait_until(lock, deadline, [this] { return !queue_.empty(); })) {
+        if (!not_empty_.wait_until(lock, deadline,
+                                   [this] { return !queue_.empty(); })) {
             return false;
         }
         item = std::move(queue_.front());
@@ -114,7 +120,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
   public:
     aditof::Status open();
     aditof::Status setInputDevice(VideoDev *inputVideoDev);
-    aditof::Status setVideoProperties(int frameWidth, int frameHeight, int WidthInBytes, int HeightInBytes);
+    aditof::Status setVideoProperties(int frameWidth, int frameHeight,
+                                      int WidthInBytes, int HeightInBytes);
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
@@ -173,20 +180,19 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     struct VideoDev *m_inputVideoDev;
     struct VideoDev *m_outputVideoDev;
 
-
     struct Tofi_v4l2_buffer {
-        uint8_t* data = nullptr;
+        uint8_t *data = nullptr;
         size_t size = 0;
-        uint16_t* tofiBuffer = nullptr;
+        uint16_t *tofiBuffer = nullptr;
     };
 
     ThreadSafeQueue<Tofi_v4l2_buffer> bufferPool;
     ThreadSafeQueue<Tofi_v4l2_buffer> processedBufferQueue;
-    ThreadSafeQueue<uint16_t*> tofiBufferQueue;
-    ThreadSafeQueue<uint8_t*> freeFrameBufferQueue;
+    ThreadSafeQueue<uint16_t *> tofiBufferQueue;
+    ThreadSafeQueue<uint8_t *> freeFrameBufferQueue;
 
-    std::vector<uint8_t*> preallocatedFrameBuffers;
-    std::vector<uint16_t*> tofiBuffers;
+    std::vector<uint8_t *> preallocatedFrameBuffers;
+    std::vector<uint16_t *> tofiBuffers;
     std::mutex preallocMutex;
 
     size_t rawFrameBufferSize;
@@ -199,5 +205,4 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     static constexpr int TOFI_BUFFER_COUNT = 10;
     static constexpr size_t MAX_QUEUE_SIZE = 50;
-
 };
