@@ -963,13 +963,6 @@ aditof::Status CameraItof::requestFrame(aditof::Frame* frame, uint32_t index) {
 
     Metadata metadata;
 
-    uint16_t *metadataLocation;
-    status = frame->getData("metadata", &metadataLocation);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to get metadata location";
-        return status;
-    }
-
     if (m_enableMetaDatainAB && m_abEnabled) {
         uint16_t *abFrame;
         frame->getData("ab", &abFrame);
@@ -993,6 +986,14 @@ aditof::Status CameraItof::requestFrame(aditof::Frame* frame, uint32_t index) {
     }
 
     metadata.xyzEnabled = m_xyzEnabled;
+
+    uint16_t* metadataLocation;
+    status = frame->getData("metadata", &metadataLocation);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to get metadata location";
+        return status;
+    }
+
     memcpy(reinterpret_cast<uint8_t *>(metadataLocation),
            reinterpret_cast<uint8_t *>(&metadata), sizeof(metadata));
 
