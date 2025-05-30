@@ -214,6 +214,7 @@ if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets/.git" )
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
         set(LWS_WITH_SSL 0 CACHE BOOL "Disable SSL support in libwebsockets")
         set(LWS_STATIC_PIC 1 CACHE BOOL "Enable static position independent code in libwebsockets")
+	set(LWS_WITHOUT_TESTAPPS 1 CACHE BOOL "Build without test-apps")
         set(POSITION_INDEPENDENT_CODE 1)
         # Add the subdirectory
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets)
