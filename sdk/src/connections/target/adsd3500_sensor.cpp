@@ -134,6 +134,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
       m_chipStatus(0), m_imagerStatus(0),
       m_hostConnectionType(aditof::ConnectionType::ON_TARGET) {
     m_sensorName = "adsd3500";
+    m_interruptAvailable = false;
     m_sensorDetails.connectionType = aditof::ConnectionType::ON_TARGET;
     m_sensorDetails.id = driverPath;
     m_sensorConfiguration = "standard";
@@ -328,6 +329,7 @@ aditof::Status Adsd3500Sensor::open() {
             dealiasCheck[0] = 1;
 
             for (int i = 0; i < 10; i++) {
+                // adsd3500_reset();
 #ifdef DUAL
                 chipIDStatus = adsd3500_read_cmd(0x0116, &chipID, 110 * 1000);
 #else
@@ -458,6 +460,7 @@ aditof::Status Adsd3500Sensor::stop() {
 
         dev->started = false;
     }
+    status = adsd3500_getInterruptandReset();
     return status;
 }
 
@@ -1416,6 +1419,42 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     return aditof::Status::OK;
 }
 
+aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
+    Status status = aditof::Status::OK;
+#if defined(NXP)
+    m_chipResetDone = false;
+    m_adsd3500Status = Adsd3500Status::OK;
+    aditof::SensorInterruptCallback cb = [this](Adsd3500Status status) {
+        m_adsd3500Status = status;
+        m_chipResetDone = true;
+    };
+
+    // Register the callback
+    status = adsd3500_register_interrupt_callback(cb);
+
+    // Wait for 2 sec for interrupt
+    LOG(INFO) << "Waiting for interrupt.";
+    int secondsTimeout = 2;
+    int secondsWaited = 0;
+    int secondsWaitingStep = 1;
+    while (!m_chipResetDone && secondsWaited < secondsTimeout) {
+        LOG(INFO) << ".";
+        std::this_thread::sleep_for(std::chrono::seconds(secondsWaitingStep));
+        secondsWaited += secondsWaitingStep;
+    }
+    LOG(INFO) << "Waited: " << secondsWaited << " seconds";
+    adsd3500_unregister_interrupt_callback(cb);
+
+    if (m_interruptAvailable != true) {
+        LOG(INFO) << "Interrupt is not available , Resetting the ADSD3500";
+        adsd3500_reset();
+    }
+
+#endif
+
+    return status;
+}
+
 aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
                                                       uint16_t iniFileLength,
                                                       uint8_t *calData,
@@ -1931,6 +1970,10 @@ aditof::Status Adsd3500Sensor::adsd3500InterruptHandler(int signalValue) {
 
     for (auto m_interruptCallback : m_interruptCallbackMap) {
         m_interruptCallback.second(adsd3500Status);
+    }
+
+    if (status == Status::OK) {
+        m_interruptAvailable = true;
     }
 
     return status;
