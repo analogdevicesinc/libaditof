@@ -69,10 +69,10 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 }
 
 BufferProcessor::BufferProcessor()
-    : m_v4l2_input_buffer_Q(TOFI_BUFFER_COUNT),
-      m_capture_to_process_Q(TOFI_BUFFER_COUNT),
-      m_tofi_io_Buffer_Q(TOFI_BUFFER_COUNT),
-      m_process_done_Q(TOFI_BUFFER_COUNT),
+    : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE),
+      m_capture_to_process_Q(MAX_QUEUE_SIZE),
+      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE),
+      m_process_done_Q(MAX_QUEUE_SIZE),
       m_vidPropSet(false),
       m_processorPropSet(false), m_outputFrameWidth(0),
       m_outputFrameHeight(0), m_tofiConfig(nullptr),
@@ -165,7 +165,7 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
 
     m_rawFrameBufferSize = static_cast<size_t>(WidthInBytes) * HeightInBytes;
     {
-        for (int i = 0; i < TOFI_BUFFER_COUNT; ++i) {
+        for (int i = 0; i < MAX_QUEUE_SIZE; ++i) {
             auto buffer = std::shared_ptr<uint8_t>(
                 new uint8_t[m_rawFrameBufferSize], std::default_delete<uint8_t[]>());
             if (!buffer) {
@@ -185,7 +185,7 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
                         4; /* | Confidance Frame ( W * H * 4 (type: float)) | */
     m_tofiBufferSize = depthSize + abSize + confSize;
 
-    for (int i = 0; i < TOFI_BUFFER_COUNT; ++i) {
+    for (int i = 0; i < MAX_QUEUE_SIZE; ++i) {
         auto buffer = std::shared_ptr<uint16_t>(
                     new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
         if (!buffer) {
@@ -269,6 +269,7 @@ void BufferProcessor::captureFrameThread() {
         std::shared_ptr<uint8_t> v4l2_frame_holder;
 
         if (!m_v4l2_input_buffer_Q.pop(v4l2_frame_holder) || !v4l2_frame_holder) {
+            if (stopThreadsFlag) break;
             LOG(WARNING)
                 << "captureFrameThread: No free buffers m_v4l2_input_buffer_Q size: "
                 << m_v4l2_input_buffer_Q.size();
@@ -372,6 +373,7 @@ void BufferProcessor::processThread() {
     while (!stopThreadsFlag) {
         Tofi_v4l2_buffer process_frame;
         if (!m_capture_to_process_Q.pop(process_frame)) {
+            if (stopThreadsFlag) break;
             LOG(WARNING) << "processThread: No new frames, m_captureToProcessQueue Size: "
                          << m_capture_to_process_Q.size();
             std::this_thread::sleep_for(std::chrono::milliseconds(TIME_OUT_DELAY));
@@ -380,6 +382,7 @@ void BufferProcessor::processThread() {
 
         std::shared_ptr<uint16_t> tofi_compute_io_buff;
         if (!m_tofi_io_Buffer_Q.pop(tofi_compute_io_buff)) {
+            if (stopThreadsFlag) break;
             LOG(WARNING) << "processThread: No ToFi buffers, m_tofi_io_Buffer_Q Size: "
                          << m_tofi_io_Buffer_Q.size();
             std::this_thread::sleep_for(std::chrono::milliseconds(TIME_OUT_DELAY));
@@ -442,7 +445,6 @@ void BufferProcessor::processThread() {
             m_v4l2_input_buffer_Q.push(process_frame.data);
             continue;
         }
-
     }
     if (totalProcessedFrame > 0) {
         double averageProcessTime =
@@ -460,25 +462,45 @@ void BufferProcessor::processThread() {
  */
 aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     Tofi_v4l2_buffer tof_processed_frame;
-    if (!m_process_done_Q.pop(tof_processed_frame)) {
-        LOG(WARNING)
-            << "processBuffer: No processed frames, m_process_done_Q size: "
-            << m_process_done_Q.size();
-        return aditof::Status::BUSY;
+    const std::chrono::milliseconds m_retryDelay(10);
+
+    // Loop for maxTries attempts. 'attempt' counts from 0 to m_maxTries - 1.
+    for (int attempt = 0; attempt < m_maxTries; ++attempt) {
+        if (m_process_done_Q.pop(tof_processed_frame)) {
+            if (buffer && tof_processed_frame.tofiBuffer && tof_processed_frame.size > 0) {
+                // Ensure 'buffer' has enough allocated memory for 'tof_processed_frame.size'
+                // For this example, we assume `buffer` is large enough.
+                memcpy(buffer, tof_processed_frame.tofiBuffer.get(), tof_processed_frame.size);
+
+                // Return buffers to their respective pools
+                m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
+                m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
+
+                return aditof::Status::OK; // Success, exit function
+            } else {
+                // Pop succeeded, but the frame data itself was invalid.
+                LOG(ERROR) << "processBuffer: Pop succeeded but frame data is invalid (buffer/tofiBuffer/size). "
+                           << "Returning error immediately.\n";
+                return aditof::Status::GENERIC_ERROR;
+            }
+        } else {
+            if (attempt < m_maxTries - 1) {
+                // If it's not the last attempt, wait and then the loop will try again.
+                LOG(INFO) << "processBuffer: Pop failed on attempt #" << (attempt + 1)
+                          << ". Retrying in " << m_retryDelay.count() << "ms...\n";
+                std::this_thread::sleep_for(m_retryDelay);
+            } else {
+                // This was the last attempt (m_maxTries - 1 index) and it failed.
+                LOG(WARNING) << "processBuffer: Failed to pop frame after " << m_maxTries << " attempts. "
+                             << "m_process_done_Q size: " << m_process_done_Q.size() << "\n";
+                return aditof::Status::GENERIC_ERROR; // Indicate final failure to the caller
+            }
+        }
     }
 
-    if (buffer && tof_processed_frame.tofiBuffer &&
-        tof_processed_frame.size > 0) {
-        memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
-               tof_processed_frame.size);
-        m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
-        m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
-        return aditof::Status::OK;
-    }
-
-    LOG(ERROR) << "processBuffer: Invalid buffer";
-    if (tof_processed_frame.tofiBuffer)
-        m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
+    // This line should technically not be reached if m_maxTries > 0,
+    // as the loop will either return OK or GENERIC_ERROR.
+    // Included as a safeguard.
     return aditof::Status::GENERIC_ERROR;
 }
 
@@ -493,7 +515,8 @@ aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
     FD_ZERO(&fds);
     FD_SET(dev->fd, &fds);
 
-    tv.tv_sec = 20;
+    tv.tv_sec = stopThreadsFlag ? 0 : 20;
+    //tv.tv_sec = 20;
     tv.tv_usec = 0;
 
     r = select(dev->fd + 1, &fds, NULL, NULL, &tv);
@@ -640,6 +663,7 @@ void BufferProcessor::stopThreads() {
 
     if (m_captureThread.joinable())
         m_captureThread.join();
+
     if (m_processingThread.joinable())
         m_processingThread.join();
 
