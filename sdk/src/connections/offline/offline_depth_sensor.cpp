@@ -370,6 +370,10 @@ aditof::Status OfflineDepthSensor::adsd3500_reset() {
     return aditof::Status::OK;
 }
 
+aditof::Status OfflineDepthSensor::adsd3500_getInterruptandReset() {
+    return aditof::Status::OK;
+}
+
 aditof::Status OfflineDepthSensor::adsd3500_register_interrupt_callback(
     aditof::SensorInterruptCallback &cb) {
     LOG(WARNING)
