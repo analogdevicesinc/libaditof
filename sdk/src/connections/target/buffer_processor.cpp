@@ -71,10 +71,8 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 BufferProcessor::BufferProcessor()
     : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE),
       m_capture_to_process_Q(MAX_QUEUE_SIZE),
-      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE),
-      m_process_done_Q(MAX_QUEUE_SIZE),
-      m_vidPropSet(false),
-      m_processorPropSet(false), m_outputFrameWidth(0),
+      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE),
+      m_vidPropSet(false), m_processorPropSet(false), m_outputFrameWidth(0),
       m_outputFrameHeight(0), m_tofiConfig(nullptr),
       m_tofiComputeContext(nullptr), m_inputVideoDev(nullptr) {
 
@@ -166,8 +164,9 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     m_rawFrameBufferSize = static_cast<size_t>(WidthInBytes) * HeightInBytes;
     {
         for (int i = 0; i < MAX_QUEUE_SIZE; ++i) {
-            auto buffer = std::shared_ptr<uint8_t>(
-                new uint8_t[m_rawFrameBufferSize], std::default_delete<uint8_t[]>());
+            auto buffer =
+                std::shared_ptr<uint8_t>(new uint8_t[m_rawFrameBufferSize],
+                                         std::default_delete<uint8_t[]>());
             if (!buffer) {
                 LOG(ERROR) << __func__ << ": Failed to allocate raw buffer!";
                 status = Status::GENERIC_ERROR;
@@ -187,7 +186,7 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
 
     for (int i = 0; i < MAX_QUEUE_SIZE; ++i) {
         auto buffer = std::shared_ptr<uint16_t>(
-                    new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
+            new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
         if (!buffer) {
             LOG(ERROR) << "setVideoProperties: Failed to allocate ToFi buffer!";
             return aditof::Status::GENERIC_ERROR;
@@ -268,12 +267,15 @@ void BufferProcessor::captureFrameThread() {
         unsigned int buf_data_len = 0;
         std::shared_ptr<uint8_t> v4l2_frame_holder;
 
-        if (!m_v4l2_input_buffer_Q.pop(v4l2_frame_holder) || !v4l2_frame_holder) {
-            if (stopThreadsFlag) break;
-            LOG(WARNING)
-                << "captureFrameThread: No free buffers m_v4l2_input_buffer_Q size: "
-                << m_v4l2_input_buffer_Q.size();
-            std::this_thread::sleep_for(std::chrono::milliseconds(TIME_OUT_DELAY));
+        if (!m_v4l2_input_buffer_Q.pop(v4l2_frame_holder) ||
+            !v4l2_frame_holder) {
+            if (stopThreadsFlag)
+                break;
+            LOG(WARNING) << "captureFrameThread: No free buffers "
+                            "m_v4l2_input_buffer_Q size: "
+                         << m_v4l2_input_buffer_Q.size();
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
 
@@ -284,7 +286,8 @@ void BufferProcessor::captureFrameThread() {
             LOG(ERROR) << __func__
                        << ": waitForBufferPrivate() Failed, retrying...";
             m_v4l2_input_buffer_Q.push(v4l2_frame_holder);
-            std::this_thread::sleep_for(std::chrono::milliseconds(TIME_OUT_DELAY));
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
 
@@ -294,7 +297,8 @@ void BufferProcessor::captureFrameThread() {
                 << __func__
                 << ": dequeueInternalBufferPrivate() Failed, retrying...";
             m_v4l2_input_buffer_Q.push(v4l2_frame_holder);
-            std::this_thread::sleep_for(std::chrono::milliseconds(TIME_OUT_DELAY));
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
 
@@ -308,14 +312,17 @@ void BufferProcessor::captureFrameThread() {
             // Always requeue the buffer to avoid memory leak
             enqueueInternalBufferPrivate(buf, dev);
             m_v4l2_input_buffer_Q.push(v4l2_frame_holder);
-            std::this_thread::sleep_for(std::chrono::milliseconds(TIME_OUT_DELAY));
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
 
-        if(v4l2_frame_holder != nullptr) {
+        if (v4l2_frame_holder != nullptr) {
             memcpy(v4l2_frame_holder.get(), pdata, buf_data_len);
         } else {
-            LOG(WARNING) << __func__ << ": v4l2_frame_holder is nullptr skipping frame copy";
+            LOG(WARNING)
+                << __func__
+                << ": v4l2_frame_holder is nullptr skipping frame copy";
             continue;
         }
 
@@ -373,19 +380,25 @@ void BufferProcessor::processThread() {
     while (!stopThreadsFlag) {
         Tofi_v4l2_buffer process_frame;
         if (!m_capture_to_process_Q.pop(process_frame)) {
-            if (stopThreadsFlag) break;
-            LOG(WARNING) << "processThread: No new frames, m_captureToProcessQueue Size: "
+            if (stopThreadsFlag)
+                break;
+            LOG(WARNING) << "processThread: No new frames, "
+                            "m_captureToProcessQueue Size: "
                          << m_capture_to_process_Q.size();
-            std::this_thread::sleep_for(std::chrono::milliseconds(TIME_OUT_DELAY));
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
 
         std::shared_ptr<uint16_t> tofi_compute_io_buff;
         if (!m_tofi_io_Buffer_Q.pop(tofi_compute_io_buff)) {
-            if (stopThreadsFlag) break;
-            LOG(WARNING) << "processThread: No ToFi buffers, m_tofi_io_Buffer_Q Size: "
-                         << m_tofi_io_Buffer_Q.size();
-            std::this_thread::sleep_for(std::chrono::milliseconds(TIME_OUT_DELAY));
+            if (stopThreadsFlag)
+                break;
+            LOG(WARNING)
+                << "processThread: No ToFi buffers, m_tofi_io_Buffer_Q Size: "
+                << m_tofi_io_Buffer_Q.size();
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(TIME_OUT_DELAY));
             m_v4l2_input_buffer_Q.push(process_frame.data);
             continue;
         }
@@ -403,16 +416,19 @@ void BufferProcessor::processThread() {
             const int numPixels = m_outputFrameWidth * m_outputFrameHeight;
 
             // Map ToFi processing outputs to sections of the shared buffer
-            m_tofiComputeContext->p_depth_frame = tofi_compute_io_buff.get();                // Depth starts at offset 0
-            m_tofiComputeContext->p_ab_frame    = tofi_compute_io_buff.get() + numPixels;   // AB follows depth
-            m_tofiComputeContext->p_conf_frame  = reinterpret_cast<float *>(
-                                            tofi_compute_io_buff.get() + numPixels * 2);    // Confidence follows AB
+            m_tofiComputeContext->p_depth_frame =
+                tofi_compute_io_buff.get(); // Depth starts at offset 0
+            m_tofiComputeContext->p_ab_frame =
+                tofi_compute_io_buff.get() + numPixels; // AB follows depth
+            m_tofiComputeContext->p_conf_frame = reinterpret_cast<float *>(
+                tofi_compute_io_buff.get() +
+                numPixels * 2); // Confidence follows AB
 
             auto processStart = std::chrono::high_resolution_clock::now();
 
-            uint32_t ret =
-                TofiCompute(reinterpret_cast<uint16_t *>(process_frame.data.get()),
-                            m_tofiComputeContext, NULL);
+            uint32_t ret = TofiCompute(
+                reinterpret_cast<uint16_t *>(process_frame.data.get()),
+                m_tofiComputeContext, NULL);
             if (ret != ADI_TOFI_SUCCESS) {
                 LOG(ERROR) << "processThread: TofiCompute failed";
                 m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
@@ -467,10 +483,12 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     // Loop for maxTries attempts. 'attempt' counts from 0 to m_maxTries - 1.
     for (int attempt = 0; attempt < m_maxTries; ++attempt) {
         if (m_process_done_Q.pop(tof_processed_frame)) {
-            if (buffer && tof_processed_frame.tofiBuffer && tof_processed_frame.size > 0) {
+            if (buffer && tof_processed_frame.tofiBuffer &&
+                tof_processed_frame.size > 0) {
                 // Ensure 'buffer' has enough allocated memory for 'tof_processed_frame.size'
                 // For this example, we assume `buffer` is large enough.
-                memcpy(buffer, tof_processed_frame.tofiBuffer.get(), tof_processed_frame.size);
+                memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
+                       tof_processed_frame.size);
 
                 // Return buffers to their respective pools
                 m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
@@ -479,21 +497,27 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                 return aditof::Status::OK; // Success, exit function
             } else {
                 // Pop succeeded, but the frame data itself was invalid.
-                LOG(ERROR) << "processBuffer: Pop succeeded but frame data is invalid (buffer/tofiBuffer/size). "
+                LOG(ERROR) << "processBuffer: Pop succeeded but frame data is "
+                              "invalid (buffer/tofiBuffer/size). "
                            << "Returning error immediately.\n";
                 return aditof::Status::GENERIC_ERROR;
             }
         } else {
             if (attempt < m_maxTries - 1) {
                 // If it's not the last attempt, wait and then the loop will try again.
-                LOG(INFO) << "processBuffer: Pop failed on attempt #" << (attempt + 1)
-                          << ". Retrying in " << m_retryDelay.count() << "ms...\n";
+                LOG(INFO) << "processBuffer: Pop failed on attempt #"
+                          << (attempt + 1) << ". Retrying in "
+                          << m_retryDelay.count() << "ms...\n";
                 std::this_thread::sleep_for(m_retryDelay);
             } else {
                 // This was the last attempt (m_maxTries - 1 index) and it failed.
-                LOG(WARNING) << "processBuffer: Failed to pop frame after " << m_maxTries << " attempts. "
-                             << "m_process_done_Q size: " << m_process_done_Q.size() << "\n";
-                return aditof::Status::GENERIC_ERROR; // Indicate final failure to the caller
+                LOG(WARNING)
+                    << "processBuffer: Failed to pop frame after " << m_maxTries
+                    << " attempts. "
+                    << "m_process_done_Q size: " << m_process_done_Q.size()
+                    << "\n";
+                return aditof::Status::
+                    GENERIC_ERROR; // Indicate final failure to the caller
             }
         }
     }
@@ -637,7 +661,8 @@ void BufferProcessor::startThreads() {
     m_processingThread = std::thread(&BufferProcessor::processThread, this);
     sched_param param;
     param.sched_priority = 20;
-    pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO, &param);
+    pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO,
+                          &param);
 }
 
 void BufferProcessor::stopThreads() {
@@ -668,10 +693,12 @@ void BufferProcessor::stopThreads() {
         m_processingThread.join();
 
     std::shared_ptr<uint8_t> inputBuf;
-    while (m_v4l2_input_buffer_Q.pop(inputBuf)) {}
+    while (m_v4l2_input_buffer_Q.pop(inputBuf)) {
+    }
 
     std::shared_ptr<uint16_t> tofiBuf;
-    while (m_tofi_io_Buffer_Q.pop(tofiBuf)) {}
+    while (m_tofi_io_Buffer_Q.pop(tofiBuf)) {
+    }
 
     LOG(INFO) << __func__ << ": Threads Stopped..";
 }
