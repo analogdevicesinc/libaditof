@@ -117,6 +117,8 @@ class Frame {
      */
     SDK_API virtual Status getMetadataStruct(Metadata &metadata) const;
 
+    SDK_API virtual bool haveDataType(const std::string& dataType);
+
   private:
     std::unique_ptr<FrameImpl> m_impl;
 };

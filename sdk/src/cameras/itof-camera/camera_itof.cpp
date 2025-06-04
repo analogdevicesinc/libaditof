@@ -118,8 +118,6 @@ CameraItof::CameraItof(
 }
 
 CameraItof::~CameraItof() {
-    freeCfgData();
-    m_depth_params_ini_map.clear();
     cleanupXYZtables();
 }
 
@@ -241,7 +239,6 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             }
         }
 
-		//Note: m_depth_params_ini_map is created by retrieveDepthProcessParams
 		//Note: m_depth_params_map is created by retrieveDepthProcessParams
         aditof::Status paramsStatus = retrieveDepthProcessParams();
         if (paramsStatus != Status::OK) {
@@ -331,6 +328,17 @@ aditof::Status CameraItof::stop() {
     m_devStreaming = false;
 
     return status;
+}
+
+aditof::Status CameraItof::getDepthParamtersMap(uint16_t mode, std::map<std::string, std::string> &params) {
+    using namespace aditof;
+
+	if (m_depth_params_map.find(mode) != m_depth_params_map.end()) {
+		params = m_depth_params_map[mode];
+		return Status::OK;
+	}
+
+    return Status::INVALID_ARGUMENT;
 }
 
 aditof::Status CameraItof::setMode(const uint8_t &mode) {
@@ -469,7 +477,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             return status;
         }
 
-        setAdsd3500IniParams(m_iniKeyValPairs);
+        setDepthIniParams(m_iniKeyValPairs, false);
         configureSensorModeDetails();
         m_details.mode = mode;
 
@@ -555,14 +563,16 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         if (!m_pcmFrame) {
             size_t dataSize = 0;
             unsigned char *pData = nullptr;
+            std::string s;
 
-            //NOTE: m_depth_params_ini_map is used here
-            if (m_depth_params_ini_map.size() > 1) {
-                dataSize = m_depth_params_ini_map[std::to_string(mode)].size;
-                pData = m_depth_params_ini_map[std::to_string(mode)].p_data;
-            }
+			auto iniParamsMode = m_depth_params_map.find(mode);
+            // Create a string from the ini parameters
+			for (auto& param : iniParamsMode->second) {
+                s += param.first + "=" + param.second + "\n";
+			}
+			dataSize = s.size();
+            LOG(INFO) << s;
 
-            std::string s(reinterpret_cast<const char *>(pData), dataSize);
 
             aditof::Status localStatus;
             localStatus = m_depthSensor->initTargetDepthCompute(
@@ -654,7 +664,7 @@ CameraItof::getFrameProcessParams(std::map<std::string, std::string> &params) {
 }
 
 aditof::Status
-CameraItof::setFrameProcessParams(std::map<std::string, std::string> &params) {
+CameraItof::setFrameProcessParams(std::map<std::string, std::string> &params, int32_t mode) {
     aditof::Status status = aditof::Status::OK;
 
     if (m_isOffline) {
@@ -664,13 +674,9 @@ CameraItof::setFrameProcessParams(std::map<std::string, std::string> &params) {
             LOG(WARNING)
                 << "Setting camera parameters while streaming is one is "
                    "not recommended";
-        status = setAdsd3500IniParams(params);
+        status = setDepthIniParams(params);
         if (status != aditof::Status::OK) {
             LOG(ERROR) << "Failed to set ini parameters on ADSD3500";
-        }
-        status = m_depthSensor->setDepthComputeParams(params);
-        if (status != aditof::Status::OK) {
-            LOG(ERROR) << "set ini parameters failed in depth-compute.";
         }
     }
     return status;
@@ -1667,36 +1673,29 @@ aditof::Status CameraItof::retrieveDepthProcessParams() {
             std::string iniArray;
             m_depthSensor->getIniParamsArrayForMode(mode, iniArray);
 
-            // 1. Build m_depth_params_ini_map
             std::map<std::string, std::string> paramsMap;
             UtilsIni::getKeyValuePairsFromString(iniArray, paramsMap);
             m_depth_params_map.emplace(mode, paramsMap);
         }
+        if (m_depth_params_map_reset.empty()) {
+			m_depth_params_map_reset = m_depth_params_map;
+        }
     } else {
         loadDepthParamsFromJsonFile(m_initConfigFilePath);
     }
-
-    // TODO: Build m_depth_params_ini_map from m_depth_params_map 
-    //       - it will be faster and more efficent.
-    freeCfgData();
-    for (const auto& mode : m_availableModes) {
-
-        std::string iniArray;
-        m_depthSensor->getIniParamsArrayForMode(mode, iniArray);
-
-        // 2. m_depth_params_ini_map
-        uint8_t* p = new uint8_t[iniArray.size()];
-        if (!p) {
-            LOG(ERROR) << "Failed to allocate memory for ini array";
-            return aditof::Status::GENERIC_ERROR;
-        }
-
-        memcpy(p, iniArray.c_str(), iniArray.size());
-        FileData fval = { (unsigned char*)p, iniArray.size() };
-        m_depth_params_ini_map.emplace(std::to_string(mode), fval);
-    }
-
     return status;
+}
+
+aditof::Status CameraItof::resetDepthProcessParams() {
+	if (m_depth_params_map_reset.empty()) {
+		LOG(WARNING) << "No reset parameters available. "
+			"Please load depth parameters from file first.";
+		return aditof::Status::GENERIC_ERROR;
+	}
+
+    m_depth_params_map = m_depth_params_map_reset;
+
+    return aditof::Status::OK;
 }
 
 aditof::Status
@@ -2591,8 +2590,22 @@ aditof::Status CameraItof::adsd3500GetLaserTemperature(uint16_t &tmpValue) {
     return status;
 }
 
-aditof::Status CameraItof::setAdsd3500IniParams(
-    const std::map<std::string, std::string> &iniKeyValPairs) {
+void CameraItof::UpdateDepthParamsMap(bool update, const char *index, std::string value) {
+
+    if (update) {
+        auto it = m_depth_params_map.find(m_details.mode);
+
+        if (it != m_depth_params_map.end()) {
+			auto indexIt = it->second.find(index);
+            if (indexIt != it->second.end()) {
+                indexIt->second = value;
+            }
+        }
+    }
+}
+
+aditof::Status CameraItof::setDepthIniParams(
+    const std::map<std::string, std::string> &iniKeyValPairs, bool updateDepthMap) {
 
     aditof::Status status = aditof::Status::OK;
 
@@ -2603,6 +2616,9 @@ aditof::Status CameraItof::setAdsd3500IniParams(
         status = adsd3500SetABinvalidationThreshold(std::stoi(it->second));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set abThreshMin";
+
+        UpdateDepthParamsMap(updateDepthMap, "abThreshMin", it->second);
+
     } else {
         LOG(WARNING)
             << "abThreshMin was not found in parameter list, not setting.";
@@ -2613,6 +2629,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
         status = adsd3500SetConfidenceThreshold(std::stoi(it->second));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set confThresh";
+
+        UpdateDepthParamsMap(updateDepthMap, "confThresh", it->second);
     } else {
         LOG(WARNING)
             << "confThresh was not found in parameter list, not setting.";
@@ -2623,6 +2641,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
         status = adsd3500SetRadialThresholdMin(std::stoi(it->second));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set radialThreshMin";
+
+        UpdateDepthParamsMap(updateDepthMap, "radialThreshMin", it->second);
     } else {
         LOG(WARNING) << "radialThreshMin was not found in parameter list, "
                         "not setting.";
@@ -2633,6 +2653,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
         status = adsd3500SetRadialThresholdMax(std::stoi(it->second));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set radialThreshMax";
+
+        UpdateDepthParamsMap(updateDepthMap, "radialThreshMax", it->second);
     } else {
         LOG(WARNING) << "radialThreshMax was not found in parameter list, "
                         "not setting.";
@@ -2643,6 +2665,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
         status = adsd3500SetJBLFfilterSize(std::stoi(it->second));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set jblfWindowSize";
+
+        UpdateDepthParamsMap(updateDepthMap, "jblfWindowSize", it->second);
     } else {
         LOG(WARNING) << "jblfWindowSize was not found in parameter list, "
                         "not setting.";
@@ -2654,6 +2678,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
         status = adsd3500SetJBLFfilterEnableState(en);
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set jblfApplyFlag";
+
+        UpdateDepthParamsMap(updateDepthMap, "jblfApplyFlag", it->second);
     } else {
         LOG(WARNING) << "jblfApplyFlag was not found in parameter list, "
                         "not setting.";
@@ -2664,6 +2690,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
         status = adsd3500SetFrameRate(std::stoi(it->second));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set fps";
+
+        UpdateDepthParamsMap(updateDepthMap, "fps", it->second);
     } else {
         LOG(WARNING) << "fps was not found in parameter list, not setting.";
     }
@@ -2673,6 +2701,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
         status = adsd3500SetVCSELDelay((uint16_t)(std::stoi(it->second)));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set vcselDelay";
+
+        UpdateDepthParamsMap(updateDepthMap, "vcselDelay", it->second);
     } else {
         LOG(WARNING)
             << "vcselDelay was not found in parameter list, not setting.";
@@ -2684,6 +2714,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
             (uint16_t)(std::stoi(it->second)));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set jblfMaxEdge";
+
+        UpdateDepthParamsMap(updateDepthMap, "jblfMaxEdge", it->second);
     } else {
         LOG(WARNING) << "jblfMaxEdge was not found in parameter list, "
                         "not setting.";
@@ -2695,6 +2727,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
             adsd3500SetJBLFABThreshold((uint16_t)(std::stoi(it->second)));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set jblfABThreshold";
+
+        UpdateDepthParamsMap(updateDepthMap, "jblfABThreshold", it->second);
     } else {
         LOG(WARNING) << "jblfABThreshold was not found in parameter list";
     }
@@ -2705,6 +2739,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
             adsd3500SetJBLFGaussianSigma((uint16_t)(std::stoi(it->second)));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set jblfGaussianSigma";
+
+        UpdateDepthParamsMap(updateDepthMap, "jblfGaussianSigma", it->second);
     } else {
         LOG(WARNING)
             << "jblfGaussianSigma was not found in parameter list, "
@@ -2717,6 +2753,8 @@ aditof::Status CameraItof::setAdsd3500IniParams(
             (uint16_t)(std::stoi(it->second)));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set jblfExponentialTerm";
+
+        UpdateDepthParamsMap(updateDepthMap, "jblfExponentialTerm", it->second);
     } else {
         LOG(WARNING)
             << "jblfExponentialTerm was not found in parameter list, "
@@ -2729,11 +2767,20 @@ aditof::Status CameraItof::setAdsd3500IniParams(
             (uint16_t)(std::stoi(it->second)));
         if (status != aditof::Status::OK)
             LOG(WARNING) << "Could not set enablePhaseInvalidation";
+
+        UpdateDepthParamsMap(updateDepthMap, "enablePhaseInvalidation", it->second);
     } else {
         LOG(WARNING)
             << "enablePhaseInvalidation was not found in parameter list, "
                 "not setting.";
     }
+
+#if 0 // This is updated from setMode, and this may not be the best place for this
+    status = m_depthSensor->setDepthComputeParams(iniKeyValPairs); // Update Depth Compute Library
+    if (status != aditof::Status::OK) {
+        LOG(ERROR) << "set ini parameters failed in depth-compute.";
+    }
+#endif //0
 
     return aditof::Status::OK;
 }

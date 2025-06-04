@@ -101,7 +101,7 @@ class SDK_API Camera {
      * @return Status
     */
     virtual Status
-    setFrameProcessParams(std::map<std::string, std::string> &params) = 0;
+    setFrameProcessParams(std::map<std::string, std::string> &params, int32_t mode) = 0;
 
     /**
      * @brief Returns all the modes that are supported by the camera
@@ -426,7 +426,7 @@ class SDK_API Camera {
     /**
      * @brief Get Frame Rate
      * @param[out] fps - See "Get Frame Rate" at https://wiki.analog.com/resources/eval/user-guides/eval-adtf3175x-adsd3500
-     * @return Status
+     * @return Status, int32_t mode
      */
     virtual Status adsd3500GetFrameRate(uint16_t &fps) = 0;
 
@@ -613,6 +613,8 @@ class SDK_API Camera {
     virtual aditof::Status stopRecording() = 0;
     virtual aditof::Status startPlayback(std::string &filePath) = 0;
     virtual aditof::Status stopPlayback() = 0;
+    virtual aditof::Status getDepthParamtersMap(uint16_t mode, std::map<std::string, std::string>& params) = 0;
+    virtual aditof::Status resetDepthProcessParams() = 0;
 };
 
 } // namespace aditof

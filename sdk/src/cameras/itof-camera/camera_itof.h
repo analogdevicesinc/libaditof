@@ -147,7 +147,9 @@ class CameraItof : public aditof::Camera {
     aditof::Status
     getFrameProcessParams(std::map<std::string, std::string> &params) override;
     aditof::Status
-    setFrameProcessParams(std::map<std::string, std::string> &params) override;
+    setFrameProcessParams(std::map<std::string, std::string> &params, int32_t mode);
+
+	aditof::Status getDepthParamtersMap(uint16_t mode, std::map<std::string, std::string>& params) override;
 
   private:
 
@@ -171,12 +173,14 @@ class CameraItof : public aditof::Camera {
      */
     aditof::Status retrieveDepthProcessParams();
 
+    aditof::Status resetDepthProcessParams();
+
     /**
      * Configure ADSD3500 with ini parameters
      * @param[in] iniKeyValPairs - ini parameteres to use
     */
-    aditof::Status setAdsd3500IniParams(
-        const std::map<std::string, std::string> &iniKeyValPairs);
+    aditof::Status setDepthIniParams(
+        const std::map<std::string, std::string> &iniKeyValPairs, bool updateDepthMap = true);
 
     /**
      * @brief Delete allocated tables for X, Y, Z
@@ -193,14 +197,7 @@ class CameraItof : public aditof::Camera {
 
     aditof::Status startPlayback(std::string &filePath) override;
     aditof::Status stopPlayback() override;
-
-    void freeCfgData() {
-        for (auto it = m_depth_params_ini_map.begin(); it != m_depth_params_ini_map.end();
-            ++it) {
-            delete[] it->second.p_data;
-        }
-        m_depth_params_ini_map.clear();
-    }
+    void UpdateDepthParamsMap(bool update, const char * index, std::string value);
 
   private:
     using noArgCallable = std::function<aditof::Status()>;
@@ -218,8 +215,8 @@ class CameraItof : public aditof::Camera {
     bool m_isOffline;
     std::string m_netLinkTest;
 
-    std::map<std::string, FileData> m_depth_params_ini_map;
     std::map<int, std::map<std::string, std::string>> m_depth_params_map;
+    std::map<int, std::map<std::string, std::string>> m_depth_params_map_reset;
 
     TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
 

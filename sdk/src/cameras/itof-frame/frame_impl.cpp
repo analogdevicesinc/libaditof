@@ -129,6 +129,14 @@ aditof::Status FrameImpl::getData(const std::string &dataType,
     return Status::OK;
 }
 
+bool FrameImpl::haveDataType(const std::string& dataType) {
+    if (m_implData->m_dataLocations.count(dataType) > 0) {
+		return (m_implData->m_dataLocations[dataType] != nullptr);
+    }
+
+    return false;
+}
+
 aditof::FrameDataDetails
 FrameImpl::getFrameDetailByName(const aditof::FrameDetails &details,
                                 const std::string name) {
