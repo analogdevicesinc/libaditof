@@ -71,9 +71,8 @@ CameraItof::CameraItof(
     : m_depthSensor(depthSensor), m_devStarted(false), m_devStreaming(false),
       m_adsd3500Enabled(false), m_loadedConfigData(false), m_xyzEnabled(true),
       m_xyzSetViaApi(false), m_cameraFps(0), m_fsyncMode(-1),
-      m_mipiOutputSpeed(-1), m_isdeskewEnabled(0),
-      m_enableTempCompenstation(-1), m_enableMetaDatainAB(-1),
-      m_enableEdgeConfidence(-1), m_modesVersion(0),
+      m_mipiOutputSpeed(1), m_isdeskewEnabled(0), m_enableTempCompenstation(-1),
+      m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
       m_dropFrameOnce(true), m_isOffline(false) {
@@ -252,15 +251,14 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
     } else {
         LOG(WARNING) << "fsyncMode is not being set by SDK.";
     }
-#ifdef NVIDIA
-    if (m_mipiOutputSpeed >= 0) {
+
+    if (m_mipiOutputSpeed != 1) {
         status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set mipiOutputSpeed.";
             return status;
         }
     } else {
-        m_mipiOutputSpeed = 1;
         status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set mipiOutputSpeed.";
@@ -269,27 +267,22 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         LOG(WARNING)
             << "mipiSpeed is not being set by SDK.Setting default 2.5Gbps";
     }
-#else
-    if (m_mipiOutputSpeed >= 0) {
-        status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
+
+    if (!m_isdeskewEnabled) {
+        status = adsd3500SetEnableDeskewAtStreamOn(m_isdeskewEnabled);
         if (status != Status::OK) {
-            LOG(ERROR) << "Failed to set mipiOutputSpeed.";
+            LOG(ERROR) << "Failed to set Enable Deskew at stream on.";
             return status;
         }
     } else {
-        LOG(WARNING) << "mipiSpeed is not being set by SDK.";
+        status = adsd3500SetEnableDeskewAtStreamOn(m_isdeskewEnabled);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Failed to set Enable Deskew at stream on.";
+            return status;
+        }
+        LOG(WARNING)
+            << "deskew is not being set by SDK, Setting it by default.";
     }
-#endif
-#ifdef NVIDIA
-    // Enable deskew by default on NVIDIA platform
-    m_isdeskewEnabled = 1;
-#endif
-    status = adsd3500SetEnableDeskewAtStreamOn(m_isdeskewEnabled);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to set Enable Deskew at stream on.";
-        return status;
-    }
-
     if (m_enableTempCompenstation >= 0) {
         status =
             adsd3500SetEnableTemperatureCompensation(m_enableTempCompenstation);
