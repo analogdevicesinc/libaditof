@@ -2369,7 +2369,8 @@ aditof::Status Adsd3500Sensor::startRecording(std::string &fileName,
     uint32_t paramSize) {
 
     using namespace aditof;
-
+    LOG(INFO) << __func__ << ": Start recording";
+    m_bufferProcessor->startRecording(fileName, (uint8_t *)&parameters, sizeof(paramSize));
     Status status = Status::OK;
 
     return status;

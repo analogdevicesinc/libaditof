@@ -35,8 +35,13 @@
 #include <queue>
 #include <thread>
 #include <vector>
+#include <iomanip>
+#include <random>
+#include <iostream>
+#include <fstream>
 
 #include "v4l_buffer_access_interface.h"
+#include "aditof/depth_sensor_interface.h"
 
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
@@ -113,7 +118,46 @@ class ThreadSafeQueue {
         return queue_.size();
     }
 };
-
+#if 0
+struct offlineparameter_struct {
+    static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;
+    static const uint32_t MAX_FRAME_CONTENT = 6;
+    uint32_t numberOfFrames;
+    const uint32_t formatVersion = 0x00000001;
+    uint16_t frameRate;
+    uint16_t enableMetaDatainAB;
+    TofiXYZDealiasData dealias;
+    struct {
+        uint32_t mode;
+        uint32_t width;
+        uint32_t height;
+        uint32_t totalCaptures;
+    } details;
+    //aditof::DepthSensorModeDetails modeDetailsCache;
+    struct {
+        uint8_t modeNumber;
+        char frameContent[MAX_FRAME_CONTENT][16];
+        uint8_t numberOfPhases;
+        int pixelFormatIndex;
+        int frameWidthInBytes;
+        int frameHeightInBytes;
+        int baseResolutionWidth;
+        int baseResolutionHeight;
+        int metadataSize;
+        int isPCM;
+    } modeDetailsCache;
+    uint32_t fdatadetailsCount;
+    //aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
+    struct {
+        char type[32];
+        uint32_t width;
+        uint32_t height;
+        uint32_t subelementSize;
+        uint32_t subelementsPerElement;
+        uint32_t bytesCount;
+    } fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
+} m_offline_parameters_b;
+#endif
 class BufferProcessor : public aditof::V4lBufferAccessInterface {
   public:
     BufferProcessor();
@@ -149,6 +193,11 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     enqueueInternalBuffer(struct v4l2_buffer &buf) override;
     virtual aditof::Status
     getDeviceFileDescriptor(int &fileDescriptor) override;
+
+    // Stream record and playback support
+    aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
+                                  uint32_t paramSize);
+    aditof::Status stopRecording();
 
   private:
     aditof::Status waitForBufferPrivate(struct VideoDev *dev = nullptr);
@@ -215,4 +264,14 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     int m_maxTries = 3;
 
     uint8_t m_currentModeNumber;
+
+    aditof::Status writeFrame(uint16_t *buffer, uint32_t bufferSize);
+    aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize);
+    enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;
+    const std::string m_folder_path_folder = "/mnt/media";
+    std::string m_folder_path;
+    std::ofstream m_stream_file_out;
+    std::ifstream m_stream_file_in;
+    std::string m_stream_file_name;
+    uint32_t m_frame_count;
 };
