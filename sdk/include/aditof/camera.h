@@ -354,6 +354,13 @@ class SDK_API Camera {
     virtual Status adsd3500SetMIPIOutputSpeed(uint16_t speed) = 0;
 
     /**
+     * @brief Set Enable Deskew at stream on
+     * @param[in] value - See "Set Enable Deskew at stream on" at https://wiki.analog.com/resources/eval/user-guides/eval-adtf3175x-adsd3500
+     * @return Status
+     */
+    virtual Status adsd3500SetEnableDeskewAtStreamOn(uint16_t value) = 0;
+
+    /**
      * @brief Get ADSD3500 MIPI output speed
      * @param[out] speed - See "Get MIPI Output Speed" at https://wiki.analog.com/resources/eval/user-guides/eval-adtf3175x-adsd3500
      * @return Status

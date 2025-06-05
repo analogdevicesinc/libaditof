@@ -71,8 +71,9 @@ CameraItof::CameraItof(
     : m_depthSensor(depthSensor), m_devStarted(false), m_devStreaming(false),
       m_adsd3500Enabled(false), m_loadedConfigData(false), m_xyzEnabled(true),
       m_xyzSetViaApi(false), m_cameraFps(0), m_fsyncMode(-1),
-      m_mipiOutputSpeed(-1), m_enableTempCompenstation(-1),
-      m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
+      m_mipiOutputSpeed(-1), m_isdeskewEnabled(0),
+      m_enableTempCompenstation(-1), m_enableMetaDatainAB(-1),
+      m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
       m_dropFrameOnce(true), m_isOffline(false) {
@@ -251,7 +252,24 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
     } else {
         LOG(WARNING) << "fsyncMode is not being set by SDK.";
     }
-
+#ifdef NVIDIA
+    if (m_mipiOutputSpeed >= 0) {
+        status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Failed to set mipiOutputSpeed.";
+            return status;
+        }
+    } else {
+        m_mipiOutputSpeed = 2.5;
+        status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Failed to set mipiOutputSpeed.";
+            return status;
+        }
+        LOG(WARNING)
+            << "mipiSpeed is not being set by SDK.Setting default 2.5Gbps";
+    }
+#else
     if (m_mipiOutputSpeed >= 0) {
         status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
         if (status != Status::OK) {
@@ -260,6 +278,16 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         }
     } else {
         LOG(WARNING) << "mipiSpeed is not being set by SDK.";
+    }
+#endif
+#ifdef NVIDIA
+    // Enable deskew by default on NVIDIA platform
+    m_isdeskewEnabled = 1;
+#endif
+    status = adsd3500SetEnableDeskewAtStreamOn(m_isdeskewEnabled);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to set Enable Deskew at stream on.";
+        return status;
     }
 
     if (m_enableTempCompenstation >= 0) {
@@ -1744,6 +1772,10 @@ aditof::Status CameraItof::adsd3500GetRadialThresholdMax(int &threshold) {
 
 aditof::Status CameraItof::adsd3500SetMIPIOutputSpeed(uint16_t speed) {
     return m_depthSensor->adsd3500_write_cmd(0x0031, speed);
+}
+
+aditof::Status CameraItof::adsd3500SetEnableDeskewAtStreamOn(uint16_t value) {
+    return m_depthSensor->adsd3500_write_cmd(0x00AB, value);
 }
 
 aditof::Status CameraItof::adsd3500GetMIPIOutputSpeed(uint16_t &speed) {

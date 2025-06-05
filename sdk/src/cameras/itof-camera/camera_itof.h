@@ -98,6 +98,7 @@ class CameraItof : public aditof::Camera {
                                               std::string &fwHash) override;
     aditof::Status adsd3500SetMIPIOutputSpeed(uint16_t speed) override;
     aditof::Status adsd3500GetMIPIOutputSpeed(uint16_t &speed) override;
+    aditof::Status adsd3500SetEnableDeskewAtStreamOn(uint16_t value) override;
     aditof::Status adsd3500GetImagerErrorCode(uint16_t &errcode) override;
     aditof::Status adsd3500SetVCSELDelay(uint16_t delay) override;
     aditof::Status adsd3500GetVCSELDelay(uint16_t &delay) override;
@@ -244,6 +245,7 @@ class CameraItof : public aditof::Camera {
     int16_t m_cameraFps;
     int16_t m_fsyncMode;
     int16_t m_mipiOutputSpeed;
+    uint16_t m_isdeskewEnabled;
     int16_t m_enableTempCompenstation;
     int16_t m_enableMetaDatainAB;
     int16_t m_enableEdgeConfidence;
