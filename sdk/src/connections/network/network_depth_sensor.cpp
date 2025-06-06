@@ -538,9 +538,22 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
                                               .frame_content(i));
     }
 
+#ifdef DUAL
+    if (mode == 0 || mode == 1) {
+        frame_size =
+            (details.baseResolutionWidth * details.baseResolutionHeight * 2) *
+            sizeof(uint16_t);
+    } else {
+
+        frame_size =
+            (details.baseResolutionWidth * details.baseResolutionHeight * 4) *
+            sizeof(uint16_t);
+    }
+#else
     frame_size =
         (details.baseResolutionWidth * details.baseResolutionHeight * 4) *
         sizeof(uint16_t);
+#endif // DUAL
 
     Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
     return status;
@@ -1114,6 +1127,41 @@ NetworkDepthSensor::adsd3500_write_payload(uint8_t *payload,
     net->send_buff[m_sensorIndex].add_func_int32_param(
         static_cast<::google::int32>(payload_len));
     net->send_buff[m_sensorIndex].add_func_bytes_param(payload, payload_len);
+    net->send_buff[m_sensorIndex].set_expect_reply(true);
+
+    if (net->SendCommand() != 0) {
+        LOG(WARNING) << "Send Command Failed";
+        return Status::INVALID_ARGUMENT;
+    }
+
+    if (net->recv_server_data() != 0) {
+        LOG(WARNING) << "Receive Data Failed";
+        return Status::GENERIC_ERROR;
+    }
+
+    if (net->recv_buff[m_sensorIndex].server_status() !=
+        payload::ServerStatus::REQUEST_ACCEPTED) {
+        LOG(WARNING) << "API execution on Target Failed";
+        return Status::GENERIC_ERROR;
+    }
+
+    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+
+    return status;
+}
+
+aditof::Status NetworkDepthSensor::adsd3500_getInterruptandReset() {
+    using namespace aditof;
+
+    Network *net = m_implData->handle.net;
+    std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
+
+    if (!net->isServer_Connected()) {
+        LOG(WARNING) << "Not connected to server";
+        return Status::UNREACHABLE;
+    }
+
+    net->send_buff[m_sensorIndex].set_func_name("Adsd3500GetInterruptAndReset");
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
     if (net->SendCommand() != 0) {
