@@ -58,7 +58,7 @@ CMAKE_PREFIX_PATH="C:\projects\ToF\deps\glog\build_0_6_0\local_path\glog;C:\proj
 
 * Follow below steps to download the SDK, generate MS Visual Studio project and build it directly from command line
 ```console
-git clone --branch v5.0.0 https://github.com/analogdevicesinc/libaditof
+git clone --branch v6.1.0 https://github.com/analogdevicesinc/libaditof
 cd libaditof
 git submodule update --init
 mkdir build
