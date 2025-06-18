@@ -46,6 +46,7 @@ std::unique_ptr<zmq::context_t> zmq_context;
 std::string zmq_ip;
 
 static std::atomic<bool> running{true};
+static std::atomic<bool> threadObj_started{false};
 
 #define RX_BUFFER_BYTES (20996420)
 #define MAX_RETRY_CNT 3
@@ -201,6 +202,10 @@ int Network::ServerConnect(const std::string &ip) {
     threadObj[m_connectionId] =
         std::thread(&Network::call_zmq_service, this, std::ref(ip));
 
+    while (!threadObj_started) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
     Network::Thread_Detached[m_connectionId] = true;
     threadObj[m_connectionId].detach();
 
@@ -220,6 +225,8 @@ int Network::ServerConnect(const std::string &ip) {
             }
         }
         numTry++;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(20 * numTry));
     }
 
     /*Wait for thread to be ready and server is connected*/
@@ -410,6 +417,7 @@ int Network::recv_server_data() {
  */
 
 void Network::call_zmq_service(const std::string &ip) {
+    threadObj_started = true;
     while (running) {
 
         zmq_event_t event;
