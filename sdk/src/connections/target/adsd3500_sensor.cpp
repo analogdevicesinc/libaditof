@@ -335,7 +335,7 @@ aditof::Status Adsd3500Sensor::open() {
 
                 adsd3500StateStatus = adsd3500_read_cmd(0x0020, &adsd3500State);
                 if (adsd3500StateStatus == Status::OK) {
-                    if ((adsd3500State != 0x0) || (adsd3500State != 0x29)) {
+                    if ((adsd3500State != 0x0) && (adsd3500State != 0x29)) {
                         LOG(INFO) << "ADSD3500 is not in good state, Resetting "
                                      "the ADSD3500";
                         adsd3500_reset();
