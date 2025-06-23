@@ -324,12 +324,27 @@ aditof::Status Adsd3500Sensor::open() {
         if (m_firstRun) {
             aditof::Status chipIDStatus = aditof::Status::GENERIC_ERROR;
             aditof::Status dealiasStatus = aditof::Status::GENERIC_ERROR;
+            aditof::Status adsd3500StateStatus = aditof::Status::GENERIC_ERROR;
             uint16_t chipID;
+            uint16_t adsd3500State;
             uint8_t dealiasCheck[32] = {0};
             dealiasCheck[0] = 1;
 
             for (int i = 0; i < 10; i++) {
                 // adsd3500_reset();
+
+                adsd3500StateStatus = adsd3500_read_cmd(0x0020, &adsd3500State);
+                if (adsd3500StateStatus == Status::OK) {
+                    if ((adsd3500State != 0x0) || (adsd3500State != 0x29)) {
+                        LOG(INFO) << "ADSD3500 is not in good state, Resetting "
+                                     "the ADSD3500";
+                        adsd3500_reset();
+                    }
+                } else {
+                    LOG(INFO) << "Could not read the status register, "
+                                 "Resetting ADSD3500";
+                    adsd3500_reset();
+                }
 #ifdef DUAL
                 chipIDStatus = adsd3500_read_cmd(0x0116, &chipID, 110 * 1000);
 #else
@@ -1434,15 +1449,16 @@ aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
 
     // Wait for 2 sec for interrupt
     LOG(INFO) << "Waiting for interrupt.";
-    int secondsTimeout = 2;
+    int secondsTimeout = 100;
     int secondsWaited = 0;
-    int secondsWaitingStep = 1;
+    int secondsWaitingStep = 20;
     while (!m_chipResetDone && secondsWaited < secondsTimeout) {
         LOG(INFO) << ".";
-        std::this_thread::sleep_for(std::chrono::seconds(secondsWaitingStep));
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(secondsWaitingStep));
         secondsWaited += secondsWaitingStep;
     }
-    LOG(INFO) << "Waited: " << secondsWaited << " seconds";
+    LOG(INFO) << "Waited: " << secondsWaited << " ms.";
     adsd3500_unregister_interrupt_callback(cb);
 
     if (m_interruptAvailable != true) {
