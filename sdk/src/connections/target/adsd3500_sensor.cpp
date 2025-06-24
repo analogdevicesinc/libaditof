@@ -463,7 +463,7 @@ aditof::Status Adsd3500Sensor::stop() {
 
         if (!dev->started) {
             LOG(INFO) << "Device " << i << " already stopped";
-            return Status::BUSY;
+            return Status::OK;
         }
         LOG(INFO) << "Stopping device";
 
