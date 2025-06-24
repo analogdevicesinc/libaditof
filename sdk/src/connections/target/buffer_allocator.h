@@ -100,11 +100,16 @@ class m_ThreadSafeQueue {
 };
 
 class BufferAllocator {
-  public:
+  private:
     BufferAllocator();
     ~BufferAllocator();
 
+    // Allow std::shared_ptr to access the private destructor
+    template<typename T, typename _Lp>
+    friend class std::_Sp_counted_ptr;
+
   public:
+    static std::shared_ptr<BufferAllocator> getInstance();
     aditof::Status allocate_queues_memory();
     aditof::Status getBuffer(int index, std::shared_ptr<uint8_t> &buffer);
 
@@ -116,14 +121,10 @@ class BufferAllocator {
     }
 
   public:
-    // Thread-safe pool of empty raw frame buffers for use by capture thread
-    m_ThreadSafeQueue<std::shared_ptr<uint8_t>> m_v4l2_input_buffer_m0_Q;
-    m_ThreadSafeQueue<std::shared_ptr<uint8_t>> m_v4l2_input_buffer_m1_Q;
-    m_ThreadSafeQueue<std::shared_ptr<uint8_t>> m_v4l2_input_buffer_m2_m6_Q;
-
-    // Thread-safe pool of ToFi compute output buffers (depth + AB + confidence)
-    m_ThreadSafeQueue<std::shared_ptr<uint16_t>> m_tofi_io_Buffer_MP_Q;
-    m_ThreadSafeQueue<std::shared_ptr<uint16_t>> m_tofi_io_Buffer_QMP_Q;
+    static constexpr size_t RAW_WIDTH_MAX = 2048;
+    static constexpr size_t RAW_HEIGHT_MAX = 3328;
+    static constexpr size_t TOFI_WIDTH_MAX = 1024;
+    static constexpr size_t TOFI_HEIGHT_MAX = 1024;
 
     struct Tofi_v4l2_buffer {
         std::shared_ptr<uint8_t> data;
@@ -132,19 +133,22 @@ class BufferAllocator {
     };
 
     // Thread-safe pool of empty raw frame buffers for use by capture thread
-    m_ThreadSafeQueue<std::shared_ptr<uint8_t>> *m_v4l2_input_buffer_Q;
+    m_ThreadSafeQueue<std::shared_ptr<uint8_t>> m_v4l2_input_buffer_Q;
 
     // Thread-safe queue to transfer captured raw frames to the process thread
     m_ThreadSafeQueue<Tofi_v4l2_buffer> m_capture_to_process_Q;
 
     // Thread-safe pool of ToFi compute output buffers (depth + AB + confidence)
-    m_ThreadSafeQueue<std::shared_ptr<uint16_t>> *m_tofi_io_Buffer_Q;
+    m_ThreadSafeQueue<std::shared_ptr<uint16_t>> m_tofi_io_Buffer_Q;
 
     // Thread-safe queue for frames that have been fully processed (compute done)
     m_ThreadSafeQueue<Tofi_v4l2_buffer> m_process_done_Q;
 
-    uint32_t m_rawFrameBufferSize_m0, m_rawFrameBufferSize_m1, m_rawFrameBufferSize_m2_m6;
-    uint32_t m_tofiBufferSize_mp, m_tofiBufferSize_qmp;
+    uint32_t m_rawFrameBufferSize;
+    uint32_t m_tofiBufferSize;
 
-    static constexpr size_t MAX_QUEUE_SIZE = 3;
+    static constexpr size_t MAX_QUEUE_SIZE = 4;
+
+private:
+    static std::shared_ptr<BufferAllocator> s_instance;
 };

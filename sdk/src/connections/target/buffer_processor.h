@@ -64,56 +64,6 @@ struct VideoDev {
           started(false) {}
 };
 
-#if 0
-template <typename T>
-class ThreadSafeQueue {
-  private:
-    std::queue<T> queue_;
-    mutable std::mutex mutex_;
-    std::condition_variable not_empty_;
-    std::condition_variable not_full_;
-    size_t max_size_;
-
-  public:
-    explicit ThreadSafeQueue(size_t max_size) : max_size_(max_size) {}
-
-    bool
-    push(T item,
-         std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        auto deadline = std::chrono::steady_clock::now() + timeout;
-        if (!not_full_.wait_until(
-                lock, deadline, [this] { return queue_.size() < max_size_; })) {
-            return false;
-        }
-        queue_.push(std::move(item));
-        lock.unlock();
-        not_empty_.notify_all();
-        return true;
-    }
-
-    bool
-    pop(T &item,
-        std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        auto deadline = std::chrono::steady_clock::now() + timeout;
-        if (!not_empty_.wait_until(lock, deadline,
-                                   [this] { return !queue_.empty(); })) {
-            return false;
-        }
-        item = std::move(queue_.front());
-        queue_.pop();
-        lock.unlock();
-        not_full_.notify_all();
-        return true;
-    }
-
-    size_t size() const {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return queue_.size();
-    }
-};
-#endif
 class BufferProcessor : public aditof::V4lBufferAccessInterface {
   public:
     BufferProcessor();
@@ -181,30 +131,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     struct VideoDev *m_inputVideoDev;
     struct VideoDev *m_outputVideoDev;
 
-    BufferAllocator *m_bufferAllocator;
-
-#if 0
-    struct Tofi_v4l2_buffer {
-        std::shared_ptr<uint8_t> data;
-        size_t size = 0;
-        std::shared_ptr<uint16_t> tofiBuffer;
-    };
-
-
-    // Thread-safe pool of empty raw frame buffers for use by capture thread
-    ThreadSafeQueue<std::shared_ptr<uint8_t>> m_v4l2_input_buffer_Q;
-
-    // Thread-safe queue to transfer captured raw frames to the process thread
-    ThreadSafeQueue<Tofi_v4l2_buffer> m_capture_to_process_Q;
-
-    // Thread-safe pool of ToFi compute output buffers (depth + AB + confidence)
-    ThreadSafeQueue<std::shared_ptr<uint16_t>> m_tofi_io_Buffer_Q;
-
-    // Thread-safe queue for frames that have been fully processed (compute done)
-    ThreadSafeQueue<Tofi_v4l2_buffer> m_process_done_Q;
-#endif
-    uint32_t m_rawFrameBufferSize;
-    uint32_t m_tofiBufferSize;
+    std::shared_ptr<BufferAllocator> m_bufferAllocator;
 
     std::thread m_captureThread;
     std::thread m_processingThread;
@@ -212,7 +139,10 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     std::atomic<bool> stopThreadsFlag;
     bool streamRunning = false;
 
-    static constexpr size_t MAX_QUEUE_SIZE = 3;
+    
+    uint32_t m_rawFrameBufferSize;
+    uint32_t m_tofiBufferSize;
+
     static constexpr int TIME_OUT_DELAY = 5;
 
     int m_maxTries = 3;
