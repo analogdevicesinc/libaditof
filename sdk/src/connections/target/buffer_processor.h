@@ -41,6 +41,7 @@
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
 #include "tofi/tofi_util.h"
+#include "buffer_allocator.h"
 
 #define OUTPUT_DEVICE "/dev/video1"
 
@@ -63,6 +64,7 @@ struct VideoDev {
           started(false) {}
 };
 
+#if 0
 template <typename T>
 class ThreadSafeQueue {
   private:
@@ -111,7 +113,7 @@ class ThreadSafeQueue {
         return queue_.size();
     }
 };
-
+#endif
 class BufferProcessor : public aditof::V4lBufferAccessInterface {
   public:
     BufferProcessor();
@@ -179,11 +181,15 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     struct VideoDev *m_inputVideoDev;
     struct VideoDev *m_outputVideoDev;
 
+    BufferAllocator *m_bufferAllocator;
+
+#if 0
     struct Tofi_v4l2_buffer {
         std::shared_ptr<uint8_t> data;
         size_t size = 0;
         std::shared_ptr<uint16_t> tofiBuffer;
     };
+
 
     // Thread-safe pool of empty raw frame buffers for use by capture thread
     ThreadSafeQueue<std::shared_ptr<uint8_t>> m_v4l2_input_buffer_Q;
@@ -196,7 +202,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     // Thread-safe queue for frames that have been fully processed (compute done)
     ThreadSafeQueue<Tofi_v4l2_buffer> m_process_done_Q;
-
+#endif
     uint32_t m_rawFrameBufferSize;
     uint32_t m_tofiBufferSize;
 

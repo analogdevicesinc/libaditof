@@ -45,6 +45,8 @@ namespace aditof {
  */
 class V4lBufferAccessInterface {
   public:
+    //virtual Status getBuffer(int index, std::shared_ptr<uint8_t> &buffer) = 0;
+
     virtual ~V4lBufferAccessInterface() = default;
 
     virtual Status enqueueInternalBuffer(struct v4l2_buffer &buf) = 0;
