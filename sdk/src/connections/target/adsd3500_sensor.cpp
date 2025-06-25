@@ -2075,6 +2075,51 @@ aditof::Adsd3500Status Adsd3500Sensor::convertIdToAdsd3500Status(int status) {
     case 16:
         return Adsd3500Status::IMAGER_ERROR;
 
+    case 17:
+        return Adsd3500Status::TIMEOUT_ERROR;
+
+    case 19:
+        return Adsd3500Status::DYNAMIC_MODE_SWITCHING_NOT_ENABLED;
+
+    case 20:
+        return Adsd3500Status::INVALID_DYNAMIC_MODE_COMPOSITIONS;
+
+    case 21:
+        return Adsd3500Status::INVALID_PHASE_INVALID_VALUE;
+
+    case 22:
+        return Adsd3500Status::CCB_WRITE_COMPLETE;
+
+    case 23:
+        return Adsd3500Status::INVALID_CCB_WRITE_CRC;
+
+    case 24:
+        return Adsd3500Status::CFG_WRITE_COMPLETE;
+
+    case 25:
+        return Adsd3500Status::INVALID_CFG_WRITE_CRC;
+
+    case 26:
+        return Adsd3500Status::INIT_FW_WRITE_COMPLETE;
+
+    case 27:
+        return Adsd3500Status::INVALID_INIT_FW_WRITE_CRC;
+
+    case 28:
+        return Adsd3500Status::INVALID_BIN_SIZE;
+
+    case 29:
+        return Adsd3500Status::ACK_ERROR;
+
+    case 30:
+        return Adsd3500Status::FLASH_STATUS_CHUNK_ALREADY_FOUND;
+
+    case 34:
+        return Adsd3500Status::INVALID_INI_UPDATE_IN_PCM_MODE;
+
+    case 35:
+        return Adsd3500Status::UNSUPPORTED_MODE_INI_READ;
+
     default: {
         LOG(ERROR) << "Unknown ID: " << status;
         return Adsd3500Status::UNKNOWN_ERROR_ID;
