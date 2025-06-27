@@ -960,11 +960,6 @@ aditof::Status Adsd3500Sensor::getControl(const std::string &control,
             return Status::OK;
         }
 
-        if (control == "fps") {
-            value = m_controls.at("fps");
-            return Status::OK;
-        }
-
         // Send the command that reads the control value
         struct v4l2_control ctrl;
         memset(&ctrl, 0, sizeof(ctrl));
