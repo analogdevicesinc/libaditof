@@ -960,6 +960,11 @@ aditof::Status Adsd3500Sensor::getControl(const std::string &control,
             return Status::OK;
         }
 
+        if (control == "fps") {
+            value = m_controls.at("fps");
+            return Status::OK;
+        }
+
         // Send the command that reads the control value
         struct v4l2_control ctrl;
         memset(&ctrl, 0, sizeof(ctrl));
@@ -2119,6 +2124,9 @@ aditof::Adsd3500Status Adsd3500Sensor::convertIdToAdsd3500Status(int status) {
 
     case 35:
         return Adsd3500Status::UNSUPPORTED_MODE_INI_READ;
+
+    case 41:
+        return Adsd3500Status::IMAGER_STREAM_OFF;
 
     default: {
         LOG(ERROR) << "Unknown ID: " << status;

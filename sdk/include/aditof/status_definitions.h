@@ -91,6 +91,7 @@ enum class Adsd3500Status {
     FLASH_STATUS_CHUNK_ALREADY_FOUND,  //!< Flash status chunck already found
     INVALID_INI_UPDATE_IN_PCM_MODE,    //!< Invalid INI update in PCM mode
     UNSUPPORTED_MODE_INI_READ,         //!< Unsupported mode INI read
+    IMAGER_STREAM_OFF,                 //!< Stream off from imager
     UNKNOWN_ERROR_ID                   //!< Unknown ID read from ADSD3500
 };
 
