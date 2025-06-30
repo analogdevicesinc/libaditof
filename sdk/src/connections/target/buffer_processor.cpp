@@ -252,8 +252,6 @@ void BufferProcessor::captureFrameThread() {
         unsigned int buf_data_len = 0;
         std::shared_ptr<uint8_t> v4l2_frame_holder;
 
-        LOG(INFO) << "captureFrameThread: Attempting to pop from m_v4l2_input_buffer_Q, size: "
-                  << m_bufferAllocator->m_v4l2_input_buffer_Q.size();
         if (!m_bufferAllocator->m_v4l2_input_buffer_Q.pop(v4l2_frame_holder) ||
             !v4l2_frame_holder) {
             if (stopThreadsFlag)
@@ -265,8 +263,7 @@ void BufferProcessor::captureFrameThread() {
                 std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
-        LOG(INFO) << "captureFrameThread: Popped raw buffer at address: "
-                  << static_cast<void*>(v4l2_frame_holder.get());
+
         auto captureStart = std::chrono::high_resolution_clock::now();
 
         status = waitForBufferPrivate(dev);
@@ -349,12 +346,6 @@ void BufferProcessor::captureFrameThread() {
         if (enqueueInternalBufferPrivate(buf, dev) != aditof::Status::OK) {
             LOG(ERROR) << __func__ << ": enqueueInternalBufferPrivate() Failed";
         }
-
-        LOG(INFO) << "captureFrameThread: Frame captured, m_v4l2_input_buffer_Q size: "
-                  << m_bufferAllocator->m_v4l2_input_buffer_Q.size()
-                  << ", m_capture_to_process_Q size: "
-                  << m_bufferAllocator->m_capture_to_process_Q.size();
-
         // (Optional) A short sleep to avoid hammering the device, if needed.
         //std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
@@ -384,8 +375,6 @@ void BufferProcessor::processThread() {
 
     while (!stopThreadsFlag) {
         BufferAllocator::Tofi_v4l2_buffer process_frame;
-        LOG(INFO) << "processThread: Attempting to pop from m_capture_to_process_Q, size: "
-                  << m_bufferAllocator->m_capture_to_process_Q.size();
         if (!m_bufferAllocator->m_capture_to_process_Q.pop(process_frame)) {
             if (stopThreadsFlag)
                 break;
@@ -396,12 +385,8 @@ void BufferProcessor::processThread() {
                 std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
-        LOG(INFO) << "processThread: Popped frame with raw buffer at address: "
-                  << static_cast<void*>(process_frame.data.get());
 
         std::shared_ptr<uint16_t> tofi_compute_io_buff;
-        LOG(INFO) << "processThread: Attempting to pop from m_tofi_io_Buffer_Q, size: "
-                  << m_bufferAllocator->m_tofi_io_Buffer_Q.size();
         if (!m_bufferAllocator->m_tofi_io_Buffer_Q.pop(tofi_compute_io_buff)) {
             if (stopThreadsFlag)
                 break;
@@ -417,8 +402,6 @@ void BufferProcessor::processThread() {
                 std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
-        LOG(INFO) << "processThread: Popped ToFi buffer at address: "
-                  << static_cast<void*>(tofi_compute_io_buff.get());
 
         if (process_frame.size > m_rawFrameBufferSize) {
             LOG(ERROR)
@@ -720,16 +703,12 @@ void BufferProcessor::startThreads() {
     cap_param.sched_priority = 20; // Lower priority than processing thread
     if (pthread_setschedparam(m_captureThread.native_handle(), SCHED_FIFO, &cap_param) != 0) {
         LOG(WARNING) << "Failed to set SCHED_FIFO for capture thread: " << strerror(errno);
-    } else {
-        LOG(INFO) << "Capture thread set to SCHED_FIFO with priority 15";
     }
 
     sched_param param;
     param.sched_priority = 15;
     if (pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO, &param) != 0) {
         LOG(WARNING) << "Failed to set SCHED_FIFO for processing thread: " << strerror(errno);
-    } else {
-        LOG(INFO) << "Processing thread set to SCHED_FIFO with priority 20";
     }
 }
 

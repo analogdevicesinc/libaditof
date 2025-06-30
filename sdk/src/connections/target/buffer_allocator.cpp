@@ -66,7 +66,7 @@ std::shared_ptr<BufferAllocator> BufferAllocator::getInstance() {
             [](BufferAllocator* ptr) {
                 delete ptr; // Calls private destructor
             });
-        LOG(INFO) << "Created singleton BufferAllocator at: " << static_cast<void*>(s_instance.get());
+        //LOG(INFO) << "Created singleton BufferAllocator at: " << static_cast<void*>(s_instance.get());
     }
     return s_instance;
 }
@@ -77,31 +77,13 @@ BufferAllocator::BufferAllocator()
       m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE),
       m_capture_to_process_Q(MAX_QUEUE_SIZE),
       m_process_done_Q(MAX_QUEUE_SIZE) {
-
     LOG(INFO) << "BufferAllocator initialized with MAX_QUEUE_SIZE: " << MAX_QUEUE_SIZE;
 }
 
 BufferAllocator::~BufferAllocator() {
-
-    LOG(INFO) << "BufferAllocator destructor: Clearing queues";
     clearQueue(m_v4l2_input_buffer_Q);
     clearQueue(m_tofi_io_Buffer_Q);
     LOG(INFO) << "All queues cleared.";
-}
-
-aditof::Status BufferAllocator::getBuffer(int index, std::shared_ptr<uint8_t> &buffer) {
-    if (index < 0 || static_cast<size_t>(index) >= MAX_QUEUE_SIZE) {
-        LOG(ERROR) << "getBuffer: Invalid index " << index;
-        return aditof::Status::GENERIC_ERROR;
-    }
-
-    // Pop a buffer from m_v4l2_input_buffer_Q
-    if (!m_v4l2_input_buffer_Q.pop(buffer)) {
-        LOG(ERROR) << "getBuffer: Failed to pop buffer at index " << index;
-        return aditof::Status::GENERIC_ERROR;
-    }
-    LOG(INFO) << "getBuffer: Retrieved buffer at index " << index << " address: " << static_cast<void*>(buffer.get());
-    return aditof::Status::OK;
 }
 
 /**
@@ -123,7 +105,6 @@ aditof::Status BufferAllocator::allocate_queues_memory()
 
     // Allocate raw frame buffers for the maximum size (Mode 1: 2048x3328)
     m_rawFrameBufferSize = static_cast<size_t>(RAW_WIDTH_MAX) * RAW_HEIGHT_MAX;
-    LOG(INFO) << "Allocating " << MAX_QUEUE_SIZE << " raw buffers of size " << m_rawFrameBufferSize << " bytes each";
     for (size_t i = 0; i < MAX_QUEUE_SIZE; ++i) {
         std::shared_ptr<uint8_t> buffer;
         try {
@@ -140,15 +121,12 @@ aditof::Status BufferAllocator::allocate_queues_memory()
             status = Status::GENERIC_ERROR;
             break;
         }
-        LOG(INFO) << "Allocated raw buffer #" << i << " at address: " << static_cast<void*>(buffer.get());
         if (!m_v4l2_input_buffer_Q.push(buffer)) {
             LOG(ERROR) << __func__ << ": Failed to push raw buffer #" << i << " to m_v4l2_input_buffer_Q";
             status = Status::GENERIC_ERROR;
             break;
         }
-        LOG(INFO) << "Pushed raw buffer #" << i << " to m_v4l2_input_buffer_Q";
     }
-    LOG(INFO) << "m_v4l2_input_buffer_Q size after allocation: " << m_v4l2_input_buffer_Q.size();
 
     // Allocate ToFi compute buffers for the maximum size (MP mode: 1024x1024)
     uint32_t depthSize =
@@ -158,7 +136,6 @@ aditof::Status BufferAllocator::allocate_queues_memory()
         TOFI_WIDTH_MAX * TOFI_HEIGHT_MAX * 4;   /* | Confidance Frame ( W * H * 4 (type: float)) | */
     m_tofiBufferSize = depthSize + abSize + confSize;
 
-    LOG(INFO) << "Allocating " << MAX_QUEUE_SIZE << " ToFi buffers of size " << m_tofiBufferSize << " bytes each";
     for (size_t i = 0; i < MAX_QUEUE_SIZE; ++i) {
         std::shared_ptr<uint16_t> buffer;
         try {
@@ -175,22 +152,17 @@ aditof::Status BufferAllocator::allocate_queues_memory()
             status = Status::GENERIC_ERROR;
             break;
         }
-        LOG(INFO) << "Allocated ToFi buffer #" << i << " at address: " << static_cast<void*>(buffer.get());
         if (!m_tofi_io_Buffer_Q.push(buffer)) {
             LOG(ERROR) << __func__ << ": Failed to push ToFi buffer #" << i << " to m_tofi_io_Buffer_Q";
             status = Status::GENERIC_ERROR;
             break;
         }
-        LOG(INFO) << "Pushed ToFi buffer #" << i << " to m_tofi_io_Buffer_Q";
     }
-    LOG(INFO) << "m_tofi_io_Buffer_Q size after allocation: " << m_tofi_io_Buffer_Q.size();
 
     if (status != Status::OK) {
         LOG(ERROR) << __func__ << ": Allocation failed, clearing queues";
         clearQueue(m_v4l2_input_buffer_Q);
         clearQueue(m_tofi_io_Buffer_Q);
     }
-
-    LOG(INFO) << __func__ << " Done!! Status: " << (status == Status::OK ? "OK" : "GENERIC_ERROR");
     return status;
 }

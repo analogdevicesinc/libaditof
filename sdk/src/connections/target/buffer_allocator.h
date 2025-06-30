@@ -38,18 +38,6 @@
 
 #include "v4l_buffer_access_interface.h"
 
-#define RAW_WIDTH_M0  2048
-#define RAW_HEIGHT_M0 2560
-#define RAW_WIDTH_M1  2048
-#define RAW_HEIGHT_M1 3328
-#define RAW_WIDTH_M2_M6 2560
-#define RAW_HEIGHT_M2_M6  512
-
-#define TOFI_WIDTH_MP 1024
-#define TOFI_HEIGHT_MP 1024
-#define TOFI_WIDTH_QMP 512
-#define TOFI_HEIGHT_QMP 512
-
 template <typename T>
 class m_ThreadSafeQueue {
   private:
@@ -111,7 +99,6 @@ class BufferAllocator {
   public:
     static std::shared_ptr<BufferAllocator> getInstance();
     aditof::Status allocate_queues_memory();
-    aditof::Status getBuffer(int index, std::shared_ptr<uint8_t> &buffer);
 
     template <typename T>
     static void clearQueue(m_ThreadSafeQueue<std::shared_ptr<T>> &queue) {
