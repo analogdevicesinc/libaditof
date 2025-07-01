@@ -93,7 +93,7 @@ class BufferAllocator {
     ~BufferAllocator();
 
     // Allow std::shared_ptr to access the private destructor
-    template<typename T, typename _Lp>
+    template <typename T, typename _Lp>
     friend class std::_Sp_counted_ptr;
 
   public:
@@ -136,6 +136,6 @@ class BufferAllocator {
 
     static constexpr size_t MAX_QUEUE_SIZE = 4;
 
-private:
+  private:
     static std::shared_ptr<BufferAllocator> s_instance;
 };

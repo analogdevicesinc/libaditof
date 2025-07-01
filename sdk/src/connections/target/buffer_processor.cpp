@@ -54,7 +54,6 @@
 
 #include "buffer_processor.h"
 
-
 uint8_t depthComputeOpenSourceEnabled = 0;
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
@@ -78,7 +77,7 @@ BufferProcessor::BufferProcessor()
     m_outputVideoDev = new VideoDev();
 
     LOG(INFO) << "BufferProcessor initialized with BufferAllocator at: "
-              << static_cast<void*>(m_bufferAllocator.get());
+              << static_cast<void *>(m_bufferAllocator.get());
 }
 
 BufferProcessor::~BufferProcessor() {
@@ -175,11 +174,13 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     LOG(INFO) << "setVideoProperties: Mode " << modeNumber
               << ", RawBufferSize: " << m_rawFrameBufferSize
               << ", ToFiBufferSize: " << m_tofiBufferSize;
-    LOG(INFO) << "BufferAllocator instance: " << static_cast<void*>(m_bufferAllocator.get());
-    LOG(INFO) << "Verifying allocated buffer sizes: m_v4l2_input_buffer_Q size: "
-              << m_bufferAllocator->m_v4l2_input_buffer_Q.size()
-              << ", m_tofi_io_Buffer_Q size: "
-              << m_bufferAllocator->m_tofi_io_Buffer_Q.size();
+    LOG(INFO) << "BufferAllocator instance: "
+              << static_cast<void *>(m_bufferAllocator.get());
+    LOG(INFO)
+        << "Verifying allocated buffer sizes: m_v4l2_input_buffer_Q size: "
+        << m_bufferAllocator->m_v4l2_input_buffer_Q.size()
+        << ", m_tofi_io_Buffer_Q size: "
+        << m_bufferAllocator->m_tofi_io_Buffer_Q.size();
     return status;
 }
 
@@ -270,8 +271,10 @@ void BufferProcessor::captureFrameThread() {
         if (status != aditof::Status::OK) {
             LOG(ERROR) << __func__
                        << ": waitForBufferPrivate() Failed, retrying...";
-            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(v4l2_frame_holder)) {
-                LOG(ERROR) << "captureFrameThread: Failed to push back raw buffer";
+            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                    v4l2_frame_holder)) {
+                LOG(ERROR)
+                    << "captureFrameThread: Failed to push back raw buffer";
             }
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(TIME_OUT_DELAY));
@@ -283,8 +286,10 @@ void BufferProcessor::captureFrameThread() {
             LOG(ERROR)
                 << __func__
                 << ": dequeueInternalBufferPrivate() Failed, retrying...";
-            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(v4l2_frame_holder)) {
-                LOG(ERROR) << "captureFrameThread: Failed to push back raw buffer";
+            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                    v4l2_frame_holder)) {
+                LOG(ERROR)
+                    << "captureFrameThread: Failed to push back raw buffer";
             }
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(TIME_OUT_DELAY));
@@ -300,8 +305,10 @@ void BufferProcessor::captureFrameThread() {
                 << ", len: " << buf_data_len;
             // Always requeue the buffer to avoid memory leak
             enqueueInternalBufferPrivate(buf, dev);
-            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(v4l2_frame_holder)) {
-                LOG(ERROR) << "captureFrameThread: Failed to push back raw buffer";
+            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                    v4l2_frame_holder)) {
+                LOG(ERROR)
+                    << "captureFrameThread: Failed to push back raw buffer";
             }
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(TIME_OUT_DELAY));
@@ -315,8 +322,10 @@ void BufferProcessor::captureFrameThread() {
                 << __func__
                 << ": v4l2_frame_holder is nullptr skipping frame copy";
             enqueueInternalBufferPrivate(buf, dev);
-            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(v4l2_frame_holder)) {
-                LOG(ERROR) << "captureFrameThread: Failed to push back raw buffer";
+            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                    v4l2_frame_holder)) {
+                LOG(ERROR)
+                    << "captureFrameThread: Failed to push back raw buffer";
             }
             continue;
         }
@@ -332,12 +341,15 @@ void BufferProcessor::captureFrameThread() {
         v4l2_frame.data = v4l2_frame_holder;
         v4l2_frame.size = buf_data_len;
 
-        if (!m_bufferAllocator->m_capture_to_process_Q.push(std::move(v4l2_frame))) {
+        if (!m_bufferAllocator->m_capture_to_process_Q.push(
+                std::move(v4l2_frame))) {
             LOG(WARNING) << "captureFrameThread: Push timeout to bufferPool, "
                             "m_capture_to_process_Q Size: "
                          << m_bufferAllocator->m_capture_to_process_Q.size();
-            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(v4l2_frame_holder)) {
-                LOG(ERROR) << "captureFrameThread: Failed to push back raw buffer";
+            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                    v4l2_frame_holder)) {
+                LOG(ERROR)
+                    << "captureFrameThread: Failed to push back raw buffer";
             }
             enqueueInternalBufferPrivate(buf);
             continue;
@@ -394,23 +406,26 @@ void BufferProcessor::processThread() {
                 << "processThread: No ToFi buffers, m_tofi_io_Buffer_Q Size: "
                 << m_bufferAllocator->m_tofi_io_Buffer_Q.size();
 
-           if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(process_frame.data)) {
+            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                    process_frame.data)) {
                 LOG(ERROR) << "processThread: Failed to push back raw buffer";
             }
-            
+
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
 
         if (process_frame.size > m_rawFrameBufferSize) {
-            LOG(ERROR)
-                << "processThread: Frame size " << process_frame.size
-                << " exceeds allocated raw buffer size " << m_rawFrameBufferSize;
-            if (!m_bufferAllocator->m_tofi_io_Buffer_Q.push(tofi_compute_io_buff)) {
+            LOG(ERROR) << "processThread: Frame size " << process_frame.size
+                       << " exceeds allocated raw buffer size "
+                       << m_rawFrameBufferSize;
+            if (!m_bufferAllocator->m_tofi_io_Buffer_Q.push(
+                    tofi_compute_io_buff)) {
                 LOG(ERROR) << "processThread: Failed to push back ToFi buffer";
             }
-            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(process_frame.data)) {
+            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                    process_frame.data)) {
                 LOG(ERROR) << "processThread: Failed to push back raw buffer";
             }
             continue;
@@ -455,8 +470,10 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext, NULL);
             if (ret != ADI_TOFI_SUCCESS) {
                 LOG(ERROR) << "processThread: TofiCompute failed";
-                m_bufferAllocator->m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                m_bufferAllocator->m_v4l2_input_buffer_Q.push(process_frame.data);
+                m_bufferAllocator->m_tofi_io_Buffer_Q.push(
+                    tofi_compute_io_buff);
+                m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                    process_frame.data);
                 m_tofiComputeContext->p_depth_frame = tempDepthFrame;
                 m_tofiComputeContext->p_ab_frame = tempAbFrame;
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
@@ -473,12 +490,13 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_ab_frame = tempAbFrame;
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
         } else {
-            LOG(WARNING)
-                << "processThread: Invalid ToFi buffer";
-            if (!m_bufferAllocator->m_tofi_io_Buffer_Q.push(tofi_compute_io_buff)) {
+            LOG(WARNING) << "processThread: Invalid ToFi buffer";
+            if (!m_bufferAllocator->m_tofi_io_Buffer_Q.push(
+                    tofi_compute_io_buff)) {
                 LOG(ERROR) << "processThread: Failed to push back ToFi buffer";
             }
-            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(process_frame.data)) {
+            if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                    process_frame.data)) {
                 LOG(ERROR) << "processThread: Failed to push back raw buffer";
             }
             continue;
@@ -487,7 +505,8 @@ void BufferProcessor::processThread() {
         process_frame.tofiBuffer = tofi_compute_io_buff;
         process_frame.size = m_tofiBufferSize;
 
-        if (!m_bufferAllocator->m_process_done_Q.push(std::move(process_frame))) {
+        if (!m_bufferAllocator->m_process_done_Q.push(
+                std::move(process_frame))) {
             LOG(WARNING) << "processThread: Push timeout to "
                             "m_process_done_Q, ProcessedQueueSize: "
                          << m_bufferAllocator->m_process_done_Q.size();
@@ -525,12 +544,16 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                        tof_processed_frame.size);
 
                 // Return buffers to their respective pools
-                    if (!m_bufferAllocator->m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer)) {
-                        LOG(ERROR) << "processBuffer: Failed to push back ToFi buffer";
-                    }
-                    if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(tof_processed_frame.data)) {
-                        LOG(ERROR) << "processBuffer: Failed to push back raw buffer";
-                    }
+                if (!m_bufferAllocator->m_tofi_io_Buffer_Q.push(
+                        tof_processed_frame.tofiBuffer)) {
+                    LOG(ERROR)
+                        << "processBuffer: Failed to push back ToFi buffer";
+                }
+                if (!m_bufferAllocator->m_v4l2_input_buffer_Q.push(
+                        tof_processed_frame.data)) {
+                    LOG(ERROR)
+                        << "processBuffer: Failed to push back raw buffer";
+                }
 
                 return aditof::Status::OK; // Success, exit function
             } else {
@@ -552,8 +575,8 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                 LOG(WARNING)
                     << "processBuffer: Failed to pop frame after " << m_maxTries
                     << " attempts. "
-                    << "m_process_done_Q size: " << m_bufferAllocator->m_process_done_Q.size()
-                    << "\n";
+                    << "m_process_done_Q size: "
+                    << m_bufferAllocator->m_process_done_Q.size() << "\n";
                 return aditof::Status::
                     GENERIC_ERROR; // Indicate final failure to the caller
             }
@@ -701,14 +724,18 @@ void BufferProcessor::startThreads() {
     // Schedule capture thread
     sched_param cap_param;
     cap_param.sched_priority = 20; // Lower priority than processing thread
-    if (pthread_setschedparam(m_captureThread.native_handle(), SCHED_FIFO, &cap_param) != 0) {
-        LOG(WARNING) << "Failed to set SCHED_FIFO for capture thread: " << strerror(errno);
+    if (pthread_setschedparam(m_captureThread.native_handle(), SCHED_FIFO,
+                              &cap_param) != 0) {
+        LOG(WARNING) << "Failed to set SCHED_FIFO for capture thread: "
+                     << strerror(errno);
     }
 
     sched_param param;
     param.sched_priority = 15;
-    if (pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO, &param) != 0) {
-        LOG(WARNING) << "Failed to set SCHED_FIFO for processing thread: " << strerror(errno);
+    if (pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO,
+                              &param) != 0) {
+        LOG(WARNING) << "Failed to set SCHED_FIFO for processing thread: "
+                     << strerror(errno);
     }
 }
 

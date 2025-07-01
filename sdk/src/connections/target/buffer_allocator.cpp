@@ -62,8 +62,7 @@ std::shared_ptr<BufferAllocator> BufferAllocator::getInstance() {
     if (!s_instance) {
         // Custom deleter to call private destructor
         s_instance = std::shared_ptr<BufferAllocator>(
-            new BufferAllocator(),
-            [](BufferAllocator* ptr) {
+            new BufferAllocator(), [](BufferAllocator *ptr) {
                 delete ptr; // Calls private destructor
             });
         //LOG(INFO) << "Created singleton BufferAllocator at: " << static_cast<void*>(s_instance.get());
@@ -71,13 +70,11 @@ std::shared_ptr<BufferAllocator> BufferAllocator::getInstance() {
     return s_instance;
 }
 
-
 BufferAllocator::BufferAllocator()
-    : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE),
-      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE),
-      m_capture_to_process_Q(MAX_QUEUE_SIZE),
-      m_process_done_Q(MAX_QUEUE_SIZE) {
-    LOG(INFO) << "BufferAllocator initialized with MAX_QUEUE_SIZE: " << MAX_QUEUE_SIZE;
+    : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE), m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE),
+      m_capture_to_process_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE) {
+    LOG(INFO) << "BufferAllocator initialized with MAX_QUEUE_SIZE: "
+              << MAX_QUEUE_SIZE;
 }
 
 BufferAllocator::~BufferAllocator() {
@@ -96,8 +93,7 @@ BufferAllocator::~BufferAllocator() {
  *
  * @return aditof::Status    Returns OK on success, GENERIC_ERROR on allocation failure.
  */
-aditof::Status BufferAllocator::allocate_queues_memory()
-{
+aditof::Status BufferAllocator::allocate_queues_memory() {
     using namespace aditof;
     Status status = Status::OK;
 
@@ -108,11 +104,11 @@ aditof::Status BufferAllocator::allocate_queues_memory()
     for (size_t i = 0; i < MAX_QUEUE_SIZE; ++i) {
         std::shared_ptr<uint8_t> buffer;
         try {
-            buffer = std::shared_ptr<uint8_t>(
-                new uint8_t[m_rawFrameBufferSize],
-                std::default_delete<uint8_t[]>());
+            buffer = std::shared_ptr<uint8_t>(new uint8_t[m_rawFrameBufferSize],
+                                              std::default_delete<uint8_t[]>());
         } catch (const std::bad_alloc &e) {
-            LOG(ERROR) << __func__ << ": Failed to allocate raw buffer #" << i << ": " << e.what();
+            LOG(ERROR) << __func__ << ": Failed to allocate raw buffer #" << i
+                       << ": " << e.what();
             status = Status::GENERIC_ERROR;
             break;
         }
@@ -122,7 +118,8 @@ aditof::Status BufferAllocator::allocate_queues_memory()
             break;
         }
         if (!m_v4l2_input_buffer_Q.push(buffer)) {
-            LOG(ERROR) << __func__ << ": Failed to push raw buffer #" << i << " to m_v4l2_input_buffer_Q";
+            LOG(ERROR) << __func__ << ": Failed to push raw buffer #" << i
+                       << " to m_v4l2_input_buffer_Q";
             status = Status::GENERIC_ERROR;
             break;
         }
@@ -130,10 +127,12 @@ aditof::Status BufferAllocator::allocate_queues_memory()
 
     // Allocate ToFi compute buffers for the maximum size (MP mode: 1024x1024)
     uint32_t depthSize =
-        TOFI_WIDTH_MAX * TOFI_HEIGHT_MAX * 2;     /* | Depth Frame ( W * H * 2 (type: uint16_t)) |   */
-    uint32_t abSize = depthSize;                /* | AB Frame ( W * H * 2 (type: uint16_t)) |      */
-    uint32_t confSize =
-        TOFI_WIDTH_MAX * TOFI_HEIGHT_MAX * 4;   /* | Confidance Frame ( W * H * 4 (type: float)) | */
+        TOFI_WIDTH_MAX * TOFI_HEIGHT_MAX *
+        2; /* | Depth Frame ( W * H * 2 (type: uint16_t)) |   */
+    uint32_t abSize =
+        depthSize; /* | AB Frame ( W * H * 2 (type: uint16_t)) |      */
+    uint32_t confSize = TOFI_WIDTH_MAX * TOFI_HEIGHT_MAX *
+                        4; /* | Confidance Frame ( W * H * 4 (type: float)) | */
     m_tofiBufferSize = depthSize + abSize + confSize;
 
     for (size_t i = 0; i < MAX_QUEUE_SIZE; ++i) {
@@ -143,7 +142,8 @@ aditof::Status BufferAllocator::allocate_queues_memory()
                 new uint16_t[m_tofiBufferSize / sizeof(uint16_t)],
                 std::default_delete<uint16_t[]>());
         } catch (const std::bad_alloc &e) {
-            LOG(ERROR) << __func__ << ": Failed to allocate ToFi buffer #" << i << ": " << e.what();
+            LOG(ERROR) << __func__ << ": Failed to allocate ToFi buffer #" << i
+                       << ": " << e.what();
             status = Status::GENERIC_ERROR;
             break;
         }
@@ -153,7 +153,8 @@ aditof::Status BufferAllocator::allocate_queues_memory()
             break;
         }
         if (!m_tofi_io_Buffer_Q.push(buffer)) {
-            LOG(ERROR) << __func__ << ": Failed to push ToFi buffer #" << i << " to m_tofi_io_Buffer_Q";
+            LOG(ERROR) << __func__ << ": Failed to push ToFi buffer #" << i
+                       << " to m_tofi_io_Buffer_Q";
             status = Status::GENERIC_ERROR;
             break;
         }

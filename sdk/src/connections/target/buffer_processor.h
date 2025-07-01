@@ -38,10 +38,10 @@
 
 #include "v4l_buffer_access_interface.h"
 
+#include "buffer_allocator.h"
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
 #include "tofi/tofi_util.h"
-#include "buffer_allocator.h"
 
 #define OUTPUT_DEVICE "/dev/video1"
 
@@ -139,7 +139,6 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     std::atomic<bool> stopThreadsFlag;
     bool streamRunning = false;
 
-    
     uint32_t m_rawFrameBufferSize;
     uint32_t m_tofiBufferSize;
 
