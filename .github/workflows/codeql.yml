@@ -25,7 +25,7 @@ jobs:
     #   - https://gh.io/supported-runners-and-hardware-resources
     #   - https://gh.io/using-larger-runners (GitHub.com only)
     # Consider using larger runners or machines with greater resources for possible analysis time improvements.
-    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
+    runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') ||'windows-latest'}}
     permissions:
       # required for all workflows
       security-events: write
@@ -41,8 +41,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+        - language: actions
+          build-mode: none
         - language: c-cpp
-          build-mode: autobuild
+          build-mode: manual
         - language: python
           build-mode: none
         # CodeQL supports the following values keywords for 'language': 'actions', 'c-cpp', 'csharp', 'go', 'java-kotlin', 'javascript-typescript', 'python', 'ruby', 'rust', 'swift'
@@ -83,13 +85,21 @@ jobs:
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
     - if: matrix.build-mode == 'manual'
-      shell: bash
+      shell: cmd
       run: |
         echo 'If you are using a "manual" build mode for one or more of the' \
           'languages you are analyzing, replace this with the commands to build' \
           'your code, for example:'
         echo '  make bootstrap'
         echo '  make release'
+        set root=${{ github.workspace }}
+        echo Starting build for project ...
+        cd libaditof
+        # Run the powershell build script
+        mkdir build
+        cd build
+        cmake -DWITH_PYTHON=on -DCMAKE_PREFIX_PATH="../deps_installed/Release/glog;../deps_installed/Release/protobuf;../deps_installed/Release/libzmq;../deps_installed/Release/cppzmq" -DOpenCV_DIR="C:/tools/opencv/build/x64/vc15/lib" .. 
+        cmake --build  . --config Release -j 4
         exit 1
 
     - name: Perform CodeQL Analysis
