@@ -98,7 +98,7 @@ jobs:
         cmake -DWITH_PYTHON=on -DCMAKE_PREFIX_PATH="../deps_installed/Release/glog;../deps_installed/Release/protobuf;../deps_installed/Release/libzmq;../deps_installed/Release/cppzmq" -DOpenCV_DIR="C:/tools/opencv/build/x64/vc15/lib" .. 
         cmake --build  . --config Release -j 4
         Write-Host "Build completed."
-        exit 1
+        exit 0
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
