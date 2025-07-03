@@ -83,21 +83,21 @@ jobs:
     # ℹ️ Command-line programs to run using the OS shell.
     # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
     - if: matrix.build-mode == 'manual'
-      shell: cmd
+      shell: powershell
       run: |
-        echo 'If you are using a "manual" build mode for one or more of the' \
-          'languages you are analyzing, replace this with the commands to build' \
-          'your code, for example:'
-        echo '  make bootstrap'
-        echo '  make release'
-        set root=${{ github.workspace }}
-        echo Starting build for project ...
-        cd libaditof
-        # Run the powershell build script
-        mkdir build
-        cd build
+        Write-Host 'If you are using a "manual" build mode for one or more of the languages you are analyzing, replace this with the commands to build your code, for example:'
+        Write-Host '  make bootstrap'
+        Write-Host '  make release'
+        root = "D:\a\libaditof\libaditof"
+        Write-Host "Starting build for project ..."
+        Set-Location "$root"
+        
+        New-Item -ItemType Directory -Path build -Force | Out-Null
+        Set-Location build
+ 
         cmake -DWITH_PYTHON=on -DCMAKE_PREFIX_PATH="../deps_installed/Release/glog;../deps_installed/Release/protobuf;../deps_installed/Release/libzmq;../deps_installed/Release/cppzmq" -DOpenCV_DIR="C:/tools/opencv/build/x64/vc15/lib" .. 
         cmake --build  . --config Release -j 4
+        Write-Host "Build completed."
         exit 1
 
     - name: Perform CodeQL Analysis
