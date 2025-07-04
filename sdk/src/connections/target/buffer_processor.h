@@ -142,8 +142,6 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     uint32_t m_rawFrameBufferSize;
     uint32_t m_tofiBufferSize;
 
-    static constexpr int TIME_OUT_DELAY = 5;
-
     int m_maxTries = 3;
 
     uint8_t m_currentModeNumber;

@@ -52,6 +52,8 @@
 #include <sys/stat.h>
 #include <unordered_map>
 
+#define TIME_OUT_DELAY 5
+
 #include "buffer_processor.h"
 
 uint8_t depthComputeOpenSourceEnabled = 0;
