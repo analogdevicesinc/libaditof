@@ -323,11 +323,27 @@ aditof::Status Adsd3500Sensor::open() {
         if (m_firstRun) {
             aditof::Status chipIDStatus = aditof::Status::GENERIC_ERROR;
             aditof::Status dealiasStatus = aditof::Status::GENERIC_ERROR;
+            aditof::Status adsd3500StateStatus = aditof::Status::GENERIC_ERROR;
             uint16_t chipID;
+            uint16_t adsd3500State;
             uint8_t dealiasCheck[32] = {0};
             dealiasCheck[0] = 1;
 
             for (int i = 0; i < 10; i++) {
+                // adsd3500_reset();
+
+                adsd3500StateStatus = adsd3500_read_cmd(0x0020, &adsd3500State);
+                if (adsd3500StateStatus == Status::OK) {
+                    if ((adsd3500State != 0x0) && (adsd3500State != 0x29)) {
+                        LOG(INFO) << "ADSD3500 is not in good state, Resetting "
+                                     "the ADSD3500";
+                        adsd3500_reset();
+                    }
+                } else {
+                    LOG(INFO) << "Could not read the status register, "
+                                 "Resetting ADSD3500";
+                    adsd3500_reset();
+                }
 #ifdef DUAL
                 chipIDStatus = adsd3500_read_cmd(0x0116, &chipID, 110 * 1000);
 #else
@@ -453,7 +469,7 @@ aditof::Status Adsd3500Sensor::stop() {
 
         if (!dev->started) {
             LOG(INFO) << "Device " << i << " already stopped";
-            return Status::BUSY;
+            return Status::OK;
         }
         LOG(INFO) << "Stopping device";
 
@@ -1440,15 +1456,16 @@ aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
 
     // Wait for 2 sec for interrupt
     LOG(INFO) << "Waiting for interrupt.";
-    int secondsTimeout = 1;
+    int secondsTimeout = 100;
     int secondsWaited = 0;
-    int secondsWaitingStep = 1;
+    int secondsWaitingStep = 20;
     while (!m_chipResetDone && secondsWaited < secondsTimeout) {
         LOG(INFO) << ".";
-        std::this_thread::sleep_for(std::chrono::seconds(secondsWaitingStep));
+        std::this_thread::sleep_for(
+            std::chrono::milliseconds(secondsWaitingStep));
         secondsWaited += secondsWaitingStep;
     }
-    LOG(INFO) << "Waited: " << secondsWaited << " seconds";
+    LOG(INFO) << "Waited: " << secondsWaited << " ms.";
     adsd3500_unregister_interrupt_callback(cb);
 
     if (m_interruptAvailable != true) {
@@ -2060,6 +2077,54 @@ aditof::Adsd3500Status Adsd3500Sensor::convertIdToAdsd3500Status(int status) {
 
     case 16:
         return Adsd3500Status::IMAGER_ERROR;
+
+    case 17:
+        return Adsd3500Status::TIMEOUT_ERROR;
+
+    case 19:
+        return Adsd3500Status::DYNAMIC_MODE_SWITCHING_NOT_ENABLED;
+
+    case 20:
+        return Adsd3500Status::INVALID_DYNAMIC_MODE_COMPOSITIONS;
+
+    case 21:
+        return Adsd3500Status::INVALID_PHASE_INVALID_VALUE;
+
+    case 22:
+        return Adsd3500Status::CCB_WRITE_COMPLETE;
+
+    case 23:
+        return Adsd3500Status::INVALID_CCB_WRITE_CRC;
+
+    case 24:
+        return Adsd3500Status::CFG_WRITE_COMPLETE;
+
+    case 25:
+        return Adsd3500Status::INVALID_CFG_WRITE_CRC;
+
+    case 26:
+        return Adsd3500Status::INIT_FW_WRITE_COMPLETE;
+
+    case 27:
+        return Adsd3500Status::INVALID_INIT_FW_WRITE_CRC;
+
+    case 28:
+        return Adsd3500Status::INVALID_BIN_SIZE;
+
+    case 29:
+        return Adsd3500Status::ACK_ERROR;
+
+    case 30:
+        return Adsd3500Status::FLASH_STATUS_CHUNK_ALREADY_FOUND;
+
+    case 34:
+        return Adsd3500Status::INVALID_INI_UPDATE_IN_PCM_MODE;
+
+    case 35:
+        return Adsd3500Status::UNSUPPORTED_MODE_INI_READ;
+
+    case 41:
+        return Adsd3500Status::IMAGER_STREAM_OFF;
 
     default: {
         LOG(ERROR) << "Unknown ID: " << status;
