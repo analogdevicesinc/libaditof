@@ -78,8 +78,8 @@ BufferProcessor::BufferProcessor()
 
     m_outputVideoDev = new VideoDev();
 
-    LOG(INFO) << "BufferProcessor initialized with BufferAllocator at: "
-              << static_cast<void *>(m_bufferAllocator.get());
+    // LOG(INFO) << "BufferProcessor initialized with BufferAllocator at: "
+    //           << static_cast<void *>(m_bufferAllocator.get());
 }
 
 BufferProcessor::~BufferProcessor() {
@@ -173,6 +173,24 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     uint32_t confSize = m_outputFrameWidth * m_outputFrameHeight * 4;
     m_tofiBufferSize = depthSize + abSize + confSize;
 
+    // Get BufferAllocator singleton
+    // std::shared_ptr<BufferAllocator> m_bufferAllocator =
+    //     BufferAllocator::getInstance();
+    LOG(INFO) << "Using BufferAllocator at: "
+              << static_cast<void *>(m_bufferAllocator.get());
+
+    // Allocate buffers before setting mode
+    status = m_bufferAllocator->allocate_queues_memory();
+    if (status != aditof::Status::OK) {
+        LOG(ERROR) << "Failed to allocate frames queues..";
+    } else {
+        LOG(INFO) << __func__
+                  << "After allocation: m_v4l2_input_buffer_Q size: "
+                  << m_bufferAllocator->m_v4l2_input_buffer_Q.size()
+                  << ", m_tofi_io_Buffer_Q size: "
+                  << m_bufferAllocator->m_tofi_io_Buffer_Q.size();
+    }
+
     LOG(INFO) << "setVideoProperties: Mode " << modeNumber
               << ", RawBufferSize: " << m_rawFrameBufferSize
               << ", ToFiBufferSize: " << m_tofiBufferSize;
@@ -183,6 +201,13 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
         << m_bufferAllocator->m_v4l2_input_buffer_Q.size()
         << ", m_tofi_io_Buffer_Q size: "
         << m_bufferAllocator->m_tofi_io_Buffer_Q.size();
+
+    // if (m_bufferAllocator->m_v4l2_input_buffer_Q.size() < 1 ||
+    //     m_bufferAllocator->m_tofi_io_Buffer_Q.size() < 1) {
+    //     LOG(ERROR) << "Queue is Empty. Unable to Process frames!";
+    //     status = aditof::Status::UNAVAILABLE;
+    // }
+
     return status;
 }
 
@@ -520,7 +545,8 @@ void BufferProcessor::processThread() {
     if (totalProcessedFrame > 0) {
         double averageProcessTime =
             static_cast<double>(totalProcessTime) / totalProcessedFrame;
-        //LOG(INFO) << __func__ << ": Average tofi_comupte process time: " << averageProcessTime << " ms";
+        // LOG(INFO) << __func__ << ": Average tofi_comupte process time: "
+        //           << averageProcessTime << " ms";
     }
 }
 
@@ -752,4 +778,11 @@ void BufferProcessor::stopThreads() {
         m_processingThread.join();
 
     LOG(INFO) << __func__ << ": Threads Stopped..";
+
+    std::shared_ptr<BufferAllocator> bufferAllocator =
+        BufferAllocator::getInstance();
+    LOG(INFO) << "Using BufferAllocator at: "
+              << static_cast<void *>(bufferAllocator.get());
+
+    bufferAllocator->freeQueues();
 }

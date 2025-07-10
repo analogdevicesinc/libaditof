@@ -52,7 +52,7 @@ class m_ThreadSafeQueue {
 
     bool
     push(T item,
-         std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
+         std::chrono::milliseconds timeout = std::chrono::milliseconds(200)) {
         std::unique_lock<std::mutex> lock(mutex_);
         auto deadline = std::chrono::steady_clock::now() + timeout;
         if (!not_full_.wait_until(
@@ -67,7 +67,7 @@ class m_ThreadSafeQueue {
 
     bool
     pop(T &item,
-        std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
+        std::chrono::milliseconds timeout = std::chrono::milliseconds(200)) {
         std::unique_lock<std::mutex> lock(mutex_);
         auto deadline = std::chrono::steady_clock::now() + timeout;
         if (!not_empty_.wait_until(lock, deadline,
@@ -99,6 +99,7 @@ class BufferAllocator {
   public:
     static std::shared_ptr<BufferAllocator> getInstance();
     aditof::Status allocate_queues_memory();
+    void freeQueues();
 
     template <typename T>
     static void clearQueue(m_ThreadSafeQueue<std::shared_ptr<T>> &queue) {

@@ -78,9 +78,9 @@ BufferAllocator::BufferAllocator()
 }
 
 BufferAllocator::~BufferAllocator() {
-    clearQueue(m_v4l2_input_buffer_Q);
-    clearQueue(m_tofi_io_Buffer_Q);
-    LOG(INFO) << "All queues cleared.";
+    // clearQueue(m_v4l2_input_buffer_Q);
+    // clearQueue(m_tofi_io_Buffer_Q);
+    // LOG(INFO) << "All queues cleared.";
 }
 
 /**
@@ -166,4 +166,10 @@ aditof::Status BufferAllocator::allocate_queues_memory() {
         clearQueue(m_tofi_io_Buffer_Q);
     }
     return status;
+}
+
+void BufferAllocator::freeQueues() {
+    LOG(INFO) << "Free the Queues";
+    clearQueue(m_v4l2_input_buffer_Q);
+    clearQueue(m_tofi_io_Buffer_Q);
 }
