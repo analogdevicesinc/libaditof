@@ -123,14 +123,14 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status open();
     aditof::Status setInputDevice(VideoDev *inputVideoDev);
     aditof::Status setVideoProperties(int frameWidth, int frameHeight,
-                                      int WidthInBytes, int HeightInBytes);
+                                      int WidthInBytes, int HeightInBytes,
+                                      int modeNumber);
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
                                           uint16_t calDataLength, uint16_t mode,
                                           bool ispEnabled);
-    aditof::Status processBuffer(uint16_t *buffer, const uint16_t &chipID,
-                                 const uint8_t &mode_num);
+    aditof::Status processBuffer(uint16_t *buffer);
     TofiConfig *getTofiCongfig();
     aditof::Status getDepthComputeVersion(uint8_t &enabled);
 
@@ -212,4 +212,6 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     static constexpr int TIME_OUT_DELAY = 5;
 
     int m_maxTries = 3;
+
+    uint8_t m_currentModeNumber;
 };
