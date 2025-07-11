@@ -423,7 +423,17 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_conf_frame = reinterpret_cast<float *>(
                 tofi_compute_io_buff.get() +
                 numPixels * 2); // Confidence follows AB
+#ifdef DUAL
+            if (m_currentModeNumber == 0 ||
+                m_currentModeNumber ==
+                    1) { // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
+                memcpy(m_tofiComputeContext->p_depth_frame,
+                       process_frame.data.get(), numPixels);
 
+                memcpy(m_tofiComputeContext->p_ab_frame,
+                       process_frame.data.get() + numPixels, numPixels);
+            }
+#else
             auto processStart = std::chrono::high_resolution_clock::now();
 
             uint32_t ret = TofiCompute(
@@ -438,7 +448,7 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
                 continue;
             }
-
+#endif
             auto processEnd = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double, std::milli> processTime =
                 processEnd - processStart;
