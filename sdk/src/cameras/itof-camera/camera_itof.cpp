@@ -44,6 +44,7 @@
 #include <array>
 #include <cstdint>
 #include <fstream>
+#include <omp.h>
 #include <sstream>
 
 #ifdef USE_GLOG
@@ -149,10 +150,12 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
     std::string controlValue;
     status = m_depthSensor->getControl("imagerType", controlValue);
     if (status == Status::OK) {
-        if (controlValue == "1") {
+        if (controlValue == ControlValue.at(ImagerType::ADSD3100)) {
             m_imagerType = ImagerType::ADSD3100;
-        } else if (controlValue == "2") {
+        } else if (controlValue == ControlValue.at(ImagerType::ADSD3030)) {
             m_imagerType = ImagerType::ADSD3030;
+        } else if (controlValue == ControlValue.at(ImagerType::ADTF3080)) {
+            m_imagerType = ImagerType::ADTF3080;
         } else {
             m_imagerType = ImagerType::UNSET;
             LOG(ERROR) << "Unkown imager type: " << controlValue;
@@ -651,6 +654,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame) {
         frame->getData("ab", &abFrame);
         memcpy(reinterpret_cast<uint8_t *>(&metadata), abFrame,
                sizeof(metadata));
+        memset(abFrame, 0, sizeof(metadata));
     } else {
         // If metadata from ADSD3500 is not available/disabled, generate one here
         memset(static_cast<void *>(&metadata), 0, sizeof(metadata));
@@ -703,20 +707,56 @@ void CameraItof::normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
         min_value_of_AB_pixel = 0;
     }
 
-    double c = 255.0f / log10(1 + max_value_of_AB_pixel);
+    uint32_t new_max_value_of_AB_pixel = 1;
+    uint32_t new_min_value_of_AB_pixel = 0xFFFF;
 
+#pragma omp parallel for
     for (size_t dummyCtr = 0; dummyCtr < imageSize; ++dummyCtr) {
 
         abBuffer[dummyCtr] -= min_value_of_AB_pixel;
-
         double pix = abBuffer[dummyCtr] * (255.0 / max_value_of_AB_pixel);
 
-        pix = (pix >= 255.0) ? 255.0 : pix;
-
-        if (useLogScaling) {
-            pix = c * log10(pix + 1);
+        if (pix < 0.0) {
+            pix = 0.0;
         }
-        abBuffer[dummyCtr] = (uint8_t)(pix);
+        if (pix > 255.0) {
+            pix = 255.0;
+        }
+        abBuffer[dummyCtr] = static_cast<uint8_t>(pix);
+
+        if (abBuffer[dummyCtr] > new_max_value_of_AB_pixel) {
+            new_max_value_of_AB_pixel = abBuffer[dummyCtr];
+        }
+        if (abBuffer[dummyCtr] < new_min_value_of_AB_pixel) {
+            new_min_value_of_AB_pixel = abBuffer[dummyCtr];
+        }
+    }
+
+    if (useLogScaling) {
+
+        max_value_of_AB_pixel = new_max_value_of_AB_pixel;
+        min_value_of_AB_pixel = new_min_value_of_AB_pixel;
+
+        double maxLogVal =
+            log10(1.0 + static_cast<double>(max_value_of_AB_pixel -
+                                            min_value_of_AB_pixel));
+
+#pragma omp parallel for
+        for (size_t dummyCtr = 0; dummyCtr < imageSize; ++dummyCtr) {
+
+            double pix =
+                static_cast<double>(abBuffer[dummyCtr] - min_value_of_AB_pixel);
+            double logPix = log10(1.0 + pix);
+            pix = (logPix / maxLogVal) * 255.0;
+            if (pix < 0.0) {
+                pix = 0.0;
+            }
+            if (pix > 255.0) {
+                pix = 255.0;
+            }
+
+            abBuffer[dummyCtr] = (uint8_t)(pix);
+        }
     }
 }
 
@@ -1856,6 +1896,9 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
                 LOG(ERROR) << "ADSD3100 imager error detected: "
                            << m_adsdErrors.GetStringADSD3100(imagerStatus);
             } else if (m_imagerType == ImagerType::ADSD3030) {
+                LOG(ERROR) << "ADSD3030 imager error detected: "
+                           << m_adsdErrors.GetStringADSD3030(imagerStatus);
+            } else if (m_imagerType == ImagerType::ADTF3080) {
                 LOG(ERROR) << "ADSD3030 imager error detected: "
                            << m_adsdErrors.GetStringADSD3030(imagerStatus);
             } else {

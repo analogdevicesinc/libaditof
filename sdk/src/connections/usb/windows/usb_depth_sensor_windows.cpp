@@ -1196,6 +1196,11 @@ aditof::Status UsbDepthSensor::adsd3500_reset() {
     return aditof::Status::OK;
 }
 
+aditof::Status UsbDepthSensor::adsd3500_getInterruptandReset() {
+    LOG(INFO) << "Not available!";
+    return aditof::Status::OK;
+}
+
 aditof::Status UsbDepthSensor::adsd3500_register_interrupt_callback(
     aditof::SensorInterruptCallback &cb) {
     LOG(WARNING) << "Registering an interrupt callback on a USB connection "

@@ -10,7 +10,7 @@
 aditof::Status DeviceParameters::createIniParams(
     std::vector<iniFileStruct> &iniFileStructList,
     std::vector<aditof::DepthSensorModeDetails> &modeDetailsList,
-    std::string imagerType) {
+    std::string imagerType, const uint16_t &chipID) {
 
     using namespace std;
 
@@ -22,12 +22,19 @@ aditof::Status DeviceParameters::createIniParams(
         if (mode.isPCM) {
             iniF.iniKeyValPairs = adsd_PCM;
         } else if (mode.baseResolutionWidth == 1024 &&
-                   mode.baseResolutionHeight == 1024) {
+                   mode.baseResolutionHeight == 1024 &&
+                   chipID == CHIP_ID_SINGLE) {
             iniF.iniKeyValPairs = adsd3100_partialDepth;
+        } else if (mode.baseResolutionWidth == 1024 &&
+                   mode.baseResolutionHeight == 1024 &&
+                   chipID != CHIP_ID_SINGLE) {
+            iniF.iniKeyValPairs = adsd3100_dual_fullDepth;
         } else if (imagerType == "adsd3100") {
             iniF.iniKeyValPairs = adsd3100_fullDepth;
         } else if (imagerType == "adsd3030") {
             iniF.iniKeyValPairs = adsd3030_fullDepth;
+        } else if (imagerType == "adtf3080") {
+            iniF.iniKeyValPairs = adtf3080_fullDepth;
         }
 
         iniFileStructList.emplace_back(iniF);

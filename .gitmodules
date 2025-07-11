@@ -1,7 +1,3 @@
-[submodule "libwebsockets"]
-	path = libwebsockets
-	url = https://github.com/warmcat/libwebsockets
-        branch = v3.1-stable
 [submodule "protobuf"]
 	path = protobuf
 	url = https://github.com/protocolbuffers/protobuf
@@ -10,3 +6,11 @@
 	path = glog
 	url = https://github.com/google/glog
         branch = v0.6.0
+[submodule "libzmq"]
+	path = libzmq
+	url = https://github.com/zeromq/libzmq.git
+		branch = v4.3.4
+[submodule "cppzmq"]
+	path = cppzmq
+	url = https://github.com/zeromq/cppzmq.git
+		branch = v4.9.0

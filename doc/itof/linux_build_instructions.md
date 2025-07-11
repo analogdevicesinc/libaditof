@@ -1,6 +1,6 @@
 # Linux Build Instructions
 
-**Please note, use the applicable tag, when cloning, and release version when getting the latest depth compute library files for the embedded system. As of writing, version 5.0.0 of the release is available as well as tag v5.0.0.**
+**Please note, use the applicable tag, when cloning, and release version when getting the latest depth compute library files for the embedded system. As of writing, version 6.1.0 of the release is available as well as tag v6.1.0.**
 
 Note, all actities below are assuming to be done in a base folder.
 
@@ -73,7 +73,7 @@ export CMAKE_PREFIX_PATH="/opt/glog;/opt/protobuf;/opt/websockets"
 Please note, ensure you are using the intended branch.
 
 ```console
-git clone --branch v5.0.0 --depth 1 https://github.com/analogdevicesinc/libaditof
+git clone --branch v6.1.0 --depth 1 https://github.com/analogdevicesinc/libaditof
 cd libaditof
 git submodule update --init
 mkdir build && cd build

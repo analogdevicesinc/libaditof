@@ -45,7 +45,8 @@
 #include "aditof/version.h"
 
 #ifdef HAS_NETWORK
-#include <lws_config.h>
+//#include <lws_config.h>
+#include <zmq.hpp>
 #endif
 
 using namespace aditof;
@@ -84,9 +85,11 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
 
 #if HAS_NETWORK
     static bool logged = false;
+    int major, minor, patch;
+    zmq_version(&major, &minor, &patch);
     if (!logged) {
-        LOG(INFO) << "SDK built with websockets version:"
-                  << LWS_LIBRARY_VERSION;
+        LOG(INFO) << "SDK built with zmq version:" << major << "." << minor
+                  << "." << patch;
         logged = true;
     }
 #endif

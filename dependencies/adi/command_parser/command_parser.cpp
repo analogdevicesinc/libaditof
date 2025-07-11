@@ -55,7 +55,8 @@ bool CommandParser::hasEqual(const std::string &arg) {
 }
 
 bool CommandParser::nextArgIsCommand(const std::string &arg) {
-    return arg.find("-") != std::string::npos;
+    return (arg.substr(0, 2) == "--") || (arg.substr(0, 1) == "-");
+    //return arg.find("-") != std::string::npos;
 }
 
 void CommandParser::processFlag(

@@ -61,6 +61,7 @@ class OfflineDepthSensor : public aditof::DepthSensorInterface {
     virtual aditof::Status adsd3500_unregister_interrupt_callback(
         aditof::SensorInterruptCallback &cb) override;
     virtual aditof::Status adsd3500_reset() override;
+    virtual aditof::Status adsd3500_getInterruptandReset() override;
     virtual aditof::Status adsd3500_get_status(int &chipStatus,
                                                int &imagerStatus) override;
     virtual aditof::Status

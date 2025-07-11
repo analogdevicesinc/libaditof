@@ -193,6 +193,12 @@ class DepthSensorInterface {
     virtual aditof::Status adsd3500_reset() = 0;
 
     /**
+     * @brief get the interrupt from sensor
+     * @return Status
+     */
+    virtual aditof::Status adsd3500_getInterruptandReset() = 0;
+
+    /**
      * @brief Register a function to be called when a ADSD3500 interrupt occurs
      * @param cb - the function to be called whenever the interrupt occurs
      * @return Status

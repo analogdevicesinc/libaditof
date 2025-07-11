@@ -11,7 +11,7 @@ endif()
 
 ############################### Version #######################################
 set(ADITOF_VERSION_MAJOR 6)
-set(ADITOF_VERSION_MINOR 0)
+set(ADITOF_VERSION_MINOR 1)
 set(ADITOF_VERSION_PATCH 0)
 
 set(VERSION "${ADITOF_VERSION_MAJOR}.${ADITOF_VERSION_MINOR}.${ADITOF_VERSION_PATCH}")
@@ -24,6 +24,7 @@ option(WITH_GLOG_DEPENDENCY "Build with GLOG dependency to be used for logging?"
 option(CI_BUILD "Build for CI" OFF)
 option(WITH_SUBMODULES "Use submodules to build the library" ON)
 option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
+option(RECV_ASYNC "Receive the frames Asynchronously" ON)
 
 ######################### Target based Options ################################
 option(NXP "Set to ON when building on NXP" OFF)
@@ -79,7 +80,6 @@ add_definitions(-DADITOFSDK_GIT_BRANCH="${ADITOFSDK_GIT_BRANCH}")
 
 set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
 # Check if CMAKE_BUILD_TYPE has been selected, default: Release
 if (NOT CMAKE_BUILD_TYPE OR CMAKE_BUILD_TYPE STREQUAL "")
     set(CMAKE_BUILD_TYPE "Release" CACHE STRING "" FORCE)
@@ -112,6 +112,13 @@ endif()
 
 if(ENABLE_PCM)
     add_definitions(-DENABLE_PCM)
+endif()
+
+if (RECV_ASYNC)
+        message("Building Host App to receive frames Asynchronously from the Target.")
+        add_definitions(-DRECV_ASYNC)
+    else()
+        message("Building Host App to receive frames Synchronously from the Target.")
 endif()
 
 if (WITH_NETWORK)
@@ -162,6 +169,7 @@ if(WITH_GLOG_DEPENDENCY)
                 # Disable warnings for this subdirectory
                 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
                 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+				set(BUILD_SHARED_LIBS OFF CACHE BOOL "Disable shared libs")
                 set(WITH_GFLAGS OFF CACHE BOOL "Disable gflags")
                 set(BUILD_TESTING OFF CACHE BOOL "Disable test builds for glog lib")
                 set(POSITION_INDEPENDENT_CODE 1)
@@ -175,25 +183,25 @@ if(WITH_GLOG_DEPENDENCY)
         endif()
 endif()
 
-if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets/.git" )
-        # Temporarily store the current compile options
-        set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
-        set(old_c_flags "${CMAKE_C_FLAGS}")
-        # Disable warnings for this subdirectory
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-        set(LWS_WITH_SSL 0 CACHE BOOL "Disable SSL support in libwebsockets")
-        set(LWS_STATIC_PIC 1 CACHE BOOL "Enable static position independent code in libwebsockets")
-        set(POSITION_INDEPENDENT_CODE 1)
-        # Add the subdirectory
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libwebsockets)
-        unset(LWS_WITH_SSL)
-        unset(LWS_STATIC_PIC)
-        unset(POSITION_INDEPENDENT_CODE)
-        # Restore the old compile options
-        set(CMAKE_CXX_FLAGS "${old_cxx_flags}")
-        set(CMAKE_C_FLAGS "${old_c_flags}")
+
+if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/.git")
+		# Temporarily store the current compile options
+		set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
+		set(old_c_flags "${CMAKE_C_FLAGS}")
+		# Disable warnings for this subdirectory
+		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+		set(BUILD_SHARED OFF CACHE BOOL "Disable shared libs")
+		set(BUILD_STATIC ON CACHE BOOL "Build Static library")
+		set(BUILD_TESTS OFF CACHE BOOL "Disable building tests for libzmq")
+		set(POSITION_INDEPENDENT_CODE 1)
+		add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libzmq)
+		unset(POSITION_INDEPENDENT_CODE)
+		# Restore the old compile options
+		set(CMAKE_CXX_FLAGS "${old_cxx_flags}")
+		set(CMAKE_C_FLAGS "${old_c_flags}")
 endif()
+
 
 if(NOT WITH_PROTOBUF_DEPENDENCY)
         if(NOT ON_TARGET)
@@ -208,6 +216,7 @@ else()
                 # Disable warnings for this subdirectory
                 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
                 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+				set(BUILD_SHARED_LIBS OFF CACHE BOOL "Disble shared libs")
                 set(protobuf_MSVC_STATIC_RUNTIME 0 CACHE BOOL "MSVC static tuntime disabled")
                 set(protobuf_BUILD_TESTS 0 CACHE BOOL "Disable tests for Protobuf")
                 set(POSITION_INDEPENDENT_CODE 1)

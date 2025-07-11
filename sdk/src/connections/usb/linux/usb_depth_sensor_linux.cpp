@@ -1041,6 +1041,11 @@ UsbDepthSensor::setSensorConfiguration(const std::string &sensorConf) {
     return aditof::Status::OK;
 }
 
+aditof::Status UsbDepthSensor::adsd3500_getInterruptandReset() {
+    LOG(INFO) << "Not available!";
+    return aditof::Status::OK;
+}
+
 aditof::Status UsbDepthSensor::getIniParamsArrayForMode(int mode,
                                                         std::string &iniStr) {
 

@@ -10,7 +10,7 @@ build_default() {
     # setup more deps
     # TODO cache this
     sudo apt-get update
-    sudo apt-get install -y build-essential libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev libgl1-mesa-dev libglfw3-dev
+    sudo apt-get install -y build-essential libgtk2.0-dev pkg-config libavcodec-dev libavformat-dev libswscale-dev libgl1-mesa-dev libglfw3-dev libopencv-dev
   
     sudo sh -c 'echo "${DEPS_DIR}/installed/opencv/lib" > /etc/ld.so.conf.d/opencv.conf'
 	sudo ldconfig
@@ -24,7 +24,7 @@ build_default() {
 
     pushd ${BUILD_DIR}
     pwd
-    cmake ${DEFAULT_CMAKE_FLAGS} ${EXTRA_CMAKE_FLAGS} -DCMAKE_PREFIX_PATH="${DEPS_DIR}/installed/glog;${DEPS_DIR}/installed/protobuf;${DEPS_DIR}/installed/websockets;${DEPS_DIR}/installed/Open3D;${DEPS_DIR}/installed/opencv" .. 
+    cmake ${DEFAULT_CMAKE_FLAGS} ${EXTRA_CMAKE_FLAGS} -DCMAKE_PREFIX_PATH="${DEPS_DIR}/installed/glog;${DEPS_DIR}/installed/protobuf;${DEPS_DIR}/installed/libzmq;${DEPS_DIR}/installed/Open3D;${DEPS_DIR}/installed/opencv" .. 
     make -j${NUM_JOBS}
     popd
 }

@@ -177,20 +177,40 @@ build_and_install_protobuf() {
 }
 
 ############################################################################
-# Build and install v3.1.0 of libwebsockets from the specified repository
+# Build and install v4.3.4 of libzmq from the specified repository
 ############################################################################
-build_and_install_websockets() {
+build_and_install_libzmq() {
     REPO_DIR=$1
     INSTALL_DIR=$2
     EXTRA_CMAKE_OPTIONS=$3
-    LIB_BUILD_DIR=${REPO_DIR}/build_3_1_0
+    LIB_BUILD_DIR=${REPO_DIR}/build_4_3_4
 
     mkdir -p ${INSTALL_DIR}
     mkdir -p ${LIB_BUILD_DIR}
     
     pushd ${LIB_BUILD_DIR}
      
-    cmake .. -DLWS_WITH_SSL=OFF -DLWS_STATIC_PIC=ON -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" ${EXTRA_CMAKE_OPTIONS}
+    cmake .. -DBUILD_STATIC=OFF -DBUILD_TESTS=OFF -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" ${EXTRA_CMAKE_OPTIONS}
+    make -j${NUM_JOBS}
+    make install
+
+    popd
+}
+
+############################################################################
+# Build and install v4.9.0 of cppzmq from the specified repository
+############################################################################
+build_and_install_cppzmq() {
+    REPO_DIR=$1
+    INSTALL_DIR=$2
+    EXTRA_CMAKE_OPTIONS=$3
+    LIB_BUILD_DIR=${REPO_DIR}/build_4_9_0
+
+    mkdir -p ${LIB_BUILD_DIR}
+    
+    pushd ${LIB_BUILD_DIR}
+     
+    cmake .. -DCPPZMQ_BUILD_TESTS=OFF -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}/build_4_3_4" ${EXTRA_CMAKE_OPTIONS}
     make -j${NUM_JOBS}
     make install
 
@@ -268,7 +288,7 @@ install_doxygen() {
 
 
 ############################################################################
-# Get source code for dependencies: glog, protobuf, libwebsockets
+# Get source code for dependencies: glog, protobuf
 ############################################################################
 get_deps_source_code() {
     CLONE_DIRECTORY=$1
@@ -279,17 +299,13 @@ get_deps_source_code() {
         export OPENCV="3.4.1"
     fi
 
-    [ -d "glog" ] || {
-        git clone --branch v0.6.0 --depth 1 https://github.com/google/glog
-    }
+    # [ -d "glog" ] || {
+    #     git clone --branch v0.6.0 --depth 1 https://github.com/google/glog
+    # }
 
-    [ -d "protobuf" ] || {
-        git clone --branch v3.9.0 --depth 1 https://github.com/protocolbuffers/protobuf
-    }
-
-    [ -d "libwebsockets" ] || {
-        git clone --branch v3.1-stable --depth 1 https://github.com/warmcat/libwebsockets
-    }
+    # [ -d "protobuf" ] || {
+    #     git clone --branch v3.9.0 --depth 1 https://github.com/protocolbuffers/protobuf
+    # }
 
     [ -d "opencv-${OPENCV}" ] || {
         curl -sL https://github.com/Itseez/opencv/archive/${OPENCV}.zip > opencv.zip
@@ -349,6 +365,5 @@ run_docker() {
     sudo docker run --rm=true \
 			-v `pwd`:/libaditof:rw \
 			${docker} \
-            /bin/bash -c "chmod -R 777 /libaditof && exec /bin/bash" \
             /bin/bash -xe ${script} /libaditof "${script_args}"
 }
