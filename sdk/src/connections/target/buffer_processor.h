@@ -94,7 +94,7 @@ class ThreadSafeQueue {
 
     bool
     pop(T &item,
-        std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
+        std::chrono::milliseconds timeout = std::chrono::milliseconds(200)) {
         std::unique_lock<std::mutex> lock(mutex_);
         auto deadline = std::chrono::steady_clock::now() + timeout;
         if (!not_empty_.wait_until(lock, deadline,
