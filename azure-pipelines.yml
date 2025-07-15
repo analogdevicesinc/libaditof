@@ -55,7 +55,7 @@ jobs:
         BUILD_TYPE: "cppcheck"
 
       deploy_doxygen:
-        imageName: 'ubuntu-20.04'
+        imageName: 'ubuntu-22.04'
         BUILD_TYPE: "deploy_doxygen"
 
   pool:
