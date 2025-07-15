@@ -153,10 +153,13 @@ aditof::Status BufferProcessor::setInputDevice(VideoDev *inputVideoDev) {
 aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
                                                    int frameHeight,
                                                    int WidthInBytes,
-                                                   int HeightInBytes) {
+                                                   int HeightInBytes,
+                                                   int modeNumber) {
     using namespace aditof;
     Status status = Status::OK;
     m_vidPropSet = true;
+
+    m_currentModeNumber = modeNumber;
 
     m_outputFrameWidth = frameWidth;
     m_outputFrameHeight = frameHeight;
@@ -248,24 +251,6 @@ aditof::Status BufferProcessor::setProcessorProperties(
 
     return aditof::Status::OK;
 }
-
-aditof::Status
-BufferProcessor::processBuffer(uint16_t *buffer = nullptr,
-                               const uint16_t &chipID = CHIP_ID_SINGLE,
-                               const uint8_t &mode_num = DEFAULT_MODE) {
-    using namespace aditof;
-    struct v4l2_buffer buf[4];
-    struct VideoDev *dev;
-    Status status;
-    unsigned int buf_data_len;
-    uint8_t *pdata;
-    dev = m_inputVideoDev;
-    uint8_t *pdata_user_space = nullptr;
-
-    status = waitForBufferPrivate(dev);
-    if (status != Status::OK) {
-        return status;
-    }
 /**
  * @function BufferProcessor::captureFrameThread
  *
@@ -390,41 +375,10 @@ void BufferProcessor::captureFrameThread() {
  *
  * After processing, it restores compute context pointers and returns used buffers.
  */
-
 void BufferProcessor::processThread() {
     long long totalProcessTime = 0;
     int totalProcessedFrame = 0;
 
-    if (buffer != nullptr) {
-
-        m_tofiComputeContext->p_depth_frame = buffer;
-        m_tofiComputeContext->p_ab_frame =
-            buffer + m_outputFrameWidth * m_outputFrameHeight / 4;
-        m_tofiComputeContext->p_conf_frame =
-            (float *)(buffer + m_outputFrameWidth * m_outputFrameHeight / 2);
-#ifdef DUAL
-        if (mode_num == 0 ||
-            mode_num ==
-                1) { // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
-            memcpy(m_tofiComputeContext->p_depth_frame, pdata_user_space,
-                   m_outputFrameWidth * m_outputFrameHeight / 2);
-            memcpy(m_tofiComputeContext->p_ab_frame,
-                   pdata_user_space +
-                       m_outputFrameWidth * m_outputFrameHeight / 2,
-                   m_outputFrameWidth * m_outputFrameHeight / 2);
-        } else {
-            uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
-                                       m_tofiComputeContext, NULL);
-
-            if (ret != ADI_TOFI_SUCCESS) {
-                LOG(ERROR) << "TofiCompute failed";
-                return Status::GENERIC_ERROR;
-            }
-        }
-
-#else
-        uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
-                                   m_tofiComputeContext, NULL);
     while (!stopThreadsFlag) {
         Tofi_v4l2_buffer process_frame;
         if (!m_capture_to_process_Q.pop(process_frame)) {
@@ -437,8 +391,6 @@ void BufferProcessor::processThread() {
                 std::chrono::milliseconds(TIME_OUT_DELAY));
             continue;
         }
-#endif
-
         std::shared_ptr<uint16_t> tofi_compute_io_buff;
         if (!m_tofi_io_Buffer_Q.pop(tofi_compute_io_buff)) {
             if (stopThreadsFlag)
@@ -452,31 +404,6 @@ void BufferProcessor::processThread() {
             continue;
         }
 
-#ifdef DUAL
-        if (mode_num == 0 ||
-            mode_num ==
-                1) { // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
-            memcpy(m_tofiComputeContext->p_depth_frame, pdata_user_space,
-                   m_outputFrameWidth * m_outputFrameHeight / 2);
-            memcpy(m_tofiComputeContext->p_ab_frame,
-                   pdata_user_space +
-                       m_outputFrameWidth * m_outputFrameHeight / 2,
-                   m_outputFrameWidth * m_outputFrameHeight / 2);
-            memset(m_tofiComputeContext->p_conf_frame, 0,
-                   m_outputFrameWidth * m_outputFrameHeight / 2);
-        } else {
-            uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
-                                       m_tofiComputeContext, NULL);
-
-            if (ret != ADI_TOFI_SUCCESS) {
-                LOG(ERROR) << "TofiCompute failed";
-                return Status::GENERIC_ERROR;
-            }
-        }
-
-#else
-        uint32_t ret = TofiCompute((uint16_t *)pdata_user_space,
-                                   m_tofiComputeContext, NULL);
         uint16_t *tempDepthFrame = m_tofiComputeContext->p_depth_frame;
         uint16_t *tempAbFrame = m_tofiComputeContext->p_ab_frame;
         float *tempConfFrame = m_tofiComputeContext->p_conf_frame;
@@ -497,7 +424,17 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_conf_frame = reinterpret_cast<float *>(
                 tofi_compute_io_buff.get() +
                 numPixels * 2); // Confidence follows AB
+#ifdef DUAL
+            if (m_currentModeNumber == 0 ||
+                m_currentModeNumber ==
+                    1) { // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
+                memcpy(m_tofiComputeContext->p_depth_frame,
+                       process_frame.data.get(), numPixels);
 
+                memcpy(m_tofiComputeContext->p_ab_frame,
+                       process_frame.data.get() + numPixels, numPixels);
+            }
+#else
             auto processStart = std::chrono::high_resolution_clock::now();
 
             uint32_t ret = TofiCompute(
@@ -512,7 +449,7 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
                 continue;
             }
-
+#endif
             auto processEnd = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double, std::milli> processTime =
                 processEnd - processStart;
@@ -523,7 +460,6 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_ab_frame = tempAbFrame;
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
         }
-#endif
 
         process_frame.tofiBuffer = tofi_compute_io_buff;
         process_frame.size = m_tofiBufferSize;
