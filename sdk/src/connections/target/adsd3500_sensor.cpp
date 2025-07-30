@@ -1766,13 +1766,17 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                 break;
             }
             case 2: {
-                m_implData->imagerType = SensorImagerType::IMAGER_ADSD3030;
-                m_modeSelector.setControl("imagerType", "adsd3030");
-                break;
-            }
-            case 3: {
-                m_implData->imagerType = SensorImagerType::IMAGER_ADTF3080;
-                m_modeSelector.setControl("imagerType", "adtf3080");
+                readValue = 0;
+                status = adsd3500_read_cmd(0x0115, &readValue);
+                uint8_t imager_series = (readValue & 0x000F);
+                if (imager_series == 1) {
+                    m_implData->imagerType = SensorImagerType::IMAGER_ADSD3030;
+                    m_modeSelector.setControl("imagerType", "adsd3030");
+                } else if (imager_series == 2) {
+                    m_implData->imagerType = SensorImagerType::IMAGER_ADTF3080;
+                    m_modeSelector.setControl("imagerType", "adtf3080");
+                }
+
                 break;
             }
             default: {
