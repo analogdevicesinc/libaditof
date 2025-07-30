@@ -95,7 +95,7 @@ Based on the following scenarios you will be able to do the following:
 Please note, ensure you are using the intended branch.
 
 ```console
-git clone --branch v5.0.0  https://github.com/analogdevicesinc/libaditof
+git clone --branch v6.1.0  https://github.com/analogdevicesinc/libaditof
 cd libaditof
 git submodule update --init
 mkdir build && cd build

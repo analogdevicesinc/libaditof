@@ -29,6 +29,12 @@
  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#include <atomic>
+#include <condition_variable>
+#include <mutex>
+#include <queue>
+#include <thread>
+#include <vector>
 
 #include "v4l_buffer_access_interface.h"
 
@@ -59,6 +65,55 @@ struct VideoDev {
           started(false) {}
 };
 
+template <typename T>
+class ThreadSafeQueue {
+  private:
+    std::queue<T> queue_;
+    mutable std::mutex mutex_;
+    std::condition_variable not_empty_;
+    std::condition_variable not_full_;
+    size_t max_size_;
+
+  public:
+    explicit ThreadSafeQueue(size_t max_size) : max_size_(max_size) {}
+
+    bool
+    push(T item,
+         std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        if (!not_full_.wait_until(
+                lock, deadline, [this] { return queue_.size() < max_size_; })) {
+            return false;
+        }
+        queue_.push(std::move(item));
+        lock.unlock();
+        not_empty_.notify_all();
+        return true;
+    }
+
+    bool
+    pop(T &item,
+        std::chrono::milliseconds timeout = std::chrono::milliseconds(200)) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        auto deadline = std::chrono::steady_clock::now() + timeout;
+        if (!not_empty_.wait_until(lock, deadline,
+                                   [this] { return !queue_.empty(); })) {
+            return false;
+        }
+        item = std::move(queue_.front());
+        queue_.pop();
+        lock.unlock();
+        not_full_.notify_all();
+        return true;
+    }
+
+    size_t size() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return queue_.size();
+    }
+};
+
 class BufferProcessor : public aditof::V4lBufferAccessInterface {
   public:
     BufferProcessor();
@@ -67,16 +122,20 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
   public:
     aditof::Status open();
     aditof::Status setInputDevice(VideoDev *inputVideoDev);
-    aditof::Status setVideoProperties(int frameWidth, int frameHeight);
+    aditof::Status setVideoProperties(int frameWidth, int frameHeight,
+                                      int WidthInBytes, int HeightInBytes,
+                                      int modeNumber);
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
                                           uint16_t calDataLength, uint16_t mode,
                                           bool ispEnabled);
-    aditof::Status processBuffer(uint16_t *buffer, const uint16_t &chipID,
-                                 const uint8_t &mode_num);
+    aditof::Status processBuffer(uint16_t *buffer);
     TofiConfig *getTofiCongfig();
     aditof::Status getDepthComputeVersion(uint8_t &enabled);
+
+    void startThreads();
+    void stopThreads();
 
   public:
     virtual aditof::Status waitForBuffer() override;
@@ -101,14 +160,15 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
                                                 struct VideoDev *dev = nullptr);
 
+    void captureFrameThread();
+    void processThread();
+
   private:
     bool m_vidPropSet;
     bool m_processorPropSet;
 
     uint16_t m_outputFrameWidth;
     uint16_t m_outputFrameHeight;
-
-    uint16_t *m_processedBuffer;
 
     TofiConfig *m_tofiConfig;
     TofiComputeContext *m_tofiComputeContext;
@@ -120,4 +180,38 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     struct VideoDev *m_inputVideoDev;
     struct VideoDev *m_outputVideoDev;
+
+    struct Tofi_v4l2_buffer {
+        std::shared_ptr<uint8_t> data;
+        size_t size = 0;
+        std::shared_ptr<uint16_t> tofiBuffer;
+    };
+
+    // Thread-safe pool of empty raw frame buffers for use by capture thread
+    ThreadSafeQueue<std::shared_ptr<uint8_t>> m_v4l2_input_buffer_Q;
+
+    // Thread-safe queue to transfer captured raw frames to the process thread
+    ThreadSafeQueue<Tofi_v4l2_buffer> m_capture_to_process_Q;
+
+    // Thread-safe pool of ToFi compute output buffers (depth + AB + confidence)
+    ThreadSafeQueue<std::shared_ptr<uint16_t>> m_tofi_io_Buffer_Q;
+
+    // Thread-safe queue for frames that have been fully processed (compute done)
+    ThreadSafeQueue<Tofi_v4l2_buffer> m_process_done_Q;
+
+    uint32_t m_rawFrameBufferSize;
+    uint32_t m_tofiBufferSize;
+
+    std::thread m_captureThread;
+    std::thread m_processingThread;
+
+    std::atomic<bool> stopThreadsFlag;
+    bool streamRunning = false;
+
+    static constexpr size_t MAX_QUEUE_SIZE = 3;
+    static constexpr int TIME_OUT_DELAY = 5;
+
+    int m_maxTries = 3;
+
+    uint8_t m_currentModeNumber;
 };
