@@ -81,6 +81,11 @@ BufferProcessor::BufferProcessor()
 }
 
 BufferProcessor::~BufferProcessor() {
+
+    if (!stopThreadsFlag) {
+        stopThreads(); // Ensure threads are stopped before cleanup
+    }
+
     if (NULL != m_tofiComputeContext) {
         LOG(INFO) << "freeComputeLibrary";
         FreeTofiCompute(m_tofiComputeContext);
@@ -155,6 +160,12 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
                                                    int WidthInBytes,
                                                    int HeightInBytes,
                                                    int modeNumber) {
+
+    // Clear all queues to prevent memory leaks if setVideoProperties is called multiple times
+    if (!stopThreadsFlag) {
+        stopThreads();
+    }
+
     using namespace aditof;
     Status status = Status::OK;
     m_vidPropSet = true;
@@ -166,6 +177,11 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
 
     m_rawFrameBufferSize = static_cast<size_t>(WidthInBytes) * HeightInBytes;
     {
+        LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE
+                  << " raw frame buffers, each of size " << m_rawFrameBufferSize
+                  << " bytes (total: "
+                  << (MAX_QUEUE_SIZE * m_rawFrameBufferSize) / (1024.0 * 1024.0)
+                  << " MB)";
         for (int i = 0; i < MAX_QUEUE_SIZE; ++i) {
             auto buffer =
                 std::shared_ptr<uint8_t>(new uint8_t[m_rawFrameBufferSize],
@@ -187,6 +203,12 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
                         4; /* | Confidance Frame ( W * H * 4 (type: float)) | */
     m_tofiBufferSize = depthSize + abSize + confSize;
 
+    LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE
+              << " ToFi buffers, each of size "
+              << m_tofiBufferSize * sizeof(uint16_t) << " bytes (total: "
+              << (MAX_QUEUE_SIZE * m_tofiBufferSize * sizeof(uint16_t)) /
+                     (1024.0 * 1024.0)
+              << " MB)";
     for (int i = 0; i < MAX_QUEUE_SIZE; ++i) {
         auto buffer = std::shared_ptr<uint16_t>(
             new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
@@ -204,6 +226,18 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
 aditof::Status BufferProcessor::setProcessorProperties(
     uint8_t *iniFile, uint16_t iniFileLength, uint8_t *calData,
     uint16_t calDataLength, uint16_t mode, bool ispEnabled) {
+
+    // Free previous compute context and config to avoid memory leaks on repeated mode changes
+    if (m_tofiComputeContext != nullptr) {
+        LOG(INFO) << __func__ << ": Freeing previous compute context.";
+        FreeTofiCompute(m_tofiComputeContext);
+        m_tofiComputeContext = nullptr;
+    }
+    if (m_tofiConfig != nullptr) {
+        LOG(INFO) << __func__ << ": Freeing previous config.";
+        FreeTofiConfig(m_tofiConfig);
+        m_tofiConfig = nullptr;
+    }
 
     if (ispEnabled) {
         uint32_t status = ADI_TOFI_SUCCESS;
@@ -697,19 +731,30 @@ void BufferProcessor::stopThreads() {
             m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
     }
 
-    if (m_captureThread.joinable())
+    // Join threads if running
+    if (m_captureThread.joinable()) {
         m_captureThread.join();
-
-    if (m_processingThread.joinable())
+    }
+    if (m_processingThread.joinable()) {
         m_processingThread.join();
+    }
 
+    // Optionally reset thread objects
+    m_captureThread = std::thread();
+    m_processingThread = std::thread();
+
+    size_t rawFreed = 0, tofiFreed = 0;
     std::shared_ptr<uint8_t> inputBuf;
     while (m_v4l2_input_buffer_Q.pop(inputBuf)) {
+        ++rawFreed;
     }
 
     std::shared_ptr<uint16_t> tofiBuf;
     while (m_tofi_io_Buffer_Q.pop(tofiBuf)) {
+        ++tofiFreed;
     }
 
-    LOG(INFO) << __func__ << ": Threads Stopped..";
+    LOG(INFO) << __func__
+              << ": Threads Stopped. Raw buffers freed: " << rawFreed
+              << ", ToFi buffers freed: " << tofiFreed;
 }
