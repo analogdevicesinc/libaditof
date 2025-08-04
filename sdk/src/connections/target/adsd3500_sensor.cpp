@@ -106,10 +106,10 @@ struct Adsd3500Sensor::ImplData {
     std::string fw_ver;
 
     ImplData()
-        : numVideoDevs(1),
-          videoDevs(nullptr), imagerType{SensorImagerType::IMAGER_UNKNOWN},
-          ccbVersion{CCBVersion::CCB_UNKNOWN}, modeDetails{0, {}, 0, 0, 0, 0,
-                                                           0, 0,  0, 0, {}} {}
+        : numVideoDevs(1), videoDevs(nullptr),
+          imagerType{SensorImagerType::IMAGER_UNKNOWN},
+          ccbVersion{CCBVersion::CCB_UNKNOWN},
+          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {}
 };
 
 // TO DO: This exists in linux_utils.h which is not included on Dragoboard.
@@ -131,7 +131,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     : m_driverPath(driverPath), m_driverSubPath(driverSubPath),
       m_captureDev(captureDev), m_implData(new Adsd3500Sensor::ImplData),
       m_firstRun(true), m_adsd3500Queried(false), m_depthComputeOnTarget(true),
-      m_chipStatus(0), m_imagerStatus(0),
+      m_chipStatus(0), m_imagerStatus(0), isOpen(0),
       m_hostConnectionType(aditof::ConnectionType::ON_TARGET) {
     m_sensorName = "adsd3500";
     m_interruptAvailable = false;
@@ -200,6 +200,13 @@ Adsd3500Sensor::~Adsd3500Sensor() {
                     << "close m_implData->sfd error "
                     << "errno: " << errno << " error: " << strerror(errno);
             }
+        }
+    }
+
+    if (isOpen) {
+        if (m_implData->videoDevs) {
+            delete[] m_implData->videoDevs;
+            m_implData->videoDevs = nullptr;
         }
     }
 
@@ -408,6 +415,10 @@ aditof::Status Adsd3500Sensor::open() {
         return status;
     }
 
+    if (status == aditof::Status::OK) {
+        isOpen = true;
+    }
+
     return status;
 }
 
@@ -601,10 +612,18 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         }
     }
 
-    status = open();
-    if (status != aditof::Status::OK) {
-        LOG(INFO) << "Failed to open sensor!";
-        return status;
+    if (isOpen) { // open the device if it's been closed
+        isOpen = false;
+        // free the allocated new buffer
+        if (m_implData->videoDevs) {
+            delete[] m_implData->videoDevs;
+            m_implData->videoDevs = nullptr;
+        }
+        status = open();
+        if (status != aditof::Status::OK) {
+            LOG(INFO) << "Failed to open sensor!";
+            return status;
+        }
     }
 
     // Don't request buffers & set fromat for UVC context. It is already done in uvc-app/lib/v4l2.c
