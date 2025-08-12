@@ -45,7 +45,7 @@ std::unique_ptr<zmq::socket_t> frame_socket;
 std::unique_ptr<zmq::context_t> zmq_context;
 std::string zmq_ip;
 
-static std::atomic<bool> running{true};
+static std::atomic<bool> running[MAX_CAMERA_NUM];
 static std::atomic<bool> threadObj_started{false};
 
 #define RX_BUFFER_BYTES (20996420)
@@ -77,8 +77,7 @@ mutex Network::mutex_recv[MAX_CAMERA_NUM];
 condition_variable_any Network::Cond_Var[MAX_CAMERA_NUM];
 condition_variable Network::thread_Cond_Var[MAX_CAMERA_NUM];
 static const int FRAME_PREPADDING_BYTES = 2;
-
-bool Network::Send_Successful[MAX_CAMERA_NUM];
+std::atomic<bool> Network::Send_Successful[MAX_CAMERA_NUM];
 bool Network::Data_Received[MAX_CAMERA_NUM];
 bool Network::Server_Connected[MAX_CAMERA_NUM];
 bool Network::Thread_Detached[MAX_CAMERA_NUM];
@@ -418,7 +417,7 @@ int Network::recv_server_data() {
 
 void Network::call_zmq_service(const std::string &ip) {
     threadObj_started = true;
-    while (running) {
+    while (running[m_connectionId]) {
 
         zmq_event_t event;
         zmq::message_t msg;
@@ -426,9 +425,13 @@ void Network::call_zmq_service(const std::string &ip) {
             zmq::message_t event;
             if (monitor_sockets[m_connectionId]) {
                 monitor_sockets[m_connectionId]->recv(msg);
+            } else {
+                break; // socket closed exiting the flag
             }
         } catch (const zmq::error_t &e) {
-            monitor_sockets[m_connectionId]->close();
+            if (monitor_sockets[m_connectionId]) {
+                monitor_sockets[m_connectionId]->close();
+            }
         }
 
         memcpy(&event, msg.data(), sizeof(event));
@@ -468,7 +471,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
         {
             std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
             Server_Connected[connectionId] = false;
-            running = false;
+            running[connectionId] = false;
             command_socket.at(connectionId)->close();
             monitor_sockets.at(connectionId)->close();
             contexts.at(connectionId)->close();
@@ -488,7 +491,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
         {
             std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
             Server_Connected[connectionId] = false;
-            running = false;
+            running[connectionId] = false;
             command_socket.at(connectionId)->close();
             monitor_sockets.at(connectionId)->close();
             contexts.at(connectionId)->close();
@@ -539,7 +542,7 @@ Network::Network(int connectionId)
     Network::Server_Connected[connectionId] = false;
     Network::Thread_Detached[connectionId] = false;
     Network::InterruptDetected[connectionId] = false;
-    running = true;
+    running[connectionId] = true;
 
     m_connectionId = connectionId;
     while (contexts.size() <= m_connectionId)
@@ -562,7 +565,7 @@ Network::~Network() {
             std::lock_guard<std::recursive_mutex> guard(
                 m_mutex[m_connectionId]);
             Server_Connected[m_connectionId] = false;
-            running = false;
+            running[m_connectionId] = false;
             command_socket.at(m_connectionId)->close();
             monitor_sockets.at(m_connectionId)->close();
             contexts.at(m_connectionId)->close();
