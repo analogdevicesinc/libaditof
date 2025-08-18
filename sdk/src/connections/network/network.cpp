@@ -37,6 +37,7 @@
 #else
 #include <aditof/log.h>
 #endif
+#include <atomic>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <iostream>
@@ -65,6 +66,7 @@ struct clientData {
 int nBytes = 0;          /*no of bytes sent*/
 int recv_data_error = 0; /*flag for recv data*/
 char server_msg[] = "Connection Allowed";
+static std::atomic<bool> zmq_thread_done{false};
 
 /*Declare static members*/
 std::vector<std::unique_ptr<zmq::socket_t>> Network::command_socket;
@@ -213,6 +215,9 @@ int Network::ServerConnect(const std::string &ip) {
         if (!Server_Connected[m_connectionId]) {
             LOG(INFO) << "Attempting to connect server... ";
             try {
+
+                command_socket[m_connectionId]->setsockopt(
+                    ZMQ_SNDTIMEO, 100); // set command timeout
 
                 command_socket[m_connectionId]->connect("tcp://" + ip +
                                                         ":5556");
@@ -417,6 +422,7 @@ int Network::recv_server_data() {
 
 void Network::call_zmq_service(const std::string &ip) {
     threadObj_started = true;
+    monitor_sockets[m_connectionId]->set(zmq::sockopt::rcvtimeo, 100); // 100ms
     while (running[m_connectionId]) {
 
         zmq_event_t event;
@@ -424,20 +430,27 @@ void Network::call_zmq_service(const std::string &ip) {
         try {
             zmq::message_t event;
             if (monitor_sockets[m_connectionId]) {
-                monitor_sockets[m_connectionId]->recv(msg);
+                if (!monitor_sockets[m_connectionId]->recv(
+                        msg, zmq::recv_flags::none)) {
+                    continue; // timeout occurred, check running flag again
+                }
             } else {
                 break; // socket closed exiting the flag
             }
         } catch (const zmq::error_t &e) {
             if (monitor_sockets[m_connectionId]) {
                 monitor_sockets[m_connectionId]->close();
+                running[m_connectionId] = false;
+                zmq_thread_done.store(true, std::memory_order_release);
             }
         }
 
-        memcpy(&event, msg.data(), sizeof(event));
-
-        callback_function(command_socket.at(m_connectionId), event);
+        if (running[m_connectionId]) {
+            memcpy(&event, msg.data(), sizeof(event));
+            callback_function(command_socket.at(m_connectionId), event);
+        }
     }
+    zmq_thread_done.store(true, std::memory_order_release);
 }
 
 /*
@@ -472,8 +485,21 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
             std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
             Server_Connected[connectionId] = false;
             running[connectionId] = false;
+
+            if (monitor_sockets.at(connectionId)) {
+                monitor_sockets.at(connectionId)->close();
+            }
+
+            uint32_t cntr = 0;
+            while (!zmq_thread_done.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                if (cntr++ > 50) { // wait for 500ms
+                    LOG(ERROR) << "Timeout waiting for zmq thread to finish";
+                    break;
+                }
+            }
+            command_socket.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
             command_socket.at(connectionId)->close();
-            monitor_sockets.at(connectionId)->close();
             contexts.at(connectionId)->close();
             command_socket.at(connectionId) = NULL;
             monitor_sockets.at(connectionId) = NULL;
@@ -492,8 +518,21 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
             std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
             Server_Connected[connectionId] = false;
             running[connectionId] = false;
+
+            if (monitor_sockets.at(connectionId)) {
+                monitor_sockets.at(connectionId)->close();
+            }
+
+            uint32_t cntr = 0;
+            while (!zmq_thread_done.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                if (cntr++ > 50) { // wait for 500ms
+                    LOG(ERROR) << "Timeout waiting for zmq thread to finish";
+                    break;
+                }
+            }
+            command_socket.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
             command_socket.at(connectionId)->close();
-            monitor_sockets.at(connectionId)->close();
             contexts.at(connectionId)->close();
             command_socket.at(connectionId) = NULL;
             monitor_sockets.at(connectionId) = NULL;
@@ -561,17 +600,35 @@ Network::~Network() {
         /*set a flag to complete the thread */
 
         Thread_Detached[m_connectionId] = false;
-        {
+        try {
             std::lock_guard<std::recursive_mutex> guard(
                 m_mutex[m_connectionId]);
             Server_Connected[m_connectionId] = false;
             running[m_connectionId] = false;
+
+            if (monitor_sockets.at(m_connectionId)) {
+                monitor_sockets.at(m_connectionId)->close();
+            }
+
+            uint32_t cntr = 0;
+            while (!zmq_thread_done.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                if (cntr++ > 50) { // wait for 500ms
+                    LOG(ERROR) << "Timeout waiting for zmq thread to finish";
+                    break;
+                }
+            }
+            command_socket.at(m_connectionId)->setsockopt(ZMQ_LINGER, 0);
             command_socket.at(m_connectionId)->close();
-            monitor_sockets.at(m_connectionId)->close();
+
+            contexts.at(m_connectionId)->shutdown();
             contexts.at(m_connectionId)->close();
             command_socket.at(m_connectionId) = NULL;
             monitor_sockets.at(m_connectionId) = NULL;
             contexts.at(m_connectionId) = NULL;
+        } catch (const std::exception &e) {
+            LOG(ERROR) << "close threw: " << e.what();
+            std::terminate(); // or propagate
         }
     }
 }
