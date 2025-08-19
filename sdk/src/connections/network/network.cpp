@@ -556,6 +556,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
 #endif
         break;
     }
+    return 0;
 }
 
 void Network::registerInterruptCallback(InterruptNotificationCallback &cb) {
