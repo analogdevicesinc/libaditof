@@ -422,7 +422,7 @@ int Network::recv_server_data() {
 
 void Network::call_zmq_service(const std::string &ip) {
     threadObj_started = true;
-    monitor_sockets[m_connectionId]->set(zmq::sockopt::rcvtimeo, 100); // 100ms
+    monitor_sockets[m_connectionId]->set(zmq::sockopt::rcvtimeo, 90); // 100ms
     while (running[m_connectionId]) {
 
         zmq_event_t event;
@@ -487,6 +487,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
             running[connectionId] = false;
 
             if (monitor_sockets.at(connectionId)) {
+                monitor_sockets.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
                 monitor_sockets.at(connectionId)->close();
             }
 
@@ -520,6 +521,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
             running[connectionId] = false;
 
             if (monitor_sockets.at(connectionId)) {
+                monitor_sockets.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
                 monitor_sockets.at(connectionId)->close();
             }
 
@@ -554,8 +556,6 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
 #endif
         break;
     }
-
-    return 0;
 }
 
 void Network::registerInterruptCallback(InterruptNotificationCallback &cb) {
@@ -606,9 +606,8 @@ Network::~Network() {
             Server_Connected[m_connectionId] = false;
             running[m_connectionId] = false;
 
-            if (monitor_sockets.at(m_connectionId)) {
-                monitor_sockets.at(m_connectionId)->close();
-            }
+            monitor_sockets.at(m_connectionId)->setsockopt(ZMQ_LINGER, 200);
+            monitor_sockets.at(m_connectionId)->close();
 
             uint32_t cntr = 0;
             while (!zmq_thread_done.load(std::memory_order_acquire)) {
@@ -618,11 +617,21 @@ Network::~Network() {
                     break;
                 }
             }
-            command_socket.at(m_connectionId)->setsockopt(ZMQ_LINGER, 0);
+            const std::string wake_ep = "inproc://wakeup";
+            command_socket.at(m_connectionId)->bind(wake_ep);
+            command_socket.at(m_connectionId)->setsockopt(ZMQ_LINGER, 200);
+            contexts.at(m_connectionId)->shutdown();
             command_socket.at(m_connectionId)->close();
 
-            contexts.at(m_connectionId)->shutdown();
+            zmq::context_t ctx(1);
+#if defined(ZMQ_HAS_CTX_OPT)
+            zmq_ctx_set(contexts.at(m_connectionId)->handle(), ZMQ_BLOCKY,
+                        0); // prevent blocking on close()
+#else
+            contexts.at(m_connectionId)->set(zmq::ctxopt::blocky, false);
+#endif
             contexts.at(m_connectionId)->close();
+
             command_socket.at(m_connectionId) = NULL;
             monitor_sockets.at(m_connectionId) = NULL;
             contexts.at(m_connectionId) = NULL;
