@@ -108,6 +108,16 @@ class ThreadSafeQueue {
         return true;
     }
 
+    size_t max_size() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return max_size_;
+    }
+
+    void set_max_size(size_t new_max_size) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        max_size_ = new_max_size;
+    }
+
     size_t size() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return queue_.size();
@@ -209,8 +219,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     std::atomic<bool> stopThreadsFlag;
     bool streamRunning = false;
 
-    size_t MAX_QUEUE_SIZE = 3;
-    static constexpr int TIME_OUT_DELAY = 5;
+    const size_t MAX_QUEUE_SIZE = 3;
+    const static constexpr int TIME_OUT_DELAY = 5;
 
     int m_maxTries = 3;
 
