@@ -218,7 +218,14 @@ int Network::ServerConnect(const std::string &ip) {
 
                 command_socket[m_connectionId]->setsockopt(
                     ZMQ_SNDTIMEO, 100); // set command timeout
-
+                command_socket[m_connectionId]->setsockopt(ZMQ_HEARTBEAT_IVL,
+                                                           1000); // 1 sec
+                command_socket[m_connectionId]->setsockopt(
+                    ZMQ_HEARTBEAT_TIMEOUT,
+                    3000); // 3 sec
+                command_socket[m_connectionId]->setsockopt(
+                    ZMQ_HEARTBEAT_TTL,
+                    5000); // TTL for heartbeat
                 command_socket[m_connectionId]->connect("tcp://" + ip +
                                                         ":5556");
             } catch (const zmq::error_t &e) {
