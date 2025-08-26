@@ -71,12 +71,19 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 BufferProcessor::BufferProcessor()
     : m_v4l2_input_buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_capture_to_process_Q(BufferProcessor::MAX_QUEUE_SIZE),
-      m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE), m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE),
-      m_vidPropSet(false), m_processorPropSet(false), m_outputFrameWidth(0),
-      m_outputFrameHeight(0), m_tofiConfig(nullptr),
-      m_tofiComputeContext(nullptr), m_inputVideoDev(nullptr) {
+      m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
+      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE), m_vidPropSet(false),
+      m_processorPropSet(false), m_outputFrameWidth(0), m_outputFrameHeight(0),
+      m_tofiConfig(nullptr), m_tofiComputeContext(nullptr),
+      m_inputVideoDev(nullptr) {
 
     m_outputVideoDev = new VideoDev();
+    stopThreadsFlag = true;
+    streamRunning = false;
+    m_v4l2_input_buffer_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
+    m_capture_to_process_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
+    m_tofi_io_Buffer_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
+    m_process_done_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
     LOG(INFO) << "BufferProcessor initialized";
 }
 
@@ -182,10 +189,12 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     m_rawFrameBufferSize = static_cast<size_t>(WidthInBytes) * HeightInBytes;
 #endif
     {
-        LOG(INFO) << __func__ << ": Allocating " << BufferProcessor::MAX_QUEUE_SIZE
+        LOG(INFO) << __func__ << ": Allocating "
+                  << BufferProcessor::MAX_QUEUE_SIZE
                   << " raw frame buffers, each of size " << m_rawFrameBufferSize
                   << " bytes (total: "
-                  << (BufferProcessor::MAX_QUEUE_SIZE * m_rawFrameBufferSize) / (1024.0 * 1024.0)
+                  << (BufferProcessor::MAX_QUEUE_SIZE * m_rawFrameBufferSize) /
+                         (1024.0 * 1024.0)
                   << " MB)";
         for (int i = 0; i < BufferProcessor::MAX_QUEUE_SIZE; ++i) {
             auto buffer =
@@ -211,7 +220,8 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     LOG(INFO) << __func__ << ": Allocating " << BufferProcessor::MAX_QUEUE_SIZE
               << " ToFi buffers, each of size "
               << m_tofiBufferSize * sizeof(uint16_t) << " bytes (total: "
-              << (BufferProcessor::MAX_QUEUE_SIZE * m_tofiBufferSize * sizeof(uint16_t)) /
+              << (BufferProcessor::MAX_QUEUE_SIZE * m_tofiBufferSize *
+                  sizeof(uint16_t)) /
                      (1024.0 * 1024.0)
               << " MB)";
     for (int i = 0; i < BufferProcessor::MAX_QUEUE_SIZE; ++i) {
