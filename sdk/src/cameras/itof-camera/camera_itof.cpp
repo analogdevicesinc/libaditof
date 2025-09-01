@@ -571,7 +571,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 s += param.first + "=" + param.second + "\n";
 			}
 			dataSize = s.size();
-            LOG(INFO) << s;
+            //LOG(INFO) << s;
 
 
             aditof::Status localStatus;
