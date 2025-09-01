@@ -367,7 +367,6 @@ void BufferProcessor::captureFrameThread() {
         std::chrono::duration<double, std::milli> captureTime =
             captureEnd - captureStart;
         totalCaptureTime += static_cast<long long>(captureTime.count());
-
         totalV4L2Captured++;
 
         Tofi_v4l2_buffer v4l2_frame;
