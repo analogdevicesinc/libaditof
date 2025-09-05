@@ -312,7 +312,7 @@ void BufferProcessor::captureFrameThread() {
                             "m_v4l2_input_buffer_Q size: "
                          << m_v4l2_input_buffer_Q.size();
             std::this_thread::sleep_for(
-                std::chrono::milliseconds(TIME_OUT_DELAY));
+                std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
             continue;
         }
 
@@ -324,7 +324,7 @@ void BufferProcessor::captureFrameThread() {
                        << ": waitForBufferPrivate() Failed, retrying...";
             m_v4l2_input_buffer_Q.push(v4l2_frame_holder);
             std::this_thread::sleep_for(
-                std::chrono::milliseconds(TIME_OUT_DELAY));
+                std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
             continue;
         }
 
@@ -335,7 +335,7 @@ void BufferProcessor::captureFrameThread() {
                 << ": dequeueInternalBufferPrivate() Failed, retrying...";
             m_v4l2_input_buffer_Q.push(v4l2_frame_holder);
             std::this_thread::sleep_for(
-                std::chrono::milliseconds(TIME_OUT_DELAY));
+                std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
             continue;
         }
 
@@ -350,7 +350,7 @@ void BufferProcessor::captureFrameThread() {
             enqueueInternalBufferPrivate(buf, dev);
             m_v4l2_input_buffer_Q.push(v4l2_frame_holder);
             std::this_thread::sleep_for(
-                std::chrono::milliseconds(TIME_OUT_DELAY));
+                std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
             continue;
         }
 
@@ -422,7 +422,7 @@ void BufferProcessor::processThread() {
                             "m_captureToProcessQueue Size: "
                          << m_capture_to_process_Q.size();
             std::this_thread::sleep_for(
-                std::chrono::milliseconds(TIME_OUT_DELAY));
+                std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
             continue;
         }
         std::shared_ptr<uint16_t> tofi_compute_io_buff;
@@ -433,7 +433,7 @@ void BufferProcessor::processThread() {
                 << "processThread: No ToFi buffers, m_tofi_io_Buffer_Q Size: "
                 << m_tofi_io_Buffer_Q.size();
             std::this_thread::sleep_for(
-                std::chrono::milliseconds(TIME_OUT_DELAY));
+                std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
             m_v4l2_input_buffer_Q.push(process_frame.data);
             continue;
         }
