@@ -136,6 +136,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     void startThreads();
     void stopThreads();
+    static int getTimeoutDelay() { return TIME_OUT_DELAY; }
 
   public:
     virtual aditof::Status waitForBuffer() override;
