@@ -37,6 +37,7 @@
 #else
 #include <aditof/log.h>
 #endif
+#include <atomic>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <iostream>
@@ -45,7 +46,7 @@ std::unique_ptr<zmq::socket_t> frame_socket;
 std::unique_ptr<zmq::context_t> zmq_context;
 std::string zmq_ip;
 
-static std::atomic<bool> running{true};
+static std::atomic<bool> running[MAX_CAMERA_NUM];
 static std::atomic<bool> threadObj_started{false};
 
 #define RX_BUFFER_BYTES (20996420)
@@ -65,6 +66,7 @@ struct clientData {
 int nBytes = 0;          /*no of bytes sent*/
 int recv_data_error = 0; /*flag for recv data*/
 char server_msg[] = "Connection Allowed";
+static std::atomic<bool> zmq_thread_done{false};
 
 /*Declare static members*/
 std::vector<std::unique_ptr<zmq::socket_t>> Network::command_socket;
@@ -77,8 +79,7 @@ mutex Network::mutex_recv[MAX_CAMERA_NUM];
 condition_variable_any Network::Cond_Var[MAX_CAMERA_NUM];
 condition_variable Network::thread_Cond_Var[MAX_CAMERA_NUM];
 static const int FRAME_PREPADDING_BYTES = 2;
-
-bool Network::Send_Successful[MAX_CAMERA_NUM];
+std::atomic<bool> Network::Send_Successful[MAX_CAMERA_NUM];
 bool Network::Data_Received[MAX_CAMERA_NUM];
 bool Network::Server_Connected[MAX_CAMERA_NUM];
 bool Network::Thread_Detached[MAX_CAMERA_NUM];
@@ -216,6 +217,16 @@ int Network::ServerConnect(const std::string &ip) {
             LOG(INFO) << "Attempting to connect server... ";
             try {
 
+                command_socket[m_connectionId]->setsockopt(
+                    ZMQ_SNDTIMEO, 100); // set command timeout
+                command_socket[m_connectionId]->setsockopt(ZMQ_HEARTBEAT_IVL,
+                                                           1000); // 1 sec
+                command_socket[m_connectionId]->setsockopt(
+                    ZMQ_HEARTBEAT_TIMEOUT,
+                    3000); // 3 sec
+                command_socket[m_connectionId]->setsockopt(
+                    ZMQ_HEARTBEAT_TTL,
+                    5000); // TTL for heartbeat
                 command_socket[m_connectionId]->connect("tcp://" + ip +
                                                         ":5556");
             } catch (const zmq::error_t &e) {
@@ -427,23 +438,35 @@ int Network::recv_server_data() {
 
 void Network::call_zmq_service(const std::string &ip) {
     threadObj_started = true;
-    while (running) {
+    monitor_sockets[m_connectionId]->set(zmq::sockopt::rcvtimeo, 90); // 100ms
+    while (running[m_connectionId]) {
 
         zmq_event_t event;
         zmq::message_t msg;
         try {
             zmq::message_t event;
             if (monitor_sockets[m_connectionId]) {
-                monitor_sockets[m_connectionId]->recv(msg);
+                if (!monitor_sockets[m_connectionId]->recv(
+                        msg, zmq::recv_flags::none)) {
+                    continue; // timeout occurred, check running flag again
+                }
+            } else {
+                break; // socket closed exiting the flag
             }
         } catch (const zmq::error_t &e) {
-            monitor_sockets[m_connectionId]->close();
+            if (monitor_sockets[m_connectionId]) {
+                monitor_sockets[m_connectionId]->close();
+                running[m_connectionId] = false;
+                zmq_thread_done.store(true, std::memory_order_release);
+            }
         }
 
-        memcpy(&event, msg.data(), sizeof(event));
-
-        callback_function(command_socket.at(m_connectionId), event);
+        if (running[m_connectionId]) {
+            memcpy(&event, msg.data(), sizeof(event));
+            callback_function(command_socket.at(m_connectionId), event);
+        }
     }
+    zmq_thread_done.store(true, std::memory_order_release);
 }
 
 /*
@@ -477,9 +500,23 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
         {
             std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
             Server_Connected[connectionId] = false;
-            running = false;
+            running[connectionId] = false;
+
+            if (monitor_sockets.at(connectionId)) {
+                monitor_sockets.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
+                monitor_sockets.at(connectionId)->close();
+            }
+
+            uint32_t cntr = 0;
+            while (!zmq_thread_done.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                if (cntr++ > 50) { // wait for 500ms
+                    LOG(ERROR) << "Timeout waiting for zmq thread to finish";
+                    break;
+                }
+            }
+            command_socket.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
             command_socket.at(connectionId)->close();
-            monitor_sockets.at(connectionId)->close();
             contexts.at(connectionId)->close();
             command_socket.at(connectionId) = NULL;
             monitor_sockets.at(connectionId) = NULL;
@@ -497,9 +534,23 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
         {
             std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
             Server_Connected[connectionId] = false;
-            running = false;
+            running[connectionId] = false;
+
+            if (monitor_sockets.at(connectionId)) {
+                monitor_sockets.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
+                monitor_sockets.at(connectionId)->close();
+            }
+
+            uint32_t cntr = 0;
+            while (!zmq_thread_done.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                if (cntr++ > 50) { // wait for 500ms
+                    LOG(ERROR) << "Timeout waiting for zmq thread to finish";
+                    break;
+                }
+            }
+            command_socket.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
             command_socket.at(connectionId)->close();
-            monitor_sockets.at(connectionId)->close();
             contexts.at(connectionId)->close();
             command_socket.at(connectionId) = NULL;
             monitor_sockets.at(connectionId) = NULL;
@@ -521,7 +572,6 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
 #endif
         break;
     }
-
     return 0;
 }
 
@@ -548,7 +598,7 @@ Network::Network(int connectionId)
     Network::Server_Connected[connectionId] = false;
     Network::Thread_Detached[connectionId] = false;
     Network::InterruptDetected[connectionId] = false;
-    running = true;
+    running[connectionId] = true;
 
     m_connectionId = connectionId;
     while (contexts.size() <= m_connectionId)
@@ -567,17 +617,44 @@ Network::~Network() {
         /*set a flag to complete the thread */
 
         Thread_Detached[m_connectionId] = false;
-        {
+        try {
             std::lock_guard<std::recursive_mutex> guard(
                 m_mutex[m_connectionId]);
             Server_Connected[m_connectionId] = false;
-            running = false;
-            command_socket.at(m_connectionId)->close();
+            running[m_connectionId] = false;
+
+            monitor_sockets.at(m_connectionId)->setsockopt(ZMQ_LINGER, 200);
             monitor_sockets.at(m_connectionId)->close();
+
+            uint32_t cntr = 0;
+            while (!zmq_thread_done.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                if (cntr++ > 50) { // wait for 500ms
+                    LOG(ERROR) << "Timeout waiting for zmq thread to finish";
+                    break;
+                }
+            }
+            const std::string wake_ep = "inproc://wakeup";
+            command_socket.at(m_connectionId)->bind(wake_ep);
+            command_socket.at(m_connectionId)->setsockopt(ZMQ_LINGER, 200);
+            contexts.at(m_connectionId)->shutdown();
+            command_socket.at(m_connectionId)->close();
+
+            zmq::context_t ctx(1);
+#if defined(ZMQ_HAS_CTX_OPT)
+            zmq_ctx_set(contexts.at(m_connectionId)->handle(), ZMQ_BLOCKY,
+                        0); // prevent blocking on close()
+#else
+            contexts.at(m_connectionId)->set(zmq::ctxopt::blocky, false);
+#endif
             contexts.at(m_connectionId)->close();
+
             command_socket.at(m_connectionId) = NULL;
             monitor_sockets.at(m_connectionId) = NULL;
             contexts.at(m_connectionId) = NULL;
+        } catch (const std::exception &e) {
+            LOG(ERROR) << "close threw: " << e.what();
+            std::terminate(); // or propagate
         }
     }
 }

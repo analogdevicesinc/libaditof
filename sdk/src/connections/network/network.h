@@ -66,7 +66,7 @@ class Network {
     static std::condition_variable_any Cond_Var[MAX_CAMERA_NUM];
     static std::condition_variable thread_Cond_Var[MAX_CAMERA_NUM];
 
-    static bool Send_Successful[MAX_CAMERA_NUM];
+    static std::atomic<bool> Send_Successful[MAX_CAMERA_NUM];
     static bool Data_Received[MAX_CAMERA_NUM];
     static bool Server_Connected[MAX_CAMERA_NUM];
     static bool Thread_Detached[MAX_CAMERA_NUM];

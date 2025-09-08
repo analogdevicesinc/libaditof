@@ -131,7 +131,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     : m_driverPath(driverPath), m_driverSubPath(driverSubPath),
       m_captureDev(captureDev), m_implData(new Adsd3500Sensor::ImplData),
       m_firstRun(true), m_adsd3500Queried(false), m_depthComputeOnTarget(true),
-      m_chipStatus(0), m_imagerStatus(0),
+      m_chipStatus(0), m_imagerStatus(0), isOpen(0),
       m_hostConnectionType(aditof::ConnectionType::ON_TARGET) {
     m_sensorName = "adsd3500";
     m_interruptAvailable = false;
@@ -200,6 +200,13 @@ Adsd3500Sensor::~Adsd3500Sensor() {
                     << "close m_implData->sfd error "
                     << "errno: " << errno << " error: " << strerror(errno);
             }
+        }
+    }
+
+    if (isOpen) {
+        if (m_implData->videoDevs) {
+            delete[] m_implData->videoDevs;
+            m_implData->videoDevs = nullptr;
         }
     }
 
@@ -408,6 +415,10 @@ aditof::Status Adsd3500Sensor::open() {
         return status;
     }
 
+    if (status == aditof::Status::OK) {
+        isOpen = true;
+    }
+
     return status;
 }
 
@@ -601,10 +612,18 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         }
     }
 
-    status = open();
-    if (status != aditof::Status::OK) {
-        LOG(INFO) << "Failed to open sensor!";
-        return status;
+    if (isOpen) { // open the device if it's been closed
+        isOpen = false;
+        // free the allocated new buffer
+        if (m_implData->videoDevs) {
+            delete[] m_implData->videoDevs;
+            m_implData->videoDevs = nullptr;
+        }
+        status = open();
+        if (status != aditof::Status::OK) {
+            LOG(INFO) << "Failed to open sensor!";
+            return status;
+        }
     }
 
     // Don't request buffers & set fromat for UVC context. It is already done in uvc-app/lib/v4l2.c
@@ -1766,17 +1785,13 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                 break;
             }
             case 2: {
-                readValue = 0;
-                status = adsd3500_read_cmd(0x0115, &readValue);
-                uint8_t imager_series = (readValue & 0x000F);
-                if (imager_series == 1) {
-                    m_implData->imagerType = SensorImagerType::IMAGER_ADSD3030;
-                    m_modeSelector.setControl("imagerType", "adsd3030");
-                } else if (imager_series == 2) {
-                    m_implData->imagerType = SensorImagerType::IMAGER_ADTF3080;
-                    m_modeSelector.setControl("imagerType", "adtf3080");
-                }
-
+                m_implData->imagerType = SensorImagerType::IMAGER_ADSD3030;
+                m_modeSelector.setControl("imagerType", "adsd3030");
+                break;
+            }
+            case 3: {
+                m_implData->imagerType = SensorImagerType::IMAGER_ADTF3080;
+                m_modeSelector.setControl("imagerType", "adtf3080");
                 break;
             }
             default: {

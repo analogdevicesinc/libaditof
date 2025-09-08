@@ -228,6 +228,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::vector<iniFileStruct> m_iniFileStructList;
     aditof::Adsd3500ModeSelector m_modeSelector;
     std::string m_sensorConfiguration;
+    bool isOpen;
     bool m_ccbmEnabled;
 
   public:
