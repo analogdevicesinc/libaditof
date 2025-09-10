@@ -672,7 +672,6 @@ aditof::Status BufferProcessor::stopRecording() {
 
 aditof::Status BufferProcessor::writeFrame(uint16_t *buffer,
                                               uint32_t bufferSize) {
-    LOG(INFO) << __func__ << ": Satrt writing file";
     if (m_state != ST_RECORD) {
         LOG(ERROR) << "Not in record mode";
         return aditof::Status::GENERIC_ERROR;
