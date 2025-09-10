@@ -298,6 +298,37 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             return status;
         }
 
+#ifdef NVIDIA
+    uint16_t setMIPISpeedCmd = 0x0031;
+    uint16_t setMIPISpeed2p5 = 0x0001; //2.5 Gbps
+    uint16_t setEnablDeskewCmd = 0x00AB;
+    uint16_t setEnablDeskew = 0x001;
+    uint16_t readValue =0;
+
+    status = m_depthSensor->adsd3500_read_cmd(0x0034, &readValue);
+    LOG(INFO) << "MIPI speed : " << readValue;
+    if(readValue != 1){
+        status = m_depthSensor->adsd3500_write_cmd(setMIPISpeedCmd, setMIPISpeed2p5);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Failed to Set MIPI speed to 2.5Gbps";
+            return status;
+        } else {
+            LOG(ERROR) << "Set MIPI speed to 2.5Gbps";
+        }
+    }
+    status = m_depthSensor->adsd3500_read_cmd(0x00AC, &readValue);
+    LOG(INFO) << "Deskew Signal : " << readValue;
+    if(readValue != 1){
+        status = m_depthSensor->adsd3500_write_cmd(setEnablDeskewCmd, setEnablDeskew);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Failed to Enable Deskew Signal";
+            return status;
+        } else {
+            LOG(ERROR) << "Enabled Deskew Signal";
+        }
+    }
+#endif
+
         LOG(INFO) << "Camera initialized";
     }
 
