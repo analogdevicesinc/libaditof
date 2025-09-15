@@ -38,11 +38,7 @@ set(CAMERA_DIR "cameras/itof-camera")
 set(FRAME_DIR "cameras/itof-frame")
 set(COMMON_DIR "common/adi")
 
-if( WIN32 )
-    set(OS_SPECIFIC_DIR "connections/usb/windows")
-elseif( APPLE )
-    set(OS_SPECIFIC_DIR "connections/usb/macos")
-elseif ( NXP )
+if ( ON_NXP )
     # Add optimization for specific architecture
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         add_compile_options(-march=armv8-a+simd)
@@ -50,12 +46,10 @@ elseif ( NXP )
     set(OS_SPECIFIC_DIR "connections/target")
     set(TARGET_SPECIFIC_DIR "soc/imx")
     add_definitions(-DNXP)
-elseif ( NVIDIA )
+elseif ( ON_NVIDIA )
     set(OS_SPECIFIC_DIR "connections/target")
     set(TARGET_SPECIFIC_DIR "soc/nvidia")
     add_definitions(-DNVIDIA)
-elseif ( UNIX )
-    set(OS_SPECIFIC_DIR "connections/usb/linux")
 else()
     message(FATAL_ERROR "Platform not supported")
 endif()
@@ -90,13 +84,6 @@ if(USE_DEPTH_COMPUTE_OPENSOURCE AND ON_TARGET)
     add_subdirectory(common/adi/depth-compute-opensource)
 endif()
 
-file(GLOB USB_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/connections/usb/*.cpp
-)
-file(GLOB USB_HEADERS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/connections/usb/*.h
-)
-
 file(GLOB NETWORK_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/connections/network/*.cpp
 )
@@ -121,8 +108,6 @@ add_library(${PROJECT_NAME} SHARED
     $<$<BOOL:${WITH_NETWORK}>:${NETWORK_HEADERS}>
     $<$<BOOL:${WITH_OFFLINE}>:${OFFLINE_SOURCES}>
     $<$<BOOL:${WITH_OFFLINE}>:${OFFLINE_HEADERS}>
-    $<$<BOOL:${WITH_PROTOBUF_DEPENDENCY}>:${USB_SOURCES}>
-    $<$<BOOL:${WITH_PROTOBUF_DEPENDENCY}>:${USB_HEADERS}>
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE crc32)
@@ -137,7 +122,20 @@ if(WITH_GLOG_DEPENDENCY)
     endif()
 endif()
 
-if(WITH_PROTOBUF_DEPENDENCY)
+if(WITH_NETWORK AND WITH_ZMQ_DEPENDENCY)
+    # Include the cppzmq to use in c++
+    set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cppzmq")
+    
+    # Check if submodule exists, and build the library
+    if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../libzmq/.git")
+        find_package(ZeroMQ REQUIRED)
+    else()
+        include_directories(${CPPZMQ_INSTALL_DIR})
+        target_link_libraries(${PROJECT_NAME} PUBLIC libzmq-static)
+    endif()
+endif()	
+
+if(WITH_NETWORK AND WITH_PROTOBUF_DEPENDENCY)
     # Check if submodule exists, and build the library
     if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../protobuf/.git")
         find_package(Protobuf 3.9.0 REQUIRED)
@@ -145,11 +143,6 @@ if(WITH_PROTOBUF_DEPENDENCY)
     target_link_libraries(${PROJECT_NAME} PUBLIC libprotobuf)
 
     endif()
-    set(PROTO_HDRS "${CMAKE_CURRENT_SOURCE_DIR}/usb_buffer.pb.h")
-    set(PROTO_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/usb_buffer.pb.cc")
-	add_custom_command(OUTPUT ${PROTO_HDRS} ${PROTO_SRCS}
-                        COMMAND protoc usb_buffer.proto -I${CMAKE_CURRENT_SOURCE_DIR}/src/connections/usb --cpp_out=.
-                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
     target_sources(${PROJECT_NAME} PRIVATE ${PROTO_HDRS} ${PROTO_SRCS})
     target_include_directories(${PROJECT_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
@@ -256,14 +249,6 @@ if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
             -Werror=init-self
     )
 endif()
-
-if( APPLE )
-    find_library( LIBUVC_LIB libuvc.dylib /usr/local/lib/ )
-    if( NOT LIBUVC_LIB)
-        MESSAGE( SEND_ERROR "Cannot find the libuvc library")
-    endif( NOT LIBUVC_LIB)
-    target_link_libraries( ${PROJECT_NAME} PRIVATE ${LIBUVC_LIB})
-endif( APPLE )
 
 # includes install paths
 include(GNUInstallDirs)
