@@ -122,19 +122,6 @@ if(WITH_GLOG_DEPENDENCY)
     endif()
 endif()
 
-if(WITH_NETWORK AND WITH_ZMQ_DEPENDENCY)
-    # Include the cppzmq to use in c++
-    set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cppzmq")
-    
-    # Check if submodule exists, and build the library
-    if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../libzmq/.git")
-        find_package(ZeroMQ REQUIRED)
-    else()
-        include_directories(${CPPZMQ_INSTALL_DIR})
-        target_link_libraries(${PROJECT_NAME} PUBLIC libzmq-static)
-    endif()
-endif()	
-
 if(WITH_NETWORK AND WITH_PROTOBUF_DEPENDENCY)
     # Check if submodule exists, and build the library
     if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../protobuf/.git")
