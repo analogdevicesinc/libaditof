@@ -347,7 +347,7 @@ aditof::Status Adsd3500Sensor::open() {
             dealiasCheck[0] = 1;
 
             for (int i = 0; i < 10; i++) {
-                // adsd3500_reset();
+                adsd3500_reset();
 
                 adsd3500StateStatus = adsd3500_read_cmd(0x0020, &adsd3500State);
                 if (adsd3500StateStatus == Status::OK) {
@@ -1449,7 +1449,7 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
         system("echo 0 > /sys/class/gpio/PH.06/value");
         usleep(100000);
         system("echo 1 > /sys/class/gpio/PH.06/value");
-        usleep(5000000);
+        usleep(10000000);
     } else {
         Gpio gpio11("/dev/gpiochip3", 11);
         gpio11.openForWrite();
