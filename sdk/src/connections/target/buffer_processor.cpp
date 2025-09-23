@@ -463,13 +463,27 @@ void BufferProcessor::processThread() {
                 m_currentModeNumber ==
                     1) { // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
                 memcpy(m_tofiComputeContext->p_depth_frame,
-                       process_frame.data.get(), numPixels);
+                       process_frame.data.get(), numPixels * 2);
 
                 memcpy(m_tofiComputeContext->p_ab_frame,
-                       process_frame.data.get() + numPixels, numPixels);
+                       process_frame.data.get() + numPixels * 2, numPixels * 2);
+                memset(m_tofiComputeContext->p_conf_frame, 0, numPixels * 4);
+            } else {
+                uint32_t ret = TofiCompute(
+                    reinterpret_cast<uint16_t *>(process_frame.data.get()),
+                    m_tofiComputeContext, NULL);
+                if (ret != ADI_TOFI_SUCCESS) {
+                    LOG(ERROR) << "processThread: TofiCompute failed";
+                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                    m_v4l2_input_buffer_Q.push(process_frame.data);
+                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
+                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                    continue;
+                }
             }
 #else
-            auto processStart = std::chrono::high_resolution_clock::now();
+            // auto processStart = std::chrono::high_resolution_clock::now();
 
             uint32_t ret = TofiCompute(
                 reinterpret_cast<uint16_t *>(process_frame.data.get()),
@@ -484,11 +498,11 @@ void BufferProcessor::processThread() {
                 continue;
             }
 #endif
-            auto processEnd = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double, std::milli> processTime =
-                processEnd - processStart;
-            totalProcessTime += static_cast<long long>(processTime.count());
-            totalProcessedFrame++;
+            // auto processEnd = std::chrono::high_resolution_clock::now();
+            // std::chrono::duration<double, std::milli> processTime =
+            //     processEnd - processStart;
+            // totalProcessTime += static_cast<long long>(processTime.count());
+            // totalProcessedFrame++;
 
             m_tofiComputeContext->p_depth_frame = tempDepthFrame;
             m_tofiComputeContext->p_ab_frame = tempAbFrame;

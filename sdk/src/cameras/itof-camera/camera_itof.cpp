@@ -260,7 +260,7 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             return status;
         }
     } else {
-        m_mipiOutputSpeed = 2.5;
+        m_mipiOutputSpeed = 1;
         status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set mipiOutputSpeed.";
