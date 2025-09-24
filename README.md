@@ -50,4 +50,16 @@ cmake -DON_NVIDA=1 ..
 make -j"$(nproc)"
 ```
 
-SDK binary and associated softlinks are in build/libaditof.so*
+SDK binary and associated softlinks are hare **build/libaditof.so* **
+
+### Windows Build
+
+```
+git clone https://github.com/analogdevicesinc/libaditof
+cd libaditof
+git submodule update --init
+git checkout <branch or tag>
+mkdir build && cd build
+cmake -DCMAKE_BUILD_TYPE=Release -G "Visual Studio 17 2022" ..
+cmake --build . --config RELEASE -j 8
+```
