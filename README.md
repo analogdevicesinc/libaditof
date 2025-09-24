@@ -34,6 +34,8 @@ Repos using libaditof:
 * [ADTF3175D Eval Kit](https://github.com/analogdevicesinc/ToF)
 * [ADCAM3175 Camera Kit](https://github.com/analogdevicesinc/ADCAM)
 
+**Note, prior to committing to the repo it is important to format the source code, see the [code formatting](./doc/code-formatting.md).**
+
 ## Build libaditof SDK
 
 ### Linux Build
