@@ -29,7 +29,23 @@ The SDK provides an API to control the ToF camera, AB, and depth frame streams.
 
 License : [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Repos of using libaditof:
+Repos using libaditof:
 
 * [ADTF3175D Eval Kit](https://github.com/analogdevicesinc/ToF)
 * [ADCAM3175 Camera Kit](https://github.com/analogdevicesinc/ADCAM)
+
+## Build libaditof SDK
+
+### Linux Build
+
+```
+git clone https://github.com/analogdevicesinc/libaditof
+cd libaditof
+git submodule update --init
+git checkout <branch or tag>
+mkdir build && cd build
+cmake -DON_NVIDA=1 ..
+make -j"$(nproc)"
+```
+
+SDK binary and associated softlinks are in build/libaditof.so*
