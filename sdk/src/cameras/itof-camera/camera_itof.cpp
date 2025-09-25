@@ -1396,7 +1396,7 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
 
     cJSON_AddNumberToObject(rootjson, "fsyncMode", m_fsyncMode);
     cJSON_AddNumberToObject(rootjson, "mipiOutputSpeed", m_mipiOutputSpeed);
-    cJSON_AddNumberToObject(rootjson, "m_isdeskewEnabled", m_isdeskewEnabled);
+    cJSON_AddNumberToObject(rootjson, "isdeskewEnabled", m_isdeskewEnabled);
     cJSON_AddNumberToObject(rootjson, "enableTempCompensation",
                             m_enableTempCompenstation);
     cJSON_AddNumberToObject(rootjson, "enableEdgeConfidence",
