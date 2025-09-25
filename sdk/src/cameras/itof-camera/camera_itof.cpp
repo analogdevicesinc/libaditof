@@ -283,6 +283,7 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         LOG(WARNING)
             << "deskew is not being set by SDK, Setting it by default.";
     }
+
     if (m_enableTempCompenstation >= 0) {
         status =
             adsd3500SetEnableTemperatureCompensation(m_enableTempCompenstation);
@@ -1395,6 +1396,7 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
 
     cJSON_AddNumberToObject(rootjson, "fsyncMode", m_fsyncMode);
     cJSON_AddNumberToObject(rootjson, "mipiOutputSpeed", m_mipiOutputSpeed);
+    cJSON_AddNumberToObject(rootjson, "m_isdeskewEnabled", m_isdeskewEnabled);
     cJSON_AddNumberToObject(rootjson, "enableTempCompensation",
                             m_enableTempCompenstation);
     cJSON_AddNumberToObject(rootjson, "enableEdgeConfidence",
@@ -1512,6 +1514,12 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
             cJSON_GetObjectItemCaseSensitive(config_json, "mipiOutputSpeed");
         if (cJSON_IsNumber(mipiOutputSpeed)) {
             m_mipiOutputSpeed = mipiOutputSpeed->valueint;
+        }
+
+        cJSON *isdeskewEnabled =
+            cJSON_GetObjectItemCaseSensitive(config_json, "isdeskewEnabled");
+        if (cJSON_IsNumber(isdeskewEnabled)) {
+            m_isdeskewEnabled = isdeskewEnabled->valueint;
         }
 
         cJSON *enableTempCompensation = cJSON_GetObjectItemCaseSensitive(
