@@ -66,17 +66,4 @@ cmake --build . --config RELEASE -j 8
 
 ## CMake Options
 
-| Option | Description | Default |
-|--------|-------------|---------|
-|WITH_DOC|Build doygen documentation. |OFF|
-|WITH_NETWORK|Build with network interface. |ON|
-|WITH_OFFLINE|Build offline interface for replaying saved streams |OFF|
-|WITH_GLOG_DEPENDENCY|Build with GLOG dependency to be used for logging?|OFF|
-|CI_BUILD|Build for CI.|OFF|
-|WITH_SUBMODULES|Use submodules to build the library|ON|
-|ENABLE_PCM|Enable the streaming of PCM frames|OFF|
-|RECV_ASYNC|Receive the frames Asynchronously|ON|
-|ON_NXP|Set to ON when building on NXP|OFF|
-|ON_NVIDIA|Set to ON when building on NVIDIA|OFF|
-|WITH_PROTOBUF_DEPENDENCY|Build with PROTOBUF dependency?|ON|
-|USE_DEPTH_COMPUTE_OPENSOURCE|Use an open source implementation?|OFF|
+For the build options in [CMakeLists.txt](./CMakeLists.txt) see [cmake/readme.md](./cmake/readme.md).
