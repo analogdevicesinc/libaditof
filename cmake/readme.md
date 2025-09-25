@@ -20,21 +20,17 @@ which will generate all the necessary recipes for building and installing. Usefu
 | WITH_EXAMPLES | on/off | on | Build the examples. |
 | WITH_DOC | on/off | off | Build the doxygen documentation. |
 | WITH_PYTHON | on/off | off | Build the python bindings. |
-| WITH_OPENCV | on/off | off | Build the opencv bindings. |
-| WITH_OPEN3D | on/off | off | Build the open3D bindings. |
-| WITH_ROS2 | on/off | off | Build the ROS2 bindings. |
 | WITH_NETWORK | on/off | off | Build the network interface for a Linux or Windows host build; use **off** for building on the target. |
 | WITH_OFFLINE | on/off | off | Build the offline mode. No hardware is required. |
 | WITH_GLOG_DEPENDENCY | on/off | on | Build the sdk with GLOG dependency. Used for logging. |
-| WITH_COMMAND_LINE_TOOLS | on/off | on | Build the command line tools. |
 | WITH_COMMAND_LINE_TOOLS | on/off | on | Build the command line tools. |
 | CI_BUILD | on/off | off | Only used for continuous integrations builds. Can overwrite other cmake options. |
 
 ##### Target-only custom options
 | \<option\> | value | default | description |
  --------- | ----------- | ----------- | ----------- |
-| NXP | on/off | off | Builds in a specific way targeting the NXP system. |
-| NVIDIA | on/off | off | Builds in a specific way targeting the NVIDIA system. |
+| ON_NXP | on/off | off | Builds in a specific way targeting the NXP system. |
+| ON_NVIDIA | on/off | off | Builds in a specific way targeting the NVIDIA system. |
 | WITH_PROTOBUF_DEPENDENCY | on/off | on | Build the sdk with Protobuf dependency. Used for serializing the messages sent over network. |
 | USE_DEPTH_COMPUTE_OPENSOURCE | on/off | off | When **on** the open source radial to XYZ (point cloud) generation is used. Otherwise the closed source partial depth compute library is required. |
 
@@ -120,26 +116,6 @@ https://graphviz.org/download/
 
 Tested with GraphViz 4.0.0.
 
-##### WITH_OPENCV = ON
-
-Download and install OpenCV 4.6.0 from to https://opencv.org/releases/. 
-
-It is important the OpenCV_DIR environment variable be set:
-* For a permananet addition for the current and future shells (note close and reopen shell): **setx OpenCV_DIR C:\dev\opencv\build\x64\vc15\lib**
-* For a temporary addition for the current shell: **set OpenCV_DIR=C:\dev\opencv\build\x64\vc15\lib**
-
-##### WITH_OPEN3D = ON
-
-Download and install open3d-devel-windows-amd64-0.15.1.zip from https://github.com/isl-org/Open3D/releases.
-
-It is important the Open3D_DIR environment variable be set:
-* For a permananet addition for the current and future shells (note close and reopen shell): **setx Open3D_DIR C:\dev\open3d\CMake**
-* For a temporary addition for the current shell: **set Open3D_DIR=C:\dev\open3d\CMake**
-
-##### WITH_ROS2 = ON
-
-See [here](../bindings/ros2/README.md) for more details.
-
 ##### USE_DEPTH_COMPUTE_OPENSOURCE = ON
 
 Building with the Depth Compute Libraries
@@ -161,7 +137,6 @@ C:.
 |       tofi_compute.lib
 |       tofi_config.dll
 |       tofi_config.lib
-|       tofi_processor.obj
 |
 \---ToF
     |   .clang-format
