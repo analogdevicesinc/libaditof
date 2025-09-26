@@ -71,7 +71,7 @@ CameraItof::CameraItof(
     : m_depthSensor(depthSensor), m_devStarted(false), m_devStreaming(false),
       m_adsd3500Enabled(false), m_loadedConfigData(false), m_xyzEnabled(true),
       m_xyzSetViaApi(false), m_cameraFps(0), m_fsyncMode(-1),
-      m_mipiOutputSpeed(1), m_isdeskewEnabled(0), m_enableTempCompenstation(-1),
+      m_mipiOutputSpeed(1), m_isdeskewEnabled(1), m_enableTempCompenstation(-1),
       m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
