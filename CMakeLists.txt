@@ -27,8 +27,8 @@ option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
 option(RECV_ASYNC "Receive the frames Asynchronously" ON)
 
 ######################### Target based Options ################################
-option(ON_NXP "Set to ON when building on NXP" OFF)
-option(ON_NVIDIA "Set to ON when building on NVIDIA" OFF)
+option(NXP "Set to ON when building on NXP" OFF)
+option(NVIDIA "Set to ON when building on NVIDIA" OFF)
 option(WITH_PROTOBUF_DEPENDENCY "Build with PROTOBUF dependency?" ON)
 option(USE_DEPTH_COMPUTE_OPENSOURCE "Use an open source implementation?" OFF)
 
@@ -87,7 +87,7 @@ endif()
 
 # Check whether we configure things for remote or we're on target
 set(SELECTED_PLATFORMS 0)
-set(ALL_PLATFORMS ON_NXP;ON_NVIDIA)
+set(ALL_PLATFORMS NXP;NVIDIA)
 foreach(platform IN LISTS ALL_PLATFORMS)
     if(${platform})
         math(EXPR SELECTED_PLATFORMS "${SELECTED_PLATFORMS}+1")
