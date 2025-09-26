@@ -1,4 +1,4 @@
-# 3D Time of Flight : sdk/src 
+# Directory Overview
 
 #### Overview
 Container for SDK source and header files
