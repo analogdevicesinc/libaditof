@@ -46,7 +46,7 @@ cd libaditof
 git submodule update --init
 git checkout <branch or tag>
 mkdir build && cd build
-cmake -DON_NVIDA=1 ..
+cmake -DNVIDA=1 ..
 make -j"$(nproc)"
 ```
 
