@@ -29,8 +29,8 @@ which will generate all the necessary recipes for building and installing. Usefu
 ##### Target-only custom options
 | \<option\> | value | default | description |
  --------- | ----------- | ----------- | ----------- |
-| ON_NXP | on/off | off | Builds in a specific way targeting the NXP system. |
-| ON_NVIDIA | on/off | off | Builds in a specific way targeting the NVIDIA system. |
+| NXP | on/off | off | Builds in a specific way targeting the NXP system. |
+| NVIDIA | on/off | off | Builds in a specific way targeting the NVIDIA system. |
 | WITH_PROTOBUF_DEPENDENCY | on/off | on | Build the sdk with Protobuf dependency. Used for serializing the messages sent over network. |
 | USE_DEPTH_COMPUTE_OPENSOURCE | on/off | off | When **on** the open source radial to XYZ (point cloud) generation is used. Otherwise the closed source partial depth compute library is required. |
 
