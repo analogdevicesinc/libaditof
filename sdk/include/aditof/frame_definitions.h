@@ -253,6 +253,16 @@ struct Metadata {
     * @brief Laser temperature in degrees Celsius
     */
     int32_t laserTemperature;
+
+    /**
+    * @brief Elapsed time in seconds from v4l2 driver
+    */
+    long elapsedTimeSec_v4l2;
+
+    /**
+    * @brief Elapsed time in microseconds from v4l2 driver
+    */
+    long elapsedTimeUSec_v4l2;
 };
 #pragma pack(pop)
 

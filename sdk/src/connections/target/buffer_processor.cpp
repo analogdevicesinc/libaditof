@@ -303,6 +303,7 @@ void BufferProcessor::captureFrameThread() {
         uint8_t *pdata = nullptr;
         unsigned int buf_data_len = 0;
         std::shared_ptr<uint8_t> v4l2_frame_holder;
+        Tofi_v4l2_buffer v4l2_frame;
 
         if (!m_v4l2_input_buffer_Q.pop(v4l2_frame_holder) ||
             !v4l2_frame_holder) {
@@ -339,6 +340,8 @@ void BufferProcessor::captureFrameThread() {
             continue;
         }
 
+        v4l2_frame.timestamp = buf.timestamp;
+
         status = getInternalBufferPrivate(&pdata, buf_data_len, buf, dev);
         if (status != aditof::Status::OK || !pdata || buf_data_len == 0) {
             LOG(ERROR)
@@ -370,7 +373,6 @@ void BufferProcessor::captureFrameThread() {
 
         totalV4L2Captured++;
 
-        Tofi_v4l2_buffer v4l2_frame;
         v4l2_frame.data = v4l2_frame_holder;
         v4l2_frame.size = buf_data_len;
 
@@ -503,6 +505,17 @@ void BufferProcessor::processThread() {
             //     processEnd - processStart;
             // totalProcessTime += static_cast<long long>(processTime.count());
             // totalProcessedFrame++;
+
+            aditof::Metadata metadata;
+            memcpy(&metadata, m_tofiComputeContext->p_ab_frame,
+                   sizeof(metadata));
+
+            metadata.elapsedTimeSec_v4l2 = process_frame.timestamp.tv_sec;
+            metadata.elapsedTimeUSec_v4l2 =
+                process_frame.timestamp.tv_usec;
+
+            memcpy(m_tofiComputeContext->p_ab_frame, &metadata,
+                   sizeof(metadata));
 
             m_tofiComputeContext->p_depth_frame = tempDepthFrame;
             m_tofiComputeContext->p_ab_frame = tempAbFrame;

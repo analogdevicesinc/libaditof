@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "v4l_buffer_access_interface.h"
+#include <aditof/frame_definitions.h>
 
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
@@ -186,6 +187,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
         std::shared_ptr<uint8_t> data;
         size_t size = 0;
         std::shared_ptr<uint16_t> tofiBuffer;
+        timeval timestamp;
     };
 
     // Thread-safe pool of empty raw frame buffers for use by capture thread
