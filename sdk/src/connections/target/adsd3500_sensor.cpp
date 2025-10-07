@@ -103,7 +103,13 @@ enum class SensorImagerType {
     IMAGER_ADTF3080
 };
 
-enum class CCBVersion { CCB_UNKNOWN, CCB_VERSION0, CCB_VERSION1, CCB_VERSION2 };
+enum class CCBVersion {
+    CCB_UNKNOWN,
+    CCB_VERSION0,
+    CCB_VERSION1,
+    CCB_VERSION2,
+    CCB_VERSION3
+};
 
 struct Adsd3500Sensor::ImplData {
     uint8_t numVideoDevs;
@@ -1784,6 +1790,10 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                 m_implData->ccbVersion = CCBVersion::CCB_VERSION2;
                 break;
             }
+            case 4: {
+                m_implData->ccbVersion = CCBVersion::CCB_VERSION3;
+                break;
+            }
             default: {
                 LOG(WARNING) << "Unknown CCB version read from ADSD3500: "
                              << ccb_version;
@@ -1825,8 +1835,9 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
         if (m_implData->ccbVersion == CCBVersion::CCB_VERSION0) {
             LOG(ERROR) << "Old modes are no longer supported!";
             return Status::GENERIC_ERROR;
-        } else if (m_implData->ccbVersion == CCBVersion::CCB_VERSION2 &&
-                   m_controls["disableCCBM"] == "0") {
+        } else if (m_implData->ccbVersion == CCBVersion::CCB_VERSION3 ||
+                   m_implData->ccbVersion == CCBVersion::CCB_VERSION2 &&
+                       m_controls["disableCCBM"] == "0") {
 
             uint16_t data;
             status = adsd3500_read_cmd(0x39, &data);
