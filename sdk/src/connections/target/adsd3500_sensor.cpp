@@ -479,23 +479,27 @@ aditof::Status Adsd3500Sensor::stop() {
     Status status = Status::OK;
     struct VideoDev *dev;
 
-    m_bufferProcessor->stopThreads();
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
 
-        if (!dev->started) {
-            LOG(INFO) << "Device " << i << " already stopped";
-            return Status::OK;
-        }
-        LOG(INFO) << "Stopping device";
+        if (dev->started) {
+            m_bufferProcessor->stopThreads();
+            if (!dev->started) {
+                LOG(INFO) << "Device " << i << " already stopped";
+                return Status::OK;
+            }
+            LOG(INFO) << "Stopping device";
 
-        if (xioctl(dev->fd, VIDIOC_STREAMOFF, &dev->videoBuffersType) != 0) {
-            LOG(WARNING) << "VIDIOC_STREAMOFF error "
-                         << "errno: " << errno << " error: " << strerror(errno);
-            return Status::GENERIC_ERROR;
-        }
+            if (xioctl(dev->fd, VIDIOC_STREAMOFF, &dev->videoBuffersType) !=
+                0) {
+                LOG(WARNING)
+                    << "VIDIOC_STREAMOFF error "
+                    << "errno: " << errno << " error: " << strerror(errno);
+                return Status::GENERIC_ERROR;
+            }
 
-        dev->started = false;
+            dev->started = false;
+        }
     }
     status = adsd3500_getInterruptandReset();
     return status;
