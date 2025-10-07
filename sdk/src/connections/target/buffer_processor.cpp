@@ -175,7 +175,12 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     m_outputFrameWidth = frameWidth;
     m_outputFrameHeight = frameHeight;
 
+#ifdef NVIDIA
+    m_rawFrameBufferSize =
+        static_cast<size_t>(WidthInBytes) * HeightInBytes + WidthInBytes;
+#else
     m_rawFrameBufferSize = static_cast<size_t>(WidthInBytes) * HeightInBytes;
+#endif
     {
         LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE
                   << " raw frame buffers, each of size " << m_rawFrameBufferSize
