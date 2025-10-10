@@ -33,7 +33,13 @@
 #ifndef LOG_H
 #define LOG_H
 
+#include <chrono>
+#include <fstream>
+#include <iomanip>
 #include <iostream>
+#include <sstream>
+#include <string>
+#include <unistd.h>
 
 //glog/logging.h defines this namespace
 //which is required by protobuf library
@@ -63,13 +69,62 @@ typedef uint64_t uint64;
 static void InitGoogleLogging(char *val){};
 } // namespace google
 
+class Log {
+  public:
+    Log(const std::string &x, const std::string &file, int line) {
+
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        auto micros = std::chrono::duration_cast<std::chrono::microseconds>(
+                          now.time_since_epoch()) %
+                      std::chrono::seconds(1);
+        std::stringstream ss;
+        ss << x << std::put_time(std::localtime(&now_time), "%Y%m%d %H:%M:%S")
+           << "." << std::setfill('0') << std::setw(6) << micros.count() << " "
+           << getpid() << " " << getFileName(file) << ":" << line << "] ";
+
+        buffer << ss.str();
+    }
+    template <typename T>
+    Log &operator<<(const T &msg) {
+        buffer << msg;
+        return *this;
+    }
+
+    ~Log() { std::cerr << buffer.str() << std::endl; }
+
+    Log &operator<<(std::ostream &(*manip)(std::ostream &)) {
+        // Ignore std::endl to avoid double newline
+        return *this;
+    }
+
+  private:
+    std::stringstream buffer;
+
+    std::string getFileName(const std::string &path) {
+        size_t pos = path.find_last_of("/");
+        return (pos == std::string::npos) ? path : path.substr(pos + 1);
+    }
+    std::string currentDate() {
+        std::time_t now_time = std::chrono::system_clock::to_time_t(
+            std::chrono::system_clock::now());
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&now_time), "%Y%m%d");
+        return ss.str();
+    }
+};
+
 static int FLAGS_alsologtostderr;
 static int FLAGS_logtostderr;
 
-#define INFO "INFO "
-#define ERROR "ERROR "
-#define WARNING "WARNING "
-#define LOG(x) std::cout << "\n"
-#define DLOG(x) std::cout << "\n"
+#define INFO "I"
+#define ERROR "E"
+#define WARNING "W"
+
+#ifdef NDEBUG
+#define DLOG(x) Log(x, __FILE__, __LINE__)
+#endif
+
+#define LOG(x) Log(x, __FILE__, __LINE__)
 
 #endif // LOG_COUT_H
