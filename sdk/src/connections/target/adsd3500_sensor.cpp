@@ -1454,12 +1454,37 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
         usleep(7000000);
     }
 #elif defined(NVIDIA)
+    m_chipResetDone = false;
+    m_adsd3500Status = Adsd3500Status::OK;
+    aditof::SensorInterruptCallback cb = [this](Adsd3500Status status) {
+        m_adsd3500Status = status;
+        m_chipResetDone = true;
+    };
+    status = adsd3500_register_interrupt_callback(cb);
+    bool interruptsAvailable = (status == Status::OK);
     struct stat st;
     if (stat("/sys/class/gpio/PH.06/value", &st) == 0) {
+
         system("echo 0 > /sys/class/gpio/PH.06/value");
         usleep(100000);
         system("echo 1 > /sys/class/gpio/PH.06/value");
-        usleep(10000000);
+
+        if (interruptsAvailable) {
+            LOG(INFO) << "Waiting for ADSD3500 to reset.";
+            int secondsTimeout = 10;
+            int secondsWaited = 0;
+            int secondsWaitingStep = 1;
+            while (!m_chipResetDone && secondsWaited < secondsTimeout) {
+                LOG(INFO) << ".";
+                std::this_thread::sleep_for(
+                    std::chrono::seconds(secondsWaitingStep));
+                secondsWaited += secondsWaitingStep;
+            }
+            LOG(INFO) << "Waited: " << secondsWaited << " seconds";
+            adsd3500_unregister_interrupt_callback(cb);
+        } else {
+            usleep(10000000);
+        }
     } else {
         Gpio gpio11("/dev/gpiochip3", 11);
         gpio11.openForWrite();
@@ -1477,7 +1502,7 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
 
 aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
     Status status = aditof::Status::OK;
-#if defined(NXP)
+
     m_chipResetDone = false;
     m_adsd3500Status = Adsd3500Status::OK;
     aditof::SensorInterruptCallback cb = [this](Adsd3500Status status) {
@@ -1508,8 +1533,6 @@ aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
     } else {
         LOG(INFO) << "Got the Interrupt from ADSD3500";
     }
-
-#endif
 
     return status;
 }
