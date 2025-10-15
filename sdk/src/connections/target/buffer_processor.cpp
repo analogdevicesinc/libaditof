@@ -69,9 +69,9 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 }
 
 BufferProcessor::BufferProcessor()
-    : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE),
-      m_capture_to_process_Q(MAX_QUEUE_SIZE),
-      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE),
+    : m_v4l2_input_buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
+      m_capture_to_process_Q(BufferProcessor::MAX_QUEUE_SIZE),
+      m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE), m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_vidPropSet(false), m_processorPropSet(false), m_outputFrameWidth(0),
       m_outputFrameHeight(0), m_tofiConfig(nullptr),
       m_tofiComputeContext(nullptr), m_inputVideoDev(nullptr) {
@@ -182,12 +182,12 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
     m_rawFrameBufferSize = static_cast<size_t>(WidthInBytes) * HeightInBytes;
 #endif
     {
-        LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE
+        LOG(INFO) << __func__ << ": Allocating " << BufferProcessor::MAX_QUEUE_SIZE
                   << " raw frame buffers, each of size " << m_rawFrameBufferSize
                   << " bytes (total: "
-                  << (MAX_QUEUE_SIZE * m_rawFrameBufferSize) / (1024.0 * 1024.0)
+                  << (BufferProcessor::MAX_QUEUE_SIZE * m_rawFrameBufferSize) / (1024.0 * 1024.0)
                   << " MB)";
-        for (int i = 0; i < MAX_QUEUE_SIZE; ++i) {
+        for (int i = 0; i < BufferProcessor::MAX_QUEUE_SIZE; ++i) {
             auto buffer =
                 std::shared_ptr<uint8_t>(new uint8_t[m_rawFrameBufferSize],
                                          std::default_delete<uint8_t[]>());
@@ -208,13 +208,13 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
                         4; /* | Confidance Frame ( W * H * 4 (type: float)) | */
     m_tofiBufferSize = depthSize + abSize + confSize;
 
-    LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE
+    LOG(INFO) << __func__ << ": Allocating " << BufferProcessor::MAX_QUEUE_SIZE
               << " ToFi buffers, each of size "
               << m_tofiBufferSize * sizeof(uint16_t) << " bytes (total: "
-              << (MAX_QUEUE_SIZE * m_tofiBufferSize * sizeof(uint16_t)) /
+              << (BufferProcessor::MAX_QUEUE_SIZE * m_tofiBufferSize * sizeof(uint16_t)) /
                      (1024.0 * 1024.0)
               << " MB)";
-    for (int i = 0; i < MAX_QUEUE_SIZE; ++i) {
+    for (int i = 0; i < BufferProcessor::MAX_QUEUE_SIZE; ++i) {
         auto buffer = std::shared_ptr<uint16_t>(
             new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
         if (!buffer) {

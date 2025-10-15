@@ -123,6 +123,8 @@ static int FLAGS_logtostderr;
 
 #ifdef NDEBUG
 #define DLOG(x) Log(x, __FILE__, __LINE__)
+#else
+#define DLOG(x) Log(x, __FILE__, __LINE__)
 #endif
 
 #define LOG(x) Log(x, __FILE__, __LINE__)
