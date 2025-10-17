@@ -122,7 +122,7 @@ static int FLAGS_logtostderr;
 #define WARNING "W"
 
 #ifdef NDEBUG
-#define DLOG(x) Log(x, __FILE__, __LINE__)
+#define DLOG(x) if(false) Log(x, __FILE__, __LINE__)
 #else
 #define DLOG(x) Log(x, __FILE__, __LINE__)
 #endif
