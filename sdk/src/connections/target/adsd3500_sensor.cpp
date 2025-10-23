@@ -1463,11 +1463,11 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     status = adsd3500_register_interrupt_callback(cb);
     bool interruptsAvailable = (status == Status::OK);
     struct stat st;
-    if (stat("/sys/class/gpio/PH.06/value", &st) == 0) {
+    if (stat("/sys/class/gpio/PAC.00/value", &st) == 0) {
 
-        system("echo 0 > /sys/class/gpio/PH.06/value");
+        system("echo 0 > /sys/class/gpio/PAC.00/value");
         usleep(100000);
-        system("echo 1 > /sys/class/gpio/PH.06/value");
+        system("echo 1 > /sys/class/gpio/PAC.00/value");
 
         if (interruptsAvailable) {
             LOG(INFO) << "Waiting for ADSD3500 to reset.";
