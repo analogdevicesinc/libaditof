@@ -1920,7 +1920,7 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
         return status;
     }
 
-    if (chipStatus != 0) {
+    if (chipStatus != 0 && chipStatus != 41) {
         LOG(ERROR) << "ADSD3500 error detected: "
                    << m_adsdErrors.GetStringADSD3500(chipStatus);
 
