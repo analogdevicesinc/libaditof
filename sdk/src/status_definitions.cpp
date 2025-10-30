@@ -112,6 +112,54 @@ std::ostream &operator<<(std::ostream &os, aditof::Adsd3500Status status) {
     case aditof::Adsd3500Status::IMAGER_ERROR:
         os << "Adsd3500Status::IMAGER_ERROR";
         break;
+    case Adsd3500Status::TIMEOUT_ERROR:
+        os << "Adsd3500Status::TIMEOUT_ERROR";
+        break;
+    case Adsd3500Status::DYNAMIC_MODE_SWITCHING_NOT_ENABLED:
+        os << "Adsd3500Status::DYNAMIC_MODE_SWITCHING_NOT_ENABLED";
+        break;
+    case Adsd3500Status::INVALID_DYNAMIC_MODE_COMPOSITIONS:
+        os << "Adsd3500Status::INVALID_DYNAMIC_MODE_COMPOSITIONS";
+        break;
+    case Adsd3500Status::INVALID_PHASE_INVALID_VALUE:
+        os << "Adsd3500Status::INVALID_PHASE_INVALID_VALUE";
+        break;
+    case Adsd3500Status::CCB_WRITE_COMPLETE:
+        os << "Adsd3500Status::CCB_WRITE_COMPLETE";
+        break;
+    case Adsd3500Status::INVALID_CCB_WRITE_CRC:
+        os << "Adsd3500Status::INVALID_CCB_WRITE_CRC";
+        break;
+    case Adsd3500Status::CFG_WRITE_COMPLETE:
+        os << "Adsd3500Status::CFG_WRITE_COMPLETE";
+        break;
+    case Adsd3500Status::INVALID_CFG_WRITE_CRC:
+        os << "Adsd3500Status::INVALID_CFG_WRITE_CRC";
+        break;
+    case Adsd3500Status::INIT_FW_WRITE_COMPLETE:
+        os << "Adsd3500Status::INIT_FW_WRITE_COMPLETE";
+        break;
+    case Adsd3500Status::INVALID_INIT_FW_WRITE_CRC:
+        os << "Adsd3500Status::INVALID_INIT_FW_WRITE_CRC";
+        break;
+    case Adsd3500Status::INVALID_BIN_SIZE:
+        os << "Adsd3500Status::INVALID_BIN_SIZE";
+        break;
+    case Adsd3500Status::ACK_ERROR:
+        os << "Adsd3500Status::ACK_ERROR";
+        break;
+    case Adsd3500Status::FLASH_STATUS_CHUNK_ALREADY_FOUND:
+        os << "Adsd3500Status::FLASH_STATUS_CHUNK_ALREADY_FOUND";
+        break;
+    case Adsd3500Status::INVALID_INI_UPDATE_IN_PCM_MODE:
+        os << "Adsd3500Status::INVALID_INI_UPDATE_IN_PCM_MODE";
+        break;
+    case Adsd3500Status::UNSUPPORTED_MODE_INI_READ:
+        os << "Adsd3500Status::UNSUPPORTED_MODE_INI_READ";
+        break;
+    case Adsd3500Status::IMAGER_STREAM_OFF:
+        os << "Adsd3500Status::IMAGER_STREAM_OFF";
+        break;
     case aditof::Adsd3500Status::UNKNOWN_ERROR_ID:
         os << "Adsd3500Status::UNKNOWN_ERROR_ID";
         break;
