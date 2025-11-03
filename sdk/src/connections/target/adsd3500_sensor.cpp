@@ -146,7 +146,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     : m_driverPath(driverPath), m_driverSubPath(driverSubPath),
       m_captureDev(captureDev), m_implData(new Adsd3500Sensor::ImplData),
       m_firstRun(true), m_adsd3500Queried(false), m_depthComputeOnTarget(true),
-      m_chipStatus(0), m_imagerStatus(0), isOpen(0),
+      m_chipStatus(0), m_imagerStatus(0), isOpen(0), fisrt_reset(0),
       m_hostConnectionType(aditof::ConnectionType::ON_TARGET) {
     m_sensorName = "adsd3500";
     m_interruptAvailable = false;
@@ -1417,6 +1417,8 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     using namespace aditof;
     Status status = Status::OK;
 
+    fisrt_reset = true;
+
 #if defined(NXP)
     m_chipResetDone = false;
     m_adsd3500Status = Adsd3500Status::OK;
@@ -2030,6 +2032,12 @@ aditof::Status Adsd3500Sensor::adsd3500_unregister_interrupt_callback(
 aditof::Status Adsd3500Sensor::adsd3500InterruptHandler(int signalValue) {
     uint16_t statusRegister;
     aditof::Status status = aditof::Status::OK;
+
+    if (fisrt_reset) {
+        LOG(INFO) << "first reset interrupt. No need to check status register.";
+        fisrt_reset = false;
+        return status;
+    }
 
     status = adsd3500_read_cmd(0x0020, &statusRegister);
     if (status != aditof::Status::OK) {
