@@ -228,4 +228,5 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::string m_sensorConfiguration;
     bool isOpen;
     bool m_ccbmEnabled;
+    bool fisrt_reset;
 };
