@@ -233,9 +233,11 @@ aditof::Status Adsd3500Sensor::open() {
     Status status = Status::OK;
 
     // Subscribe to ADSD3500 interrupts
-    if (Adsd3500InterruptNotifier::getInstance().interruptsAvailable()) {
-        std::weak_ptr<Adsd3500Sensor> wptr = shared_from_this();
-        Adsd3500InterruptNotifier::getInstance().subscribeSensor(wptr);
+    if (m_firstRun) {
+        if (Adsd3500InterruptNotifier::getInstance().interruptsAvailable()) {
+            std::weak_ptr<Adsd3500Sensor> wptr = shared_from_this();
+            Adsd3500InterruptNotifier::getInstance().subscribeSensor(wptr);
+        }
     }
 
     LOG(INFO) << "Opening device";
@@ -1483,7 +1485,6 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
                 secondsWaited += secondsWaitingStep;
             }
             LOG(INFO) << "Waited: " << secondsWaited << " seconds";
-            adsd3500_unregister_interrupt_callback(cb);
         } else {
             usleep(10000000);
         }
@@ -1498,6 +1499,7 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
 
         gpio11.close();
     }
+    adsd3500_unregister_interrupt_callback(cb);
 #endif
     return aditof::Status::OK;
 }
@@ -2038,6 +2040,8 @@ aditof::Status Adsd3500Sensor::adsd3500InterruptHandler(int signalValue) {
         first_reset = false;
         return status;
     }
+
+    // usleep(100 * 1000);
 
     status = adsd3500_read_cmd(0x0020, &statusRegister);
     if (status != aditof::Status::OK) {
