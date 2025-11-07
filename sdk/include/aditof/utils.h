@@ -34,6 +34,7 @@
 
 #include <string>
 #include <vector>
+#include "sdk_exports.h"
 
 namespace aditof {
 
@@ -48,6 +49,8 @@ class Utils {
      */
     static void splitIntoTokens(const std::string &s, const char delimiter,
                                 std::vector<std::string> &tokens);
+
+    static std::string getExecutableFolder();
 };
 } // namespace aditof
 
