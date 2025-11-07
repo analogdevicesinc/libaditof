@@ -40,7 +40,7 @@ jobs:
         EXTRA_CMAKE_FLAGS: "-DNXP=1"
 
       #NVIDIA
-       ubuntu_22_04_nvidia:
+      ubuntu_22_04_nvidia:
         imageName: 'ubuntu-22.04'
         DOCKER: "septimiuvana/arm64-ubuntu"
         EXTRA_CMAKE_FLAGS: "-DNVIDIA=1"
