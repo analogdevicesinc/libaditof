@@ -2,6 +2,7 @@ build/
 .history/
 
 sdk/include/aditof/version.h
+sdk/include/aditof/version-kit.h
 
 *deps/
 *.temp/
