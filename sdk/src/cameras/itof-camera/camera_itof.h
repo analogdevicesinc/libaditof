@@ -149,7 +149,7 @@ class CameraItof : public aditof::Camera {
     getFrameProcessParams(std::map<std::string, std::string> &params) override;
     aditof::Status
     setFrameProcessParams(std::map<std::string, std::string> &params) override;
-    aditof::Status setframeContent(const uint8_t value);
+    aditof::Status setframeContent(const uint8_t value) override;
 
   private:
     /**

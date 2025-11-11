@@ -615,6 +615,13 @@ class SDK_API Camera {
      * @return void
      */
     virtual void dropFirstFrame(bool dropFrame) = 0;
+
+    /**
+     * @brief Set frame contents to capture in SDK
+     * @param value for choosing frame type
+     * @return Status
+     */
+    virtual aditof::Status setframeContent(const uint8_t value) = 0;
 };
 
 } // namespace aditof

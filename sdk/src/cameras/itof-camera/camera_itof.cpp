@@ -444,17 +444,20 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     switch (m_frameContent) {
     case 0:
         // All frames are required.
+        (*modeIt).frameContent.clear();
+        (*modeIt).frameContent = {"raw",  "depth", "ab",
+                                  "conf", "xyz",   "metadata"};
         break;
     case 1:
-        (*modeIt).frameContent.empty();
+        (*modeIt).frameContent.clear();
         (*modeIt).frameContent = {"depth", "metadata"};
         break;
     case 2:
-        (*modeIt).frameContent.empty();
+        (*modeIt).frameContent.clear();
         (*modeIt).frameContent = {"depth", "ab", "metadata"};
         break;
     case 3:
-        (*modeIt).frameContent.empty();
+        (*modeIt).frameContent.clear();
         (*modeIt).frameContent = {"depth", "conf", "metadata"};
         break;
     default:
@@ -1871,7 +1874,7 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
 
 aditof::Status CameraItof::setframeContent(const uint8_t value) {
     aditof::Status status = aditof::Status::OK;
-    if (value > 4 || value < 0) {
+    if (value > 3 || value < 0) {
         status = aditof::Status::INVALID_ARGUMENT;
         return status;
     }
