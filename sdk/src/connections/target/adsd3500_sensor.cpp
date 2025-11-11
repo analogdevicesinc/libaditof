@@ -6,10 +6,10 @@
 /********************************************************************************/
 #include "adsd3500_sensor.h"
 #include "aditof/frame_operations.h"
+#include "aditof/utils.h"
 #include "adsd3500_interrupt_notifier.h"
 #include "gpio.h"
 #include "sensor-tables/device_parameters.h"
-#include "aditof/utils.h"
 #include "utils_ini.h"
 
 #include <algorithm>

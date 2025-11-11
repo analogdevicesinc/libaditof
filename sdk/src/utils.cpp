@@ -30,15 +30,15 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include <string>
 #include <iostream>
+#include <string>
 
 #if defined(_WIN32)
 #include <windows.h>
 #elif defined(__linux__)
-#include <unistd.h>
-#include <limits.h>
 #include <libgen.h> // for dirname
+#include <limits.h>
+#include <unistd.h>
 #endif
 #include "aditof/utils.h"
 
@@ -66,7 +66,8 @@ std::string Utils::getExecutableFolder() {
 #elif defined(__linux__)
     char path[PATH_MAX];
     ssize_t count = readlink("/proc/self/exe", path, PATH_MAX);
-    if (count == -1) return ".";
+    if (count == -1)
+        return ".";
     path[count] = '\0';
     std::string fullPath(path);
     size_t pos = fullPath.find_last_of("/\\");

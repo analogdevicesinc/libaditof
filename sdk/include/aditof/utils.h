@@ -32,9 +32,9 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include "sdk_exports.h"
 #include <string>
 #include <vector>
-#include "sdk_exports.h"
 
 namespace aditof {
 

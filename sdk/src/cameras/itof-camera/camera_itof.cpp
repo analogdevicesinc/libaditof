@@ -34,12 +34,12 @@
 #include "aditof/frame_operations.h"
 #include "utils_ini.h"
 
+#include "aditof/utils.h"
 #include "cJSON.h"
 #include "crc.h"
 #include "tofi/algorithms.h"
 #include "tofi/floatTolin.h"
 #include "tofi/tofi_config.h"
-#include "aditof/utils.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
