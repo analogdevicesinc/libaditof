@@ -75,7 +75,7 @@ CameraItof::CameraItof(
       m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
-      m_dropFrameOnce(true), m_isOffline(false) {
+      m_dropFrameOnce(true), m_isOffline(false), m_frameContent(0) {
 
     FloatToLinGenerateTable();
     memset(&m_xyzTable, 0, sizeof(m_xyzTable));
@@ -439,6 +439,28 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     m_details.frameType.height = (*modeIt).baseResolutionHeight;
     m_details.frameType.totalCaptures = 1;
     m_details.frameType.dataDetails.clear();
+
+    //change the frame content based on user choice
+    switch (m_frameContent) {
+    case 0:
+        // All frames are required.
+        break;
+    case 1:
+        (*modeIt).frameContent.empty();
+        (*modeIt).frameContent = {"depth", "metadata"};
+        break;
+    case 2:
+        (*modeIt).frameContent.empty();
+        (*modeIt).frameContent = {"depth", "ab", "metadata"};
+        break;
+    case 3:
+        (*modeIt).frameContent.empty();
+        (*modeIt).frameContent = {"depth", "conf", "metadata"};
+        break;
+    default:
+        LOG(INFO) << "Invalid frame content";
+        return Status::INVALID_ARGUMENT;
+    }
     for (const auto &item : (*modeIt).frameContent) {
         if (item == "xyz" && !m_xyzEnabled) {
             continue;
@@ -1844,6 +1866,16 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
         m_cameraFps = fps;
         LOG(INFO) << "Camera FPS set from parameter list at: " << m_cameraFps;
     }
+    return status;
+}
+
+aditof::Status CameraItof::setframeContent(const uint8_t value) {
+    aditof::Status status = aditof::Status::OK;
+    if (value > 4 || value < 0) {
+        status = aditof::Status::INVALID_ARGUMENT;
+        return status;
+    }
+    m_frameContent = value;
     return status;
 }
 
