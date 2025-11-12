@@ -32,12 +32,9 @@
 #include "aditof/sensor_enumerator_factory.h"
 
 /* On target SDK will know only about TargetSensorEnumerator, while
-// on remote, SDK will only know about UsbSensorEnumerator and
 // (optionally) about NetworkSensorEnumerator. */
 #ifdef TARGET
 #include "connections/target/target_sensor_enumerator.h"
-#else
-#include "connections/usb/usb_sensor_enumerator.h"
 #ifdef HAS_NETWORK
 #include "connections/network/network_sensor_enumerator.h"
 #endif
@@ -54,15 +51,6 @@ SensorEnumeratorFactory::buildTargetSensorEnumerator() {
 #ifdef TARGET
     return std::unique_ptr<SensorEnumeratorInterface>(
         new TargetSensorEnumerator());
-#endif
-    return nullptr;
-}
-
-std::unique_ptr<SensorEnumeratorInterface>
-SensorEnumeratorFactory::buildUsbSensorEnumerator() {
-#ifndef TARGET
-    return std::unique_ptr<SensorEnumeratorInterface>(
-        new UsbSensorEnumerator());
 #endif
     return nullptr;
 }

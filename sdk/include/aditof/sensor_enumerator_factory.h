@@ -42,7 +42,7 @@ namespace aditof {
 /**
  * @class SensorEnumeratorFactory
  * @brief Provides the means to construct different types of sensors enumerators.
- * Based on the connection type (on target, USB, Network), different enumerators need
+ * Based on the connection type (on target, Network), different enumerators need
  * to be used.
  */
 class SDK_API SensorEnumeratorFactory {
@@ -54,13 +54,6 @@ class SDK_API SensorEnumeratorFactory {
      */
     static std::unique_ptr<SensorEnumeratorInterface>
     buildTargetSensorEnumerator();
-
-    /**
-     * Factory method to create an enumerator to look for sensors over USB.
-     * @return std::unique_ptr<DeviceEnumeratorInterface>
-     */
-    static std::unique_ptr<SensorEnumeratorInterface>
-    buildUsbSensorEnumerator();
 
     /**
      * Factory method to create an enumerator to look for sensors over network.
