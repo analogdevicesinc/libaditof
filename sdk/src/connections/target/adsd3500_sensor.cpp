@@ -274,56 +274,53 @@ aditof::Status Adsd3500Sensor::open() {
 
         LOG(INFO) << "device: " << devName << "\tsubdevice: " << subDevName;
 
-        //Don't open the video device for UVC context. It is opened in uvc-app/lib/v4l2.c
-        if (m_hostConnectionType != ConnectionType::USB) {
-            /* Open V4L2 device */
-            if (stat(devName, &st) == -1) {
-                LOG(WARNING)
-                    << "Cannot identify " << devName << "errno: " << errno
-                    << "error: " << strerror(errno);
-                return Status::GENERIC_ERROR;
-            }
-
-            if (!S_ISCHR(st.st_mode)) {
-                LOG(WARNING) << devName << " is not a valid device";
-                return Status::GENERIC_ERROR;
-            }
-
-            dev->fd = ::open(devName, O_RDWR | O_NONBLOCK, 0);
-            if (dev->fd == -1) {
-                LOG(WARNING) << "Cannot open " << devName << "errno: " << errno
-                             << "error: " << strerror(errno);
-                return Status::GENERIC_ERROR;
-            }
-
-            if (xioctl(dev->fd, VIDIOC_QUERYCAP, &cap) == -1) {
-                LOG(WARNING) << devName << " VIDIOC_QUERYCAP error";
-                return Status::GENERIC_ERROR;
-            }
-
-            if (strncmp((char *)cap.card, cardName, strlen(cardName))) {
-                LOG(WARNING) << "CAPTURE Device " << cap.card;
-                LOG(WARNING) << "Read " << cardName;
-                return Status::GENERIC_ERROR;
-            }
-
-            if (!(cap.capabilities &
-                  (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE))) {
-                LOG(WARNING) << devName << " is not a video capture device";
-                return Status::GENERIC_ERROR;
-            }
-
-            if (cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE) {
-                dev->videoBuffersType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-            } else {
-                dev->videoBuffersType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-            }
-
-            if (!(cap.capabilities & V4L2_CAP_STREAMING)) {
-                LOG(WARNING) << devName << " does not support streaming i/o";
-                return Status::GENERIC_ERROR;
-            }
+        /* Open V4L2 device */
+        if (stat(devName, &st) == -1) {
+            LOG(WARNING) << "Cannot identify " << devName << "errno: " << errno
+                         << "error: " << strerror(errno);
+            return Status::GENERIC_ERROR;
         }
+
+        if (!S_ISCHR(st.st_mode)) {
+            LOG(WARNING) << devName << " is not a valid device";
+            return Status::GENERIC_ERROR;
+        }
+
+        dev->fd = ::open(devName, O_RDWR | O_NONBLOCK, 0);
+        if (dev->fd == -1) {
+            LOG(WARNING) << "Cannot open " << devName << "errno: " << errno
+                         << "error: " << strerror(errno);
+            return Status::GENERIC_ERROR;
+        }
+
+        if (xioctl(dev->fd, VIDIOC_QUERYCAP, &cap) == -1) {
+            LOG(WARNING) << devName << " VIDIOC_QUERYCAP error";
+            return Status::GENERIC_ERROR;
+        }
+
+        if (strncmp((char *)cap.card, cardName, strlen(cardName))) {
+            LOG(WARNING) << "CAPTURE Device " << cap.card;
+            LOG(WARNING) << "Read " << cardName;
+            return Status::GENERIC_ERROR;
+        }
+
+        if (!(cap.capabilities &
+              (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE))) {
+            LOG(WARNING) << devName << " is not a video capture device";
+            return Status::GENERIC_ERROR;
+        }
+
+        if (cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE) {
+            dev->videoBuffersType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+        } else {
+            dev->videoBuffersType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        }
+
+        if (!(cap.capabilities & V4L2_CAP_STREAMING)) {
+            LOG(WARNING) << devName << " does not support streaming i/o";
+            return Status::GENERIC_ERROR;
+        }
+
         /* Open V4L2 subdevice */
         if (stat(subDevName, &st) == -1) {
             LOG(WARNING) << "Cannot identify " << subDevName
@@ -648,7 +645,9 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
     }
 
     // Don't request buffers & set fromat for UVC context. It is already done in uvc-app/lib/v4l2.c
-    if (m_hostConnectionType != ConnectionType::USB) {
+    if (dev->nVideoBuffers) {
+        return status;
+    } else {
         m_capturesPerFrame = 1;
 
         for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
@@ -701,8 +700,6 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
                         << "errno: " << errno << " error: " << strerror(errno);
                     return Status::GENERIC_ERROR;
                 }
-            } else if (dev->nVideoBuffers) {
-                return status;
             }
 
             __u32 pixelFormat = 0;
@@ -1046,9 +1043,7 @@ aditof::Status Adsd3500Sensor::getName(std::string &name) const {
 
 aditof::Status
 Adsd3500Sensor::setHostConnectionType(std::string &connectionType) {
-    if (connectionType == "USB") {
-        m_hostConnectionType = aditof::ConnectionType::USB;
-    } else if (connectionType == "NETWORK") {
+    if (connectionType == "NETWORK") {
         m_hostConnectionType = aditof::ConnectionType::NETWORK;
     }
 

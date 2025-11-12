@@ -116,12 +116,6 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
         LOG(ERROR) << "Could not create TargetSensorEnumerator";
         return Status::GENERIC_ERROR;
     }
-#else
-    sensorEnumerator = SensorEnumeratorFactory::buildUsbSensorEnumerator();
-    if (!sensorEnumerator) {
-        LOG(ERROR) << "Could not create UsbSensorEnumerator";
-        return Status::GENERIC_ERROR;
-    }
 #endif
 
     Status status = sensorEnumerator->searchSensors();
