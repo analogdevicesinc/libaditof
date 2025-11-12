@@ -362,14 +362,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         return Status::INVALID_ARGUMENT;
     }
 
-    if (m_details.connection == ConnectionType::USB) {
-        status = m_depthSensor->adsd3500_reset();
-        if (status != Status::OK) {
-            LOG(WARNING) << "Failed to reset the camera!";
-            return status;
-        }
-    }
-
     m_iniKeyValPairs = m_depth_params_map[mode];
     configureSensorModeDetails();
     status = m_depthSensor->setMode(mode);
