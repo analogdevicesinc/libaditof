@@ -696,94 +696,92 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
                 return Status::GENERIC_ERROR;
             }
 
-            if (dev->nVideoBuffers) {
-                return status;
-            }
+        } else if (dev->nVideoBuffers) {
+            return status;
+        }
 
-            __u32 pixelFormat = 0;
+        __u32 pixelFormat = 0;
 
-            if (type.pixelFormatIndex == 1) {
-                pixelFormat = V4L2_PIX_FMT_SBGGR12;
-            } else {
+        if (type.pixelFormatIndex == 1) {
+            pixelFormat = V4L2_PIX_FMT_SBGGR12;
+        } else {
 #ifdef NXP
-                pixelFormat = V4L2_PIX_FMT_SBGGR8;
+            pixelFormat = V4L2_PIX_FMT_SBGGR8;
 #else
-                pixelFormat = V4L2_PIX_FMT_SRGGB8;
+            pixelFormat = V4L2_PIX_FMT_SRGGB8;
 #endif
-            }
+        }
 
-            /* Set the frame format in the driver */
-            CLEAR(fmt);
-            fmt.type = dev->videoBuffersType;
-            fmt.fmt.pix.pixelformat = pixelFormat;
-            fmt.fmt.pix.width = type.frameWidthInBytes;
-            fmt.fmt.pix.height = type.frameHeightInBytes;
-            if (xioctl(dev->fd, VIDIOC_S_FMT, &fmt) == -1) {
-                LOG(WARNING) << "Setting Pixel Format error, errno: " << errno
-                             << " error: " << strerror(errno);
-                return Status::GENERIC_ERROR;
-            }
+        /* Set the frame format in the driver */
+        CLEAR(fmt);
+        fmt.type = dev->videoBuffersType;
+        fmt.fmt.pix.pixelformat = pixelFormat;
+        fmt.fmt.pix.width = type.frameWidthInBytes;
+        fmt.fmt.pix.height = type.frameHeightInBytes;
+        if (xioctl(dev->fd, VIDIOC_S_FMT, &fmt) == -1) {
+            LOG(WARNING) << "Setting Pixel Format error, errno: " << errno
+                         << " error: " << strerror(errno);
+            return Status::GENERIC_ERROR;
+        }
 
-            /* Allocate the video buffers in the driver */
-            CLEAR(req);
-            req.count = m_capturesPerFrame + EXTRA_BUFFERS_COUNT;
-            req.type = dev->videoBuffersType;
-            req.memory = V4L2_MEMORY_MMAP;
+        /* Allocate the video buffers in the driver */
+        CLEAR(req);
+        req.count = m_capturesPerFrame + EXTRA_BUFFERS_COUNT;
+        req.type = dev->videoBuffersType;
+        req.memory = V4L2_MEMORY_MMAP;
 
-            if (xioctl(dev->fd, VIDIOC_REQBUFS, &req) == -1) {
+        if (xioctl(dev->fd, VIDIOC_REQBUFS, &req) == -1) {
+            LOG(WARNING) << "VIDIOC_REQBUFS error "
+                         << "errno: " << errno << " error: " << strerror(errno);
+            return Status::GENERIC_ERROR;
+        }
+
+        dev->videoBuffers =
+            (buffer *)calloc(req.count, sizeof(*dev->videoBuffers));
+        if (!dev->videoBuffers) {
+            LOG(WARNING) << "Failed to allocate video m_implData->videoBuffers";
+            return Status::GENERIC_ERROR;
+        }
+
+        for (dev->nVideoBuffers = 0; dev->nVideoBuffers < req.count;
+             dev->nVideoBuffers++) {
+            CLEAR(buf);
+            buf.type = dev->videoBuffersType;
+            buf.memory = V4L2_MEMORY_MMAP;
+            buf.index = dev->nVideoBuffers;
+            buf.m.planes = dev->planes;
+            buf.length = 1;
+
+            if (xioctl(dev->fd, VIDIOC_QUERYBUF, &buf) == -1) {
                 LOG(WARNING)
-                    << "VIDIOC_REQBUFS error "
+                    << "VIDIOC_QUERYBUF error "
                     << "errno: " << errno << " error: " << strerror(errno);
                 return Status::GENERIC_ERROR;
             }
 
-            dev->videoBuffers =
-                (buffer *)calloc(req.count, sizeof(*dev->videoBuffers));
-            if (!dev->videoBuffers) {
+            if (dev->videoBuffersType == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+                length = buf.length;
+                offset = buf.m.offset;
+            } else {
+                length = buf.m.planes[0].length;
+                offset = buf.m.planes[0].m.mem_offset;
+            }
+
+            dev->videoBuffers[dev->nVideoBuffers].start =
+                mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, dev->fd,
+                     offset);
+
+            if (dev->videoBuffers[dev->nVideoBuffers].start == MAP_FAILED) {
                 LOG(WARNING)
-                    << "Failed to allocate video m_implData->videoBuffers";
+                    << "mmap error "
+                    << "errno: " << errno << " error: " << strerror(errno);
                 return Status::GENERIC_ERROR;
             }
 
-            for (dev->nVideoBuffers = 0; dev->nVideoBuffers < req.count;
-                 dev->nVideoBuffers++) {
-                CLEAR(buf);
-                buf.type = dev->videoBuffersType;
-                buf.memory = V4L2_MEMORY_MMAP;
-                buf.index = dev->nVideoBuffers;
-                buf.m.planes = dev->planes;
-                buf.length = 1;
-
-                if (xioctl(dev->fd, VIDIOC_QUERYBUF, &buf) == -1) {
-                    LOG(WARNING)
-                        << "VIDIOC_QUERYBUF error "
-                        << "errno: " << errno << " error: " << strerror(errno);
-                    return Status::GENERIC_ERROR;
-                }
-
-                if (dev->videoBuffersType == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-                    length = buf.length;
-                    offset = buf.m.offset;
-                } else {
-                    length = buf.m.planes[0].length;
-                    offset = buf.m.planes[0].m.mem_offset;
-                }
-
-                dev->videoBuffers[dev->nVideoBuffers].start =
-                    mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED,
-                         dev->fd, offset);
-
-                if (dev->videoBuffers[dev->nVideoBuffers].start == MAP_FAILED) {
-                    LOG(WARNING)
-                        << "mmap error "
-                        << "errno: " << errno << " error: " << strerror(errno);
-                    return Status::GENERIC_ERROR;
-                }
-
-                dev->videoBuffers[dev->nVideoBuffers].length = length;
-            }
+            dev->videoBuffers[dev->nVideoBuffers].length = length;
         }
     }
+    
 
     if (!type.isPCM) {
         //TO DO: update this values when frame_impl gets restructured
