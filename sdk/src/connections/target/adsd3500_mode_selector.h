@@ -35,9 +35,11 @@
 #include "sensor-tables/driver_configuration_table.h"
 
 #include <aditof/camera_definitions.h>
+#include <aditof/log.h>
 #include <aditof/status_definitions.h>
 
 #include <map>
+#include <unordered_map>
 
 namespace aditof {
 
@@ -64,12 +66,15 @@ class Adsd3500ModeSelector {
     aditof::Status setControl(const std::string &control,
                               const std::string &value);
     aditof::Status getControl(const std::string &control, std::string &value);
+    std::string make_key(int &depthbits, int &confbits, int &ABbits);
+    aditof::Status init_bitsPerPixelTable();
 
   private:
     std::string m_configuration;
     std::vector<std::string> m_availableConfigurations;
     std::map<std::string, std::string> m_controls;
     std::vector<aditof::DepthSensorModeDetails> m_tableInUse;
+    std::unordered_map<std::string, bool> m_bitsPerPixelTable;
 };
 } // namespace aditof
 

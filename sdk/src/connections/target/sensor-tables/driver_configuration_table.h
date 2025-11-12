@@ -64,6 +64,11 @@ const std::vector<DriverConfiguration> m_adsd3500standard = {
     {"1024", "1024", "3", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
     {"1024", "1024", "2", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0}};
 
+const std::vector<BitsConfiguration> m_validbitsperpixel = {
+    /*depth confidence AB*/
+    {16, 8, 16}, {16, 8, 8},  {12, 4, 16}, {12, 4, 8}, {16, 8, 0},
+    {12, 4, 0},  {16, 0, 16}, {16, 0, 8},  {12, 0, 8}};
+
 const std::vector<DepthSensorModeDetails> adsd3100_standardModes = {
     {0, {}, 2, 0, 0, 0, 1024, 1024, 128, 0, DriverConfiguration()},
     {1, {}, 3, 0, 0, 0, 1024, 1024, 128, 0, DriverConfiguration()},
