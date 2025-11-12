@@ -645,7 +645,10 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
     }
 
     m_capturesPerFrame = 1;
+    m_capturesPerFrame = 1;
 
+    for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
+        dev = &m_implData->videoDevs[i];
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
 
@@ -654,11 +657,21 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         struct v4l2_buffer buf;
         struct v4l2_format fmt;
         size_t length, offset;
+        //Set mode in chip code block
+        struct v4l2_requestbuffers req;
+        struct v4l2_buffer buf;
+        struct v4l2_format fmt;
+        size_t length, offset;
 
+        static struct v4l2_control ctrl;
         static struct v4l2_control ctrl;
 
         memset(&ctrl, 0, sizeof(ctrl));
+        memset(&ctrl, 0, sizeof(ctrl));
 
+        ctrl.id = CTRL_SET_MODE;
+        ctrl.value = type.modeNumber;
+        mode_num = type.modeNumber;
         ctrl.id = CTRL_SET_MODE;
         ctrl.value = type.modeNumber;
         mode_num = type.modeNumber;
@@ -669,9 +682,32 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             status = Status::GENERIC_ERROR;
             return status;
         }
+        if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
+            LOG(WARNING) << "Setting Mode error "
+                         << "errno: " << errno << " error: " << strerror(errno);
+            status = Status::GENERIC_ERROR;
+            return status;
+        }
 
         //End of set mode in chip
+        //End of set mode in chip
 
+        if (type.modeNumber != m_implData->modeDetails.modeNumber) {
+            for (unsigned int i = 0; i < dev->nVideoBuffers; i++) {
+                if (munmap(dev->videoBuffers[i].start,
+                           dev->videoBuffers[i].length) == -1) {
+                    LOG(WARNING)
+                        << "munmap error "
+                        << "errno: " << errno << " error: " << strerror(errno);
+                    return Status::GENERIC_ERROR;
+                }
+            }
+            free(dev->videoBuffers);
+            dev->nVideoBuffers = 0;
+            CLEAR(req);
+            req.count = 0;
+            req.type = dev->videoBuffersType;
+            req.memory = V4L2_MEMORY_MMAP;
         if (type.modeNumber != m_implData->modeDetails.modeNumber) {
             for (unsigned int i = 0; i < dev->nVideoBuffers; i++) {
                 if (munmap(dev->videoBuffers[i].start,
