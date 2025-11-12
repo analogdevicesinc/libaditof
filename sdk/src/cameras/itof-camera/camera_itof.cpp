@@ -371,6 +371,39 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     }
 
     m_iniKeyValPairs = m_depth_params_map[mode];
+
+    //change the frame content based on user choice
+    switch (m_frameContent) {
+    case 0:
+        // All frames are required.
+        (*modeIt).frameContent.clear();
+        (*modeIt).frameContent = {"raw",  "depth", "ab",
+                                  "conf", "xyz",   "metadata"};
+        break;
+    case 1:
+        (*modeIt).frameContent.clear();
+        (*modeIt).frameContent = {"depth", "metadata"};
+        m_iniKeyValPairs["bitsInAB"] = "0";
+        m_iniKeyValPairs["bitsInConf"] = "0";
+        m_iniKeyValPairs["xyzEnable"] = "0";
+        break;
+    case 2:
+        (*modeIt).frameContent.clear();
+        (*modeIt).frameContent = {"depth", "ab", "metadata"};
+        m_iniKeyValPairs["bitsInAB"] = "0";
+        m_iniKeyValPairs["xyzEnable"] = "0";
+        break;
+    case 3:
+        (*modeIt).frameContent.clear();
+        (*modeIt).frameContent = {"depth", "conf", "metadata"};
+        m_iniKeyValPairs["bitsInConf"] = "0";
+        m_iniKeyValPairs["xyzEnable"] = "0";
+        break;
+    default:
+        LOG(INFO) << "Invalid frame content";
+        return Status::INVALID_ARGUMENT;
+    }
+
     configureSensorModeDetails();
     status = m_depthSensor->setMode(mode);
     if (status != Status::OK) {
@@ -440,30 +473,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     m_details.frameType.totalCaptures = 1;
     m_details.frameType.dataDetails.clear();
 
-    //change the frame content based on user choice
-    switch (m_frameContent) {
-    case 0:
-        // All frames are required.
-        (*modeIt).frameContent.clear();
-        (*modeIt).frameContent = {"raw",  "depth", "ab",
-                                  "conf", "xyz",   "metadata"};
-        break;
-    case 1:
-        (*modeIt).frameContent.clear();
-        (*modeIt).frameContent = {"depth", "metadata"};
-        break;
-    case 2:
-        (*modeIt).frameContent.clear();
-        (*modeIt).frameContent = {"depth", "ab", "metadata"};
-        break;
-    case 3:
-        (*modeIt).frameContent.clear();
-        (*modeIt).frameContent = {"depth", "conf", "metadata"};
-        break;
-    default:
-        LOG(INFO) << "Invalid frame content";
-        return Status::INVALID_ARGUMENT;
-    }
     for (const auto &item : (*modeIt).frameContent) {
         if (item == "xyz" && !m_xyzEnabled) {
             continue;
