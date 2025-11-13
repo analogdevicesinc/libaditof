@@ -39,7 +39,7 @@
 #include "tofi/algorithms.h"
 #include "tofi/floatTolin.h"
 #include "tofi/tofi_config.h"
-#include "utils.h"
+#include "aditof/utils.h"
 #include <algorithm>
 #include <array>
 #include <cstdint>
