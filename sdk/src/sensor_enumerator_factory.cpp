@@ -55,12 +55,14 @@ SensorEnumeratorFactory::buildTargetSensorEnumerator() {
 }
 
 std::unique_ptr<SensorEnumeratorInterface>
-SensorEnumeratorFactory::buildNetworkSensorEnumerator(const std::string &ip) {
+SensorEnumeratorFactory::buildNetworkSensorEnumerator(const std::string& ip) {
 #ifdef HAS_NETWORK
+#ifndef TARGET
     return std::unique_ptr<SensorEnumeratorInterface>(
         new NetworkSensorEnumerator(ip));
-#else return nullptr;
 #endif
+#endif
+    return nullptr;
 }
 
 std::unique_ptr<SensorEnumeratorInterface>
