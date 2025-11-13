@@ -9,7 +9,7 @@
 #include "adsd3500_interrupt_notifier.h"
 #include "gpio.h"
 #include "sensor-tables/device_parameters.h"
-#include "utils.h"
+#include "aditof/utils.h"
 #include "utils_ini.h"
 
 #include <algorithm>
