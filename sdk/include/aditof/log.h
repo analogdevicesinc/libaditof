@@ -39,7 +39,12 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#ifdef _WIN32
+#include <process.h>
+#define getpid _getpid
+#else
 #include <unistd.h>
+#endif
 
 //glog/logging.h defines this namespace
 //which is required by protobuf library

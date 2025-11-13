@@ -118,9 +118,14 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
     }
 #endif
 
-    Status status = sensorEnumerator->searchSensors();
-    if (status == Status::OK) {
-        cameraList = buildCameras(std::move(sensorEnumerator));
+    if (sensorEnumerator) {
+        Status status = sensorEnumerator->searchSensors();
+        if (status == Status::OK) {
+            cameraList = buildCameras(std::move(sensorEnumerator));
+        }
+    }
+    else {
+        return Status::GENERIC_ERROR;
     }
 
     return Status::OK;
