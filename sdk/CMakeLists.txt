@@ -51,7 +51,7 @@ elseif ( NVIDIA )
     set(TARGET_SPECIFIC_DIR "soc/nvidia")
     add_definitions(-DNVIDIA)
 else()
-    message(FATAL_ERROR "Platform not supported")
+    #message(FATAL_ERROR "Platform not supported")
 endif()
 
 if (NOT APPLE AND NOT WIN32)

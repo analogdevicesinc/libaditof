@@ -35,9 +35,8 @@
 // (optionally) about NetworkSensorEnumerator. */
 #ifdef TARGET
 #include "connections/target/target_sensor_enumerator.h"
-#ifdef HAS_NETWORK
+#else
 #include "connections/network/network_sensor_enumerator.h"
-#endif
 #endif
 
 #ifdef HAS_OFFLINE
@@ -57,13 +56,11 @@ SensorEnumeratorFactory::buildTargetSensorEnumerator() {
 
 std::unique_ptr<SensorEnumeratorInterface>
 SensorEnumeratorFactory::buildNetworkSensorEnumerator(const std::string &ip) {
-#ifndef TARGET
 #ifdef HAS_NETWORK
     return std::unique_ptr<SensorEnumeratorInterface>(
         new NetworkSensorEnumerator(ip));
+#else return nullptr;
 #endif
-#endif
-    return nullptr;
 }
 
 std::unique_ptr<SensorEnumeratorInterface>
