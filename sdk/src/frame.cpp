@@ -71,6 +71,10 @@ Status Frame::getData(const std::string &dataType, uint16_t **dataPtr) {
     return m_impl->getData(dataType, dataPtr);
 }
 
+bool Frame::haveDataType(const std::string& dataType) {
+    return m_impl->haveDataType(dataType);
+}
+
 Status Frame::getMetadataStruct(Metadata &metadata) const {
     return m_impl->getMetadataStruct(metadata);
 }

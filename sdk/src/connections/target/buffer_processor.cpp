@@ -524,6 +524,13 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
         }
 
+        if (m_state == ST_RECORD) {
+            aditof::Status writeStatus = writeFrame((tofi_compute_io_buff.get()), m_tofiBufferSize);
+            if (writeStatus != aditof::Status::OK) {
+                LOG(ERROR) << "Failed to write processed frame during recording";
+            }
+        }
+
         process_frame.tofiBuffer = tofi_compute_io_buff;
         process_frame.size = m_tofiBufferSize;
 
@@ -602,6 +609,134 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     return aditof::Status::GENERIC_ERROR;
 }
 
+static bool folderExists(const std::string &path) {
+    struct stat info;
+    return (stat(path.c_str(), &info) == 0 && (info.st_mode & S_IFDIR));
+}
+
+static bool createFolder(const std::string &path) {
+#ifdef _WIN32
+    return _mkdir(path.c_str()) == 0 || errno == EEXIST;
+#else
+    return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
+#endif
+}
+static std::string generateFileName(const std::string &prefix = "aditof_",
+                                    const std::string &extension = ".adcam") {
+    // Get current UTC time
+    std::time_t now = std::time(nullptr);
+    std::tm utc_tm;
+#ifdef _WIN32
+    gmtime_s(&utc_tm, &now); // Windows
+#else
+    gmtime_r(&now, &utc_tm); // Linux/macOS
+#endif
+
+    std::ostringstream oss;
+
+    // Format time: YYYYMMDD_HHMMSS
+    oss << prefix;
+    oss << std::put_time(&utc_tm, "%Y%m%d_%H%M%S");
+
+    // Generate random 8-digit hex
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
+    uint32_t randNum = dis(gen);
+    oss << "_" << std::hex << std::setw(8) << std::setfill('0') << randNum;
+
+    oss << extension;
+
+    return oss.str();
+}
+aditof::Status BufferProcessor::startRecording(std::string &fileName,
+                                                  uint8_t *parameters,
+                                                uint32_t paramSize) {
+
+    using namespace aditof;
+
+    LOG(INFO) << __func__ << ": start!!";
+    m_state = ST_STANDARD;
+    m_folder_path = m_folder_path_folder;
+    if (!folderExists(m_folder_path)) {
+        if (!createFolder(m_folder_path)) {
+            LOG(ERROR) << "Failed to create folder for recordings: "
+                      << m_folder_path;
+            return aditof::Status::GENERIC_ERROR;
+        }
+    }
+
+    fileName = m_folder_path + "/" + generateFileName();
+
+    if (m_stream_file_out.is_open()) {
+        m_stream_file_out.close();
+    }
+
+    m_frame_count = 0;
+
+    m_stream_file_out = std::ofstream(fileName, std::ios::binary);
+
+    m_state = ST_RECORD;
+
+    //writeFrame(parameters, paramSize);
+
+    return aditof::Status::OK;
+}
+
+
+aditof::Status BufferProcessor::stopRecording() {
+
+    using namespace aditof;
+
+    Status status = Status::OK;
+
+    if (m_stream_file_out.is_open()) {
+        m_stream_file_out.close();
+    }
+    m_state = ST_STANDARD;
+    LOG(INFO) << "Recording stopped. Total frames saved: " << m_frame_count;
+
+    return status;
+
+}
+
+aditof::Status BufferProcessor::writeFrame(uint16_t *buffer,
+                                              uint32_t bufferSize) {
+    if (m_state != ST_RECORD) {
+        LOG(ERROR) << "Not in record mode";
+        return aditof::Status::GENERIC_ERROR;
+    }
+
+    static uint32_t idx = 0;
+    try {
+        if (m_stream_file_out.is_open()) {
+            // Write size of buffer
+            uint32_t x = 0xFFFFFFFF;
+            m_stream_file_out.write((char *)&x, sizeof(x));
+
+            m_stream_file_out.write((char *)&bufferSize,
+                                    sizeof(bufferSize));
+            // Write buffer data
+            m_stream_file_out.write((char *)(buffer),
+                                    bufferSize);
+
+            m_frame_count++;
+
+            return aditof::Status::OK;
+            m_stream_file_out.flush();  // Ensure written to disk
+        }
+    } catch (const std::ofstream::failure &e) {
+        LOG(ERROR) << "File I/O exception caught: " << e.what();
+        m_stream_file_out.close();
+        m_state = ST_STANDARD;
+    }
+    return aditof::Status::GENERIC_ERROR;
+}
+
+aditof::Status BufferProcessor::readFrame(uint8_t *buffer,
+                                             uint32_t &bufferSize) {
+    return aditof::Status::OK;
+}
 aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
     fd_set fds;
     struct timeval tv;

@@ -35,6 +35,8 @@
 #include "buffer_processor.h"
 #include "connections/target/v4l_buffer_access_interface.h"
 #include "sensor-tables/ini_file_definitions.h"
+#include <fstream>
+#include <iostream>
 #include <memory>
 #include <unordered_map>
 
@@ -104,7 +106,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     virtual aditof::Status
     setMode(const aditof::DepthSensorModeDetails &type) override;
     virtual aditof::Status setMode(const uint8_t &mode) override;
-    virtual aditof::Status getFrame(uint16_t *buffer) override;
+    virtual aditof::Status getFrame(uint16_t *buffer, uint32_t index = 0) override;
     virtual aditof::Status
     getAvailableControls(std::vector<std::string> &controls) const override;
     virtual aditof::Status setControl(const std::string &control,
@@ -229,4 +231,25 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     bool isOpen;
     bool m_ccbmEnabled;
     bool first_reset;
+
+  public:
+    // Stream record and playback support
+    aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
+                                  uint32_t paramSize) override;
+    aditof::Status stopRecording() override;
+    aditof::Status startPlayback(const std::string filePath) override;
+    aditof::Status stopPlayback() override;
+    aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) override;
+    aditof::Status getFrameCount(uint32_t &frameCount) override;
+
+  private:
+    aditof::Status automaticStop();
+    aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize, uint32_t index);
+    enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;
+    const std::string m_folder_path = "./recordings";
+    std::ofstream m_stream_file_out;
+    std::ifstream m_stream_file_in;
+    std::string m_stream_file_name;
+    uint32_t m_frame_count;
+    std::vector<std::streampos> m_frameIndex;
 };
