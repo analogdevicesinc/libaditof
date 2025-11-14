@@ -35,8 +35,13 @@
 #include <queue>
 #include <thread>
 #include <vector>
+#include <iomanip>
+#include <random>
+#include <iostream>
+#include <fstream>
 
 #include "v4l_buffer_access_interface.h"
+#include "aditof/depth_sensor_interface.h"
 
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
@@ -160,6 +165,11 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     virtual aditof::Status
     getDeviceFileDescriptor(int &fileDescriptor) override;
 
+    // Stream record and playback support
+    aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
+                                  uint32_t paramSize);
+    aditof::Status stopRecording();
+
   private:
     aditof::Status waitForBufferPrivate(struct VideoDev *dev = nullptr);
     aditof::Status dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
@@ -225,4 +235,14 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     int m_maxTries = 3;
 
     uint8_t m_currentModeNumber;
+
+    aditof::Status writeFrame(uint16_t *buffer, uint32_t bufferSize);
+    aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize);
+    enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;
+    const std::string m_folder_path_folder = "/mnt/media";
+    std::string m_folder_path;
+    std::ofstream m_stream_file_out;
+    std::ifstream m_stream_file_in;
+    std::string m_stream_file_name;
+    uint32_t m_frame_count;
 };

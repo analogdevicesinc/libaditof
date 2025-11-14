@@ -46,8 +46,8 @@ cd libaditof
 git submodule update --init
 git checkout <branch or tag>
 mkdir build && cd build
-cmake -DNVIDA=1 ..
-make -j"$(nproc)"
+cmake -DNVIDIA=1 ..
+cmake --build . --config RELEASE -j 6
 ```
 
 SDK binary and associated softlinks are hare **build/libaditof.so* **

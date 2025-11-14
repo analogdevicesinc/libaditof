@@ -93,7 +93,7 @@ static map<string, string> adsd3100_dual_fullDepth = {
     {"bitsInConf", "0"},
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
-    {"xyzEnable", "1"},
+    {"xyzEnable", "0"},
     {"fps", "10"}};
 
 static map<string, string> adsd3100_fullDepth = {{"abThreshMin", "3.0"},
@@ -116,7 +116,7 @@ static map<string, string> adsd3100_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"bitsInAB", "16"},
                                                  {"phaseInvalid", "0"},
                                                  {"xyzEnable", "1"},
-                                                 {"fps", "25"}};
+                                                 {"fps", "40"}};
 
 static map<string, string> adsd_PCM = {{"abThreshMin", "3.0"},
                                        {"confThresh", "25.0"},

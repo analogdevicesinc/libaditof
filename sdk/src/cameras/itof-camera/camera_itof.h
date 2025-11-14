@@ -59,7 +59,7 @@ class CameraItof : public aditof::Camera {
     aditof::Status setMode(const uint8_t &mode) override;
     aditof::Status
     getAvailableModes(std::vector<uint8_t> &availableModes) const override;
-    aditof::Status requestFrame(aditof::Frame *frame) override;
+    aditof::Status requestFrame(aditof::Frame *frame, uint32_t index = 0) override;
     void normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
                            uint16_t abHeight, bool advanceScaling,
                            bool useLogScaling) override;
@@ -148,22 +148,11 @@ class CameraItof : public aditof::Camera {
     aditof::Status
     getFrameProcessParams(std::map<std::string, std::string> &params) override;
     aditof::Status
-    setFrameProcessParams(std::map<std::string, std::string> &params) override;
+    setFrameProcessParams(std::map<std::string, std::string> &params, int32_t mode);
+
+    aditof::Status getDepthParamtersMap(uint16_t mode, std::map<std::string, std::string>& params) override;
 
   private:
-    /**
-     * @brief Opens the CCB file passed in as part of Json file using initialize(), and loads the calibration blocks into member variable
-     * @return aditof::Status
-     * @see aditof::Status
-     * @see <a href='../config/config_default.json'>config_default.json</a>
-     */
-    aditof::Status loadConfigData(void);
-
-    /**
-     * @brief Frees the calibration member variables created while loading the CCB contents
-     * @return None
-     */
-    void freeConfigData(void);
 
     // Methods available only when Adsd3500 is detected as part of the entire setup
 
@@ -185,12 +174,14 @@ class CameraItof : public aditof::Camera {
      */
     aditof::Status retrieveDepthProcessParams();
 
+    aditof::Status resetDepthProcessParams();
+
     /**
      * Configure ADSD3500 with ini parameters
      * @param[in] iniKeyValPairs - ini parameteres to use
     */
-    aditof::Status setAdsd3500IniParams(
-        const std::map<std::string, std::string> &iniKeyValPairs);
+    aditof::Status setDepthIniParams(
+        const std::map<std::string, std::string> &iniKeyValPairs, bool updateDepthMap = true);
 
     /**
      * @brief Delete allocated tables for X, Y, Z
@@ -201,6 +192,13 @@ class CameraItof : public aditof::Camera {
      * @brief Check if string can convert to double
      */
     bool isConvertibleToDouble(const std::string &str);
+
+    aditof::Status startRecording(std::string &filePath) override;
+    aditof::Status stopRecording() override;
+
+    aditof::Status startPlayback(std::string &filePath) override;
+    aditof::Status stopPlayback() override;
+    void UpdateDepthParamsMap(bool update, const char * index, std::string value);
 
   private:
     using noArgCallable = std::function<aditof::Status()>;
@@ -213,28 +211,22 @@ class CameraItof : public aditof::Camera {
 
     bool m_devStarted;
     bool m_devStreaming;
-    bool m_tempSensorInitialized;
     bool m_adsd3500Enabled;
     bool m_adsd3500_master;
     bool m_isOffline;
     std::string m_netLinkTest;
 
-    FileData m_calData = {NULL, 0};
-
-    FileData m_depthINIData;
-    std::map<std::string, FileData> m_depthINIDataMap;
-    TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
-    bool m_loadedConfigData;
-
-    std::string m_sensorFirmwareFile;
-    std::string m_ccb_calibrationFile;
-    std::string m_ini_depth;
-    std::map<std::string, std::string> m_ini_depth_map;
     std::map<int, std::map<std::string, std::string>> m_depth_params_map;
-    bool m_abEnabled;
+    std::map<int, std::map<std::string, std::string>> m_depth_params_map_reset;
+
+    TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
+
     uint8_t m_depthBitsPerPixel;
     uint8_t m_abBitsPerPixel;
     uint8_t m_confBitsPerPixel;
+    bool m_depthEnabled;
+    bool m_abEnabled;
+    bool m_confEnabled;
     bool m_xyzEnabled;
     bool m_xyzSetViaApi;
     bool m_pcmFrame;
@@ -263,6 +255,46 @@ class CameraItof : public aditof::Camera {
     bool m_dropFirstFrame;
     bool m_dropFrameOnce;
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
+
+
+    struct offlineparameter_struct {
+        static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;
+        static const uint32_t MAX_FRAME_CONTENT = 6;
+        uint32_t numberOfFrames;
+        const uint32_t formatVersion = 0x00000001;
+        uint16_t frameRate;
+        uint16_t enableMetaDatainAB;
+        TofiXYZDealiasData dealias;
+        struct {
+            uint32_t mode;
+            uint32_t width;
+            uint32_t height;
+            uint32_t totalCaptures;
+        } details;
+        //aditof::DepthSensorModeDetails modeDetailsCache;
+        struct {
+            uint8_t modeNumber;
+            char frameContent[MAX_FRAME_CONTENT][16];
+            uint8_t numberOfPhases;
+            int pixelFormatIndex;
+            int frameWidthInBytes;
+            int frameHeightInBytes;
+            int baseResolutionWidth;
+            int baseResolutionHeight;
+            int metadataSize;
+            int isPCM;
+        } modeDetailsCache;
+        uint32_t fdatadetailsCount;
+        //aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
+        struct {
+            char type[32];
+            uint32_t width;
+            uint32_t height;
+            uint32_t subelementSize;
+            uint32_t subelementsPerElement;
+            uint32_t bytesCount;
+        } fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
+    } m_offline_parameters;
 };
 
 #endif // CAMERA_ITOF_H

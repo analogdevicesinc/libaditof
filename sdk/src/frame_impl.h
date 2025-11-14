@@ -55,6 +55,7 @@ class FrameImpl {
                                   aditof::FrameDataDetails &details) const;
     aditof::Status getData(const std::string &dataType, uint16_t **dataPtr);
     aditof::Status getMetadataStruct(aditof::Metadata &metadata) const;
+	  bool haveDataType(const std::string& dataType);
 
   private:
     void allocFrameData(const aditof::FrameDetails &details);

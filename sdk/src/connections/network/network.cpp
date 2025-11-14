@@ -86,6 +86,7 @@ bool Network::Thread_Detached[MAX_CAMERA_NUM];
 bool Network::InterruptDetected[MAX_CAMERA_NUM];
 
 void *Network::rawPayloads[MAX_CAMERA_NUM];
+void *Network::rawPayloadsSize[MAX_CAMERA_NUM];
 std::vector<std::string> m_connectionList;
 
 /*
@@ -295,7 +296,7 @@ int Network::ServerConnect(const std::string &ip) {
                 -1 -  on error
 * Desription:    This function is used to send the data to connected server.
 */
-int Network::SendCommand(void *rawPayload) {
+int Network::SendCommand(void *rawPayload, uint32_t *rawPayloadSize) {
     int status = -1;
     uint8_t numRetry = 0;
     int siz = send_buff[m_connectionId].ByteSize();
@@ -322,6 +323,14 @@ int Network::SendCommand(void *rawPayload) {
 #ifdef NW_DEBUG
             std::cout << "Send Timeout error" << std::endl;
 #endif
+            if (rawPayload) {
+                rawPayloads[m_connectionId] = rawPayload;
+            }
+            if (rawPayloadSize) {
+                rawPayloadsSize[m_connectionId] = rawPayloadSize;
+            }
+            status = 0;
+            break;
         }
     }
 
