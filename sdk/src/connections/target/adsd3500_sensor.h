@@ -38,6 +38,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
 struct CcbMode {
@@ -252,4 +253,5 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::string m_stream_file_name;
     uint32_t m_frame_count;
     std::vector<std::streampos> m_frameIndex;
+    std::recursive_mutex m_adsd3500_mutex; // Protects ADSD3500 command/payload operations (recursive for nested calls)
 };

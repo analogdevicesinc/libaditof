@@ -133,9 +133,31 @@ static int xioctl(int fh, unsigned int request, void *arg) {
     int r;
     int tries = 3;
 
+    // Validate file handle before calling ioctl
+    if (fh < 0) {
+        LOG(ERROR) << "xioctl called with invalid file descriptor: " << fh;
+        errno = EBADF;
+        return -1;
+    }
+
+    // Validate arg pointer for ioctls that require it (most do)
+    if (arg == nullptr && request != 0) {
+        LOG(ERROR) << "xioctl called with NULL arg for request 0x" << std::hex << request;
+        errno = EFAULT;
+        return -1;
+    }
+
     do {
         r = ioctl(fh, request, arg);
     } while (--tries > 0 && r == -1 && EINTR == errno);
+
+    if (r == -1) {
+        LOG(WARNING) << "xioctl failed: fd=" << fh 
+                     << " request=0x" << std::hex << request 
+                     << " errno=" << std::dec << errno 
+                     << " (" << strerror(errno) << ")"
+                     << " after " << (4 - tries) << " attempts";
+    }
 
     return r;
 }
@@ -1049,6 +1071,7 @@ Adsd3500Sensor::setHostConnectionType(std::string &connectionType) {
 aditof::Status Adsd3500Sensor::adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
                                                  unsigned int usDelay) {
     using namespace aditof;
+    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
     struct VideoDev *dev = &m_implData->videoDevs[0];
     Status status = Status::OK;
 
@@ -1106,6 +1129,7 @@ aditof::Status Adsd3500Sensor::adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
 aditof::Status Adsd3500Sensor::adsd3500_write_cmd(uint16_t cmd, uint16_t data,
                                                   unsigned int usDelay) {
     using namespace aditof;
+    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
     struct VideoDev *dev = &m_implData->videoDevs[0];
     Status status = Status::OK;
 
@@ -1147,6 +1171,7 @@ aditof::Status Adsd3500Sensor::adsd3500_read_payload_cmd(uint32_t cmd,
                                                          uint8_t *readback_data,
                                                          uint16_t payload_len) {
     using namespace aditof;
+    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
     struct VideoDev *dev = &m_implData->videoDevs[0];
     Status status = Status::OK;
 
@@ -1255,6 +1280,7 @@ aditof::Status Adsd3500Sensor::adsd3500_read_payload_cmd(uint32_t cmd,
 aditof::Status Adsd3500Sensor::adsd3500_read_payload(uint8_t *payload,
                                                      uint16_t payload_len) {
     using namespace aditof;
+    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
     struct VideoDev *dev = &m_implData->videoDevs[0];
     Status status = Status::OK;
 
@@ -1301,6 +1327,7 @@ aditof::Status
 Adsd3500Sensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
                                            uint16_t payload_len) {
     using namespace aditof;
+    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
     struct VideoDev *dev = &m_implData->videoDevs[0];
     Status status = Status::OK;
 
@@ -1374,6 +1401,7 @@ Adsd3500Sensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
 aditof::Status Adsd3500Sensor::adsd3500_write_payload(uint8_t *payload,
                                                       uint16_t payload_len) {
     using namespace aditof;
+    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
     struct VideoDev *dev = &m_implData->videoDevs[0];
     Status status = Status::OK;
 
