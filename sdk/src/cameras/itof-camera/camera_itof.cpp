@@ -2840,9 +2840,14 @@ aditof::Status CameraItof::getImagerType(aditof::ImagerType &imagerType) const {
 
 aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
 
+    using namespace aditof;
+    Status status = Status::OK;
+    
     assert(!m_isOffline);
 
-    return m_depthSensor->adsd3500_write_cmd(0x0080, en ? 0x0001 : 0x0000);
+    status = m_depthSensor->adsd3500_write_cmd(0x0080, en ? 0x0001 : 0x0000);
+
+    return status;
 }
 
 aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
