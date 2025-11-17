@@ -205,6 +205,10 @@ Adsd3500Sensor::~Adsd3500Sensor() {
 
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
+        if (dev == nullptr) {
+            LOG(WARNING) << "Device is not initialized.";
+            break;
+        }
         if (dev->started) {
             stop();
         }
@@ -212,6 +216,11 @@ Adsd3500Sensor::~Adsd3500Sensor() {
 
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
+
+        if (dev == nullptr) {
+            LOG(WARNING) << "Device is not initialized.";
+            break;
+        }
 
         for (unsigned int i = 0; i < dev->nVideoBuffers; i++) {
             if (munmap(dev->videoBuffers[i].start,
@@ -241,9 +250,13 @@ Adsd3500Sensor::~Adsd3500Sensor() {
     }
 
     if (isOpen) {
-        if (m_implData->videoDevs) {
-            delete[] m_implData->videoDevs;
-            m_implData->videoDevs = nullptr;
+        if (m_implData == nullptr) {
+            LOG(WARNING) << "ImplData is not initialized.";
+        } else {
+            if (m_implData->videoDevs) {
+                delete[] m_implData->videoDevs;
+                m_implData->videoDevs = nullptr;
+            }
         }
     }
 
