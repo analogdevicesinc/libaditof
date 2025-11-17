@@ -125,14 +125,16 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
     using namespace aditof;
     Status status = Status::OK;
 
-    LOG(INFO) << "Initializing camera";
 
     if (m_isOffline) {
+
+        LOG(INFO) << "Initializing camera: Offline";
 
         return status;
 
     } else {
 
+        LOG(INFO) << "Initializing camera: Online";
         if (!m_adsd3500Enabled && !m_isOffline) {
             LOG(ERROR) << "This usecase is no longer supported.";
             return aditof::Status::UNAVAILABLE;
