@@ -103,30 +103,43 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
     }
 
     std::unique_ptr<SensorEnumeratorInterface> sensorEnumerator;
+
 #ifdef HAS_OFFLINE
-    DLOG(INFO) << "Creating offline sensor.";
-    sensorEnumerator = SensorEnumeratorFactory::buildOfflineSensorEnumerator();
-    if (!sensorEnumerator) {
-        LOG(ERROR) << "Could not create OfflineSensorEnumerator";
+    if (uri.compare(0, 8, "offline:") == 0) {
+        LOG(INFO) << "Creating offline sensor.";
+        sensorEnumerator = SensorEnumeratorFactory::buildOfflineSensorEnumerator();
+        if (!sensorEnumerator) {
+            LOG(ERROR) << "Could not create OfflineSensorEnumerator";
+            return Status::GENERIC_ERROR;
+        }
+
+        if (sensorEnumerator) {
+            Status status = sensorEnumerator->searchSensors();
+            if (status == Status::OK) {
+                cameraList = buildCameras(std::move(sensorEnumerator));
+                return Status::OK;
+            }
+        }
         return Status::GENERIC_ERROR;
     }
-#elif defined(NXP) || defined(NVIDIA)
+#endif
+
+#if defined(NXP) || defined(NVIDIA)
     sensorEnumerator = SensorEnumeratorFactory::buildTargetSensorEnumerator();
     if (!sensorEnumerator) {
         LOG(ERROR) << "Could not create TargetSensorEnumerator";
         return Status::GENERIC_ERROR;
     }
-#endif
 
     if (sensorEnumerator) {
         Status status = sensorEnumerator->searchSensors();
         if (status == Status::OK) {
             cameraList = buildCameras(std::move(sensorEnumerator));
+            return Status::OK;
         }
     }
-    else {
-        return Status::GENERIC_ERROR;
-    }
+    return Status::GENERIC_ERROR;
+#endif
 
     return Status::OK;
 }
@@ -134,7 +147,11 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
 Status
 SystemImpl::getCameraListAtIp(std::vector<std::shared_ptr<Camera>> &cameraList,
                               const std::string &ip) const {
+
+    LOG(INFO) << "Creating network sensor.";
+
     int netLinkFlag = ip.find(":");
+
     std::string onlyIp = ip;
     std::string netLinkTest;
     if (netLinkFlag != -1) {
