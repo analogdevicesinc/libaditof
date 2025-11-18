@@ -82,7 +82,7 @@ CameraItof::CameraItof(
 
     FloatToLinGenerateTable();
     memset(&m_xyzTable, 0, sizeof(m_xyzTable));
-    m_details.mode = 0;
+    m_details.mode = -1;
     m_details.uBootVersion = ubootVersion;
     m_details.kernelVersion = kernelVersion;
     m_details.sdCardImageVersion = sdCardImageVersion;
@@ -845,8 +845,7 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
 
 
         // Write m_offline_parameters to the recording file.
-        status = m_depthSensor->startRecording(filePath, (uint8_t *)&m_offline_parameters,
-                                               sizeof(m_offline_parameters));
+        status = m_depthSensor->startRecording(filePath, (uint8_t *)&m_offline_parameters, sizeof(m_offline_parameters));
     }
 
     return status;
@@ -895,6 +894,8 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
 aditof::Status CameraItof::requestFrame(aditof::Frame* frame, uint32_t index) {
     using namespace aditof;
     Status status = Status::OK;
+
+    LOG(INFO) << __func__;
 
     if (frame == nullptr) {
         return Status::INVALID_ARGUMENT;
