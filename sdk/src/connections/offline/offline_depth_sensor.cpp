@@ -463,7 +463,7 @@ aditof::Status OfflineDepthSensor::getFrameCount(uint32_t &frameCount) {
 
 aditof::Status OfflineDepthSensor::getHeader(uint8_t* buffer, uint32_t bufferSize) {
 
-        if (m_state != ST_PLAYBACK) {
+    if (m_state != ST_PLAYBACK) {
         LOG(ERROR) << "Not in playback mode";
         return aditof::Status::GENERIC_ERROR;
     }
