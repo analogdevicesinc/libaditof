@@ -121,7 +121,7 @@ aditof::Status FrameImpl::getData(const std::string &dataType,
     } else {
         dataPtr = nullptr;
         if (dataType !=
-            "header") // TO DO: Silence this for now, handle it later
+            "metadata") // TO DO: Silence this for now, handle it later
             LOG(ERROR) << dataType << " is not supported by this frame!";
         return Status::INVALID_ARGUMENT;
     }
@@ -157,20 +157,30 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
     using namespace aditof;
     unsigned long int totalSize = 0;
     unsigned long int pos = 0;
-    uint16_t embed_hdr_length = 0;
+    uint16_t embed_hdr_length = skMetaDataBytesCount;
     uint8_t total_captures = 0;
+
+    LOG(INFO) << __func__;
 
     auto getSubframeSize = [embed_hdr_length,
                             total_captures](FrameDataDetails frameDetail) {
-        if (frameDetail.type == "header") {
-            return (unsigned long int)((embed_hdr_length / sizeof(uint16_t)) * total_captures);
+        if (frameDetail.type == "metadata") {
+            unsigned long int sz = (unsigned long int)(embed_hdr_length / sizeof(uint16_t));
+            LOG(INFO) << "metadata: " << sz * sizeof(uint16_t) << " bytes";
+            return sz;
         } else if (frameDetail.type == "xyz") {
-            return (unsigned long int)(frameDetail.height * frameDetail.width * 3);
+            unsigned long int sz = (unsigned long int)(frameDetail.height * frameDetail.width * 3);
+            LOG(INFO) << "XYZ: " << sz * sizeof(uint16_t) << " bytes";
+            return sz;
         } else if (frameDetail.type == "conf") {
-            return (unsigned long int)(frameDetail.height * frameDetail.width *
+            unsigned long int sz = (unsigned long int)(frameDetail.height * frameDetail.width *
                                        sizeof(float) / sizeof(uint16_t));
+            LOG(INFO) << "Conf: " << sz * sizeof(uint16_t) << " bytes";
+            return sz;
         } else {
-            return (unsigned long int)(frameDetail.height * frameDetail.width);
+            unsigned long int sz = (unsigned long int)(frameDetail.height * frameDetail.width);
+            LOG(INFO) << "Other: " << sz * sizeof(uint16_t) << " bytes";
+            return sz;
         }
     };
 
@@ -178,6 +188,8 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
     for (FrameDataDetails frameDetail : details.dataDetails) {
         totalSize += getSubframeSize(frameDetail);
     }
+
+    LOG(INFO) << "Allocating frame data of total size: " << totalSize * sizeof(uint16_t) << " bytes";
 
     //store pointers to the contents described by FrameDetails
     m_implData->m_allData = std::shared_ptr<uint16_t[]>(
