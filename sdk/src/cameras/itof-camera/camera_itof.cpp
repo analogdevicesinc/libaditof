@@ -895,8 +895,6 @@ aditof::Status CameraItof::requestFrame(aditof::Frame* frame, uint32_t index) {
     using namespace aditof;
     Status status = Status::OK;
 
-    LOG(INFO) << __func__;
-
     if (frame == nullptr) {
         return Status::INVALID_ARGUMENT;
     }
