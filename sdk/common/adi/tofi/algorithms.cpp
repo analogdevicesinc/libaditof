@@ -67,7 +67,7 @@ uint32_t Algorithms::GenerateXYZTables(
     }
     // Replicate the rows
     for (uint32_t j = 0; j < n_rows; j++) {
-        memcpy(&p_xp[j * n_cols], p_xp, n_cols * sizeof(float));
+        memmove(&p_xp[j * n_cols], p_xp, n_cols * sizeof(float));
     }
 
     for (uint32_t j = 0; j < n_rows; j++) {
