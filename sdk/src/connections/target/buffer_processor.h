@@ -240,7 +240,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status automaticStop();
     aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize);
     enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;
-    const std::string m_folder_path_folder = "/tmp/media";
+    const std::string m_folder_path_folder = "./media";
     std::string m_folder_path;
     std::ofstream m_stream_file_out;
     std::ifstream m_stream_file_in;
