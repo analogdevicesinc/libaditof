@@ -904,19 +904,6 @@ aditof::Status BufferProcessor::stopRecording() {
     return status;
 }
 
-#include <cstddef>
-#include <cstdint>
-
-static uint32_t fnv1a(const void* data, size_t len) {
-    const uint8_t* bytes = static_cast<const uint8_t*>(data);
-    uint32_t hash = 2166136261u;
-    for (size_t i = 0; i < len; ++i) {
-        hash ^= bytes[i];
-        hash *= 16777619u;
-    }
-    return hash;
-}
-
 aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
                                               uint32_t bufferSize) {
     if (m_state != ST_RECORD) {
@@ -937,8 +924,6 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
                                     bufferSize);
 
             m_frame_count++;
-
-            LOG(INFO) << m_frame_count << " " << bufferSize << " " << std::hex << fnv1a(buffer, bufferSize) << std::dec;
 
             return aditof::Status::OK;
         }
