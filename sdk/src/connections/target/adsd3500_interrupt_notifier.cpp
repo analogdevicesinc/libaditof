@@ -43,7 +43,7 @@ void Adsd3500InterruptNotifier::signalEventHandler(int n, siginfo_t *info,
 aditof::Status Adsd3500InterruptNotifier::enableInterrupts() {
     // Subscribe to the ADSD3500 interrupt
     struct sigaction act;
-    int32_t number;
+    int32_t number = 0;
 
     sigemptyset(&act.sa_mask);
     act.sa_flags = (SA_SIGINFO | SA_RESTART);
