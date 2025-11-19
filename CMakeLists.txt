@@ -19,7 +19,8 @@ set(VERSION "${ADITOF_VERSION_MAJOR}.${ADITOF_VERSION_MINOR}.${ADITOF_VERSION_PA
 ############################### Options #######################################
 option(WITH_DOC "Build documentation?" OFF)
 option(WITH_NETWORK "Build network interface?" ON)
-option(WITH_OFFLINE "Build offline interface?" OFF)
+option(WITH_PYTHON "Build python bindings?" ON)
+option(WITH_OFFLINE "Build offline interface?" ON)
 option(WITH_GLOG_DEPENDENCY "Build with GLOG dependency to be used for logging?" OFF)
 option(CI_BUILD "Build for CI" OFF)
 option(WITH_SUBMODULES "Use submodules to build the library" ON)
@@ -216,6 +217,10 @@ add_definitions(-DRESOURCES="${RESOURCES_DIR}")
 
 add_subdirectory(dependencies)
 add_subdirectory(sdk)
+
+if (WITH_PYTHON)
+        add_subdirectory(bindings/python)
+endif()
 
 if (WITH_DOC)
         add_subdirectory(doc)
