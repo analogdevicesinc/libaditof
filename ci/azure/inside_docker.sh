@@ -2,6 +2,8 @@
 git config --global --add safe.directory /libaditof
 git config --global --add safe.directory /libaditof/glog
 git config --global --add safe.directory /libaditof/protobuf
+git config --global --add safe.directory /libaditof/protobuf/third_party/benchmark
+git config --global --add safe.directory /libaditof/protobuf/third_party/googletest
 git config --global --add safe.directory /libaditof/libzmq
 git config --global --add safe.directory /libaditof/cppzmq
 
