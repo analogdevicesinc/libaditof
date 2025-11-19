@@ -1,15 +1,13 @@
 #include "offline_sensor_enumerator.h"
 #include "offline_depth_sensor.h"
 
-OfflineSensorEnumerator::OfflineSensorEnumerator() {
-}
+OfflineSensorEnumerator::OfflineSensorEnumerator() {}
 
 aditof::Status OfflineSensorEnumerator::getDepthSensors(
     std::vector<std::shared_ptr<aditof::DepthSensorInterface>> &depthSensors) {
     depthSensors.clear();
 
-    depthSensors.emplace_back(
-        std::make_shared<OfflineDepthSensor>());
+    depthSensors.emplace_back(std::make_shared<OfflineDepthSensor>());
     return aditof::Status::OK;
 }
 

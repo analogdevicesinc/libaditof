@@ -31,17 +31,17 @@
  */
 #include <atomic>
 #include <condition_variable>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
 #include <mutex>
 #include <queue>
+#include <random>
 #include <thread>
 #include <vector>
-#include <iomanip>
-#include <random>
-#include <iostream>
-#include <fstream>
 
-#include "v4l_buffer_access_interface.h"
 #include "aditof/depth_sensor_interface.h"
+#include "v4l_buffer_access_interface.h"
 
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
@@ -231,12 +231,13 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     uint8_t m_currentModeNumber;
 
-    public:
+  public:
     // Stream record and playback support
-    aditof::Status startRecording(std::string &fileName, uint8_t *parameters, uint32_t paramSize);
+    aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
+                                  uint32_t paramSize);
     aditof::Status stopRecording();
 
-    private:
+  private:
     aditof::Status automaticStop();
     aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize);
     enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;

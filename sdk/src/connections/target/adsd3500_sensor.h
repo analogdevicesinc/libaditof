@@ -107,7 +107,8 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     virtual aditof::Status
     setMode(const aditof::DepthSensorModeDetails &type) override;
     virtual aditof::Status setMode(const uint8_t &mode) override;
-    virtual aditof::Status getFrame(uint16_t *buffer, uint32_t index = 0) override;
+    virtual aditof::Status getFrame(uint16_t *buffer,
+                                    uint32_t index = 0) override;
     virtual aditof::Status
     getAvailableControls(std::vector<std::string> &controls) const override;
     virtual aditof::Status setControl(const std::string &control,
@@ -245,7 +246,8 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
 
   private:
     aditof::Status automaticStop();
-    aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize, uint32_t index);
+    aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize,
+                             uint32_t index);
     enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;
     const std::string m_folder_path = "./recordings";
     std::ofstream m_stream_file_out;
@@ -253,5 +255,6 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::string m_stream_file_name;
     uint32_t m_frame_count;
     std::vector<std::streampos> m_frameIndex;
-    std::recursive_mutex m_adsd3500_mutex; // Protects ADSD3500 command/payload operations (recursive for nested calls)
+    std::recursive_mutex
+        m_adsd3500_mutex; // Protects ADSD3500 command/payload operations (recursive for nested calls)
 };

@@ -53,7 +53,7 @@ aditof::Status Adsd3500InterruptNotifier::enableInterrupts() {
     m_interruptsAvailable = false;
 
     const char *debugfs_name = "/proc/adsd3500/value";
-    int debug_fd = ::open(debugfs_name , O_RDWR);
+    int debug_fd = ::open(debugfs_name, O_RDWR);
     if (debug_fd < 0) {
         LOG(WARNING) << "Failed to open " << debugfs_name << ", "
                      << "Interrupts support will not be available!";

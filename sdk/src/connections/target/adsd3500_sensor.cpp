@@ -6,10 +6,10 @@
 /********************************************************************************/
 #include "adsd3500_sensor.h"
 #include "aditof/frame_operations.h"
+#include "aditof/utils.h"
 #include "adsd3500_interrupt_notifier.h"
 #include "gpio.h"
 #include "sensor-tables/device_parameters.h"
-#include "aditof/utils.h"
 #include "utils_ini.h"
 
 #include <algorithm>
@@ -142,7 +142,8 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 
     // Validate arg pointer for ioctls that require it (most do)
     if (arg == nullptr && request != 0) {
-        LOG(ERROR) << "xioctl called with NULL arg for request 0x" << std::hex << request;
+        LOG(ERROR) << "xioctl called with NULL arg for request 0x" << std::hex
+                   << request;
         errno = EFAULT;
         return -1;
     }
@@ -152,10 +153,9 @@ static int xioctl(int fh, unsigned int request, void *arg) {
     } while (--tries > 0 && r == -1 && EINTR == errno);
 
     if (r == -1) {
-        LOG(WARNING) << "xioctl failed: fd=" << fh 
-                     << " request=0x" << std::hex << request 
-                     << " errno=" << std::dec << errno 
-                     << " (" << strerror(errno) << ")"
+        LOG(WARNING) << "xioctl failed: fd=" << fh << " request=0x" << std::hex
+                     << request << " errno=" << std::dec << errno << " ("
+                     << strerror(errno) << ")"
                      << " after " << (4 - tries) << " attempts";
     }
 
@@ -816,7 +816,6 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             dev->videoBuffers[dev->nVideoBuffers].length = length;
         }
     }
-    
 
     if (!type.isPCM) {
         //TO DO: update this values when frame_impl gets restructured
@@ -2385,12 +2384,13 @@ aditof::Status Adsd3500Sensor::getIniParamsArrayForMode(int mode,
 #pragma region Stream_Recording_and_Playback
 
 aditof::Status Adsd3500Sensor::startRecording(std::string &fileName,
-                                                  uint8_t *parameters,
-                                                  uint32_t paramSize) {
+                                              uint8_t *parameters,
+                                              uint32_t paramSize) {
 
     using namespace aditof;
     LOG(INFO) << __func__ << ": Start recording";
-    m_bufferProcessor->startRecording(fileName, (uint8_t *)parameters, paramSize);
+    m_bufferProcessor->startRecording(fileName, (uint8_t *)parameters,
+                                      paramSize);
     Status status = Status::OK;
 
     return status;
@@ -2413,7 +2413,7 @@ aditof::Status Adsd3500Sensor::startPlayback(const std::string filePath) {
 }
 
 aditof::Status Adsd3500Sensor::stopPlayback() {
-    
+
     return aditof::Status::GENERIC_ERROR;
 }
 
@@ -2423,13 +2423,13 @@ aditof::Status Adsd3500Sensor::getFrameCount(uint32_t &frameCount) {
     return aditof::Status::OK;
 }
 
-aditof::Status Adsd3500Sensor::getHeader(uint8_t* buffer, uint32_t bufferSize) {
+aditof::Status Adsd3500Sensor::getHeader(uint8_t *buffer, uint32_t bufferSize) {
 
     return aditof::Status::GENERIC_ERROR;
 }
 
-aditof::Status Adsd3500Sensor::readFrame(uint8_t *buffer,
-                                             uint32_t &bufferSize, uint32_t index) {
+aditof::Status Adsd3500Sensor::readFrame(uint8_t *buffer, uint32_t &bufferSize,
+                                         uint32_t index) {
 
     return aditof::Status::GENERIC_ERROR;
 }
