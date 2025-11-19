@@ -88,14 +88,22 @@ class FrameHandlerImpl {
     //between this 2
     //NOTE: metadata should be always enabled for a better data processing
     aditof::Status setFrameContent(const std::string &frameContent);
-    aditof::Status SnapShotFrames(const char* baseFileName, aditof::Frame *frame, const uint8_t* ab, const uint8_t* depth);
+    aditof::Status SnapShotFrames(const char *baseFileName,
+                                  aditof::Frame *frame, const uint8_t *ab,
+                                  const uint8_t *depth);
 
   private:
-    aditof::Status SaveRGBAsJPEG(const char* filename, const uint8_t* data, uint32_t width, uint32_t height);
-    aditof::Status SaveFloatAsJPEG(const char* filename, const float* data, uint32_t width, uint32_t height);
-    aditof::Status SaveUint16AsJPEG(const char* filename, const uint16_t* data, uint32_t width, uint32_t height);
-    aditof::Status SavePointCloudPLYBinary(const char* filename, const uint16_t* data, uint32_t width, uint32_t height);
-    aditof::Status SaveMetaAsTxt(const char* filename, const aditof::Metadata* data);
+    aditof::Status SaveRGBAsJPEG(const char *filename, const uint8_t *data,
+                                 uint32_t width, uint32_t height);
+    aditof::Status SaveFloatAsJPEG(const char *filename, const float *data,
+                                   uint32_t width, uint32_t height);
+    aditof::Status SaveUint16AsJPEG(const char *filename, const uint16_t *data,
+                                    uint32_t width, uint32_t height);
+    aditof::Status SavePointCloudPLYBinary(const char *filename,
+                                           const uint16_t *data, uint32_t width,
+                                           uint32_t height);
+    aditof::Status SaveMetaAsTxt(const char *filename,
+                                 const aditof::Metadata *data);
     std::string getOutputFileFullPath(const std::string &fileName);
 
     aditof::Status createFile(const std::string &fileName);

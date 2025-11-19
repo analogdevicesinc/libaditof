@@ -59,7 +59,8 @@ class CameraItof : public aditof::Camera {
     aditof::Status setMode(const uint8_t &mode) override;
     aditof::Status
     getAvailableModes(std::vector<uint8_t> &availableModes) const override;
-    aditof::Status requestFrame(aditof::Frame *frame, uint32_t index = 0) override;
+    aditof::Status requestFrame(aditof::Frame *frame,
+                                uint32_t index = 0) override;
     void normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
                            uint16_t abHeight, bool advanceScaling,
                            bool useLogScaling) override;
@@ -148,12 +149,14 @@ class CameraItof : public aditof::Camera {
     aditof::Status
     getFrameProcessParams(std::map<std::string, std::string> &params) override;
     aditof::Status
-    setFrameProcessParams(std::map<std::string, std::string> &params, int32_t mode);
+    setFrameProcessParams(std::map<std::string, std::string> &params,
+                          int32_t mode);
 
-    aditof::Status getDepthParamtersMap(uint16_t mode, std::map<std::string, std::string>& params) override;
+    aditof::Status
+    getDepthParamtersMap(uint16_t mode,
+                         std::map<std::string, std::string> &params) override;
 
   private:
-
     // Methods available only when Adsd3500 is detected as part of the entire setup
 
     /**
@@ -180,8 +183,9 @@ class CameraItof : public aditof::Camera {
      * Configure ADSD3500 with ini parameters
      * @param[in] iniKeyValPairs - ini parameteres to use
     */
-    aditof::Status setDepthIniParams(
-        const std::map<std::string, std::string> &iniKeyValPairs, bool updateDepthMap = true);
+    aditof::Status
+    setDepthIniParams(const std::map<std::string, std::string> &iniKeyValPairs,
+                      bool updateDepthMap = true);
 
     /**
      * @brief Delete allocated tables for X, Y, Z
@@ -198,7 +202,8 @@ class CameraItof : public aditof::Camera {
 
     aditof::Status startPlayback(std::string &filePath) override;
     aditof::Status stopPlayback() override;
-    void UpdateDepthParamsMap(bool update, const char * index, std::string value);
+    void UpdateDepthParamsMap(bool update, const char *index,
+                              std::string value);
 
   private:
     using noArgCallable = std::function<aditof::Status()>;
@@ -255,7 +260,6 @@ class CameraItof : public aditof::Camera {
     bool m_dropFirstFrame;
     bool m_dropFrameOnce;
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
-
 
     struct offlineparameter_struct {
         static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;

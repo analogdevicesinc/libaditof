@@ -100,7 +100,8 @@ class Network {
     //! If, after the command, we expect the server to send raw (non-protobuf)
     //! payload, set the 'rawPayload' with the location where the payload
     //! should be copied. Otherwise, set to null or skip it.
-    int SendCommand(void *rawPayload = nullptr, uint32_t *rawPayloadSize = nullptr);
+    int SendCommand(void *rawPayload = nullptr,
+                    uint32_t *rawPayloadSize = nullptr);
 
     //! recv_server_data() - APi to receive data from server
     int recv_server_data();

@@ -60,7 +60,7 @@ int NetworkDepthSensor::frame_size = 0;
 NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
                                        const std::string &ip)
     : m_implData(new NetworkDepthSensor::ImplData), m_stopServerCheck(false),
-    m_state(ST_STANDARD){
+      m_state(ST_STANDARD) {
 
     extern std::vector<std::string> m_connectionList;
     m_sensorIndex = -1;
@@ -676,7 +676,7 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
         return Status::GENERIC_ERROR;
     } else {
         if (m_state == ST_RECORD) {
-            writeFrame((uint8_t*)buffer, frame_size);
+            writeFrame((uint8_t *)buffer, frame_size);
         }
     }
     return Status::OK;
@@ -720,7 +720,7 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     }
 
     if (m_state == ST_RECORD) {
-        writeFrame((uint8_t*)buffer, frame_size);
+        writeFrame((uint8_t *)buffer, frame_size);
     }
 
     return status;
@@ -1433,12 +1433,12 @@ NetworkDepthSensor::getIniParamsArrayForMode(int mode, std::string &iniStr) {
 #ifdef _WIN32
 #include <direct.h>
 #endif
-#include <iostream>
-#include <iomanip>
-#include <sstream>
-#include <ctime>
 #include <cstdlib>
+#include <ctime>
+#include <iomanip>
+#include <iostream>
 #include <random>
+#include <sstream>
 
 static bool folderExists(const std::string &path) {
     struct stat info;
@@ -1491,7 +1491,7 @@ aditof::Status NetworkDepthSensor::startRecording(std::string &fileName,
     if (!folderExists(m_folder_path)) {
         if (!createFolder(m_folder_path)) {
             LOG(ERROR) << "Failed to create folder for recordings: "
-                      << m_folder_path;
+                       << m_folder_path;
             return aditof::Status::GENERIC_ERROR;
         }
     }
@@ -1519,7 +1519,10 @@ aditof::Status NetworkDepthSensor::stopRecording() {
         // Write the number of frames recorded at the end of the file
 
         // Seek back to the beginning
-        m_stream_file_out.seekp(8, std::ios::beg); // Skip over the number of bytes to read and the tag of 0xFFFF_FFFF
+        m_stream_file_out.seekp(
+            8,
+            std::ios::
+                beg); // Skip over the number of bytes to read and the tag of 0xFFFF_FFFF
         // Overwrite the placeholder
         m_frame_count--; // Take into account the header frame
         m_stream_file_out.write(reinterpret_cast<const char *>(&m_frame_count),
@@ -1527,23 +1530,23 @@ aditof::Status NetworkDepthSensor::stopRecording() {
 
         m_stream_file_out.close();
         return aditof::Status::OK;
-    } 
+    }
     LOG(ERROR) << "File stream is not open";
     return aditof::Status::GENERIC_ERROR;
 }
 
 aditof::Status NetworkDepthSensor::startPlayback(const std::string filePath) {
-    
+
     return aditof::Status::GENERIC_ERROR;
 }
 
-aditof::Status NetworkDepthSensor::stopPlayback() { 
+aditof::Status NetworkDepthSensor::stopPlayback() {
 
     return aditof::Status::GENERIC_ERROR;
 }
 
 aditof::Status NetworkDepthSensor::getFrameCount(uint32_t &frameCount) {
-    
+
     return aditof::Status::GENERIC_ERROR;
 }
 
@@ -1561,11 +1564,9 @@ aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
             uint32_t x = 0xFFFFFFFF;
             m_stream_file_out.write((char *)&x, sizeof(x));
 
-            m_stream_file_out.write((char *)&bufferSize,
-                                    sizeof(bufferSize));
+            m_stream_file_out.write((char *)&bufferSize, sizeof(bufferSize));
             // Write buffer data
-            m_stream_file_out.write((char *)(buffer),
-                                    bufferSize);
+            m_stream_file_out.write((char *)(buffer), bufferSize);
 
             m_frame_count++;
 
@@ -1584,7 +1585,7 @@ aditof::Status NetworkDepthSensor::readFrame(uint8_t *buffer,
     return aditof::Status::GENERIC_ERROR;
 }
 
-aditof::Status NetworkDepthSensor::automaticStop() { 
+aditof::Status NetworkDepthSensor::automaticStop() {
     if (m_state == ST_PLAYBACK) {
         stopPlayback();
     } else if (m_state == ST_RECORD) {

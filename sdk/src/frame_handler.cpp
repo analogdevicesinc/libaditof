@@ -84,6 +84,9 @@ Status FrameHandler::setFrameContent(const std::string &frameContent) {
     return m_impl->setFrameContent(frameContent);
 }
 
-aditof::Status FrameHandler::SnapShotFrames(const char* baseFileName, aditof::Frame* frame, const uint8_t* ab, const uint8_t* depth) {
+aditof::Status FrameHandler::SnapShotFrames(const char *baseFileName,
+                                            aditof::Frame *frame,
+                                            const uint8_t *ab,
+                                            const uint8_t *depth) {
     return m_impl->SnapShotFrames(baseFileName, frame, ab, depth);
 }

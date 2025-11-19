@@ -526,13 +526,14 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
         }
 
-        uint32_t frameSize =
-            m_outputFrameWidth * m_outputFrameHeight * 8 + 128;
+        uint32_t frameSize = m_outputFrameWidth * m_outputFrameHeight * 8 + 128;
 
         if (m_state == ST_RECORD) {
-            aditof::Status writeStatus = writeFrame((uint8_t *)tofi_compute_io_buff.get(), frameSize);
+            aditof::Status writeStatus =
+                writeFrame((uint8_t *)tofi_compute_io_buff.get(), frameSize);
             if (writeStatus != aditof::Status::OK) {
-                LOG(ERROR) << "Failed to write processed frame during recording";
+                LOG(ERROR)
+                    << "Failed to write processed frame during recording";
             }
         }
 
@@ -847,8 +848,8 @@ static std::string generateFileName(const std::string &prefix = "aditof_",
     return oss.str();
 }
 aditof::Status BufferProcessor::startRecording(std::string &fileName,
-                                                  uint8_t *parameters,
-                                                uint32_t paramSize) {
+                                               uint8_t *parameters,
+                                               uint32_t paramSize) {
 
     using namespace aditof;
 
@@ -857,7 +858,7 @@ aditof::Status BufferProcessor::startRecording(std::string &fileName,
     if (!folderExists(m_folder_path)) {
         if (!createFolder(m_folder_path)) {
             LOG(ERROR) << "Failed to create folder for recordings: "
-                      << m_folder_path;
+                       << m_folder_path;
             return aditof::Status::GENERIC_ERROR;
         }
     }
@@ -889,7 +890,10 @@ aditof::Status BufferProcessor::stopRecording() {
         // Write the number of frames recorded at the end of the file
 
         // Seek back to the beginning
-        m_stream_file_out.seekp(8, std::ios::beg); // Skip over the number of bytes to read and the tag of 0xFFFF_FFFF
+        m_stream_file_out.seekp(
+            8,
+            std::ios::
+                beg); // Skip over the number of bytes to read and the tag of 0xFFFF_FFFF
         // Overwrite the placeholder
         m_frame_count--; // Take into account the header frame
         m_stream_file_out.write(reinterpret_cast<const char *>(&m_frame_count),
@@ -899,13 +903,13 @@ aditof::Status BufferProcessor::stopRecording() {
         LOG(INFO) << "Recording stopped. Total frames saved: " << m_frame_count;
 
         status = aditof::Status::OK;
-    } 
+    }
 
     return status;
 }
 
 aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
-                                              uint32_t bufferSize) {
+                                           uint32_t bufferSize) {
     if (m_state != ST_RECORD) {
         return aditof::Status::GENERIC_ERROR;
     }
@@ -917,11 +921,9 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
             uint32_t x = 0xFFFFFFFF;
             m_stream_file_out.write((char *)&x, sizeof(x));
 
-            m_stream_file_out.write((char *)&bufferSize,
-                                    sizeof(bufferSize));
+            m_stream_file_out.write((char *)&bufferSize, sizeof(bufferSize));
             // Write buffer data
-            m_stream_file_out.write((char *)(buffer),
-                                    bufferSize);
+            m_stream_file_out.write((char *)(buffer), bufferSize);
 
             m_frame_count++;
 

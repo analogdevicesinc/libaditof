@@ -39,18 +39,14 @@
 #include <chrono>
 #include <unordered_map>
 
+struct OfflineDepthSensor::ImplData {};
 
-struct OfflineDepthSensor::ImplData {
-};
-
-
-OfflineDepthSensor::OfflineDepthSensor() : m_state(ST_STANDARD), m_frame_count(0) {
+OfflineDepthSensor::OfflineDepthSensor()
+    : m_state(ST_STANDARD), m_frame_count(0) {
     m_implData = std::make_unique<ImplData>();
 }
 
-OfflineDepthSensor::~OfflineDepthSensor() { 
-    automaticStop(); 
-}
+OfflineDepthSensor::~OfflineDepthSensor() { automaticStop(); }
 
 aditof::Status OfflineDepthSensor::getDepthComputeParams(
     std::map<std::string, std::string> &params) {
@@ -66,7 +62,7 @@ aditof::Status OfflineDepthSensor::setDepthComputeParams(
     using namespace aditof;
 
     Status status = Status::OK;
-   
+
     return status;
 }
 
@@ -91,7 +87,7 @@ aditof::Status OfflineDepthSensor::stop() {
 
     Status status = Status::OK;
 
-    status = automaticStop(); 
+    status = automaticStop();
 
     return status;
 }
@@ -176,7 +172,7 @@ aditof::Status OfflineDepthSensor::getControl(const std::string &control,
 
 aditof::Status
 OfflineDepthSensor::getDetails(aditof::SensorDetails &details) const {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -185,7 +181,7 @@ OfflineDepthSensor::getDetails(aditof::SensorDetails &details) const {
 }
 
 aditof::Status OfflineDepthSensor::getHandle(void **handle) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -217,7 +213,7 @@ OfflineDepthSensor::setHostConnectionType(std::string &connectionType) {
 aditof::Status OfflineDepthSensor::adsd3500_read_cmd(uint16_t cmd,
                                                      uint16_t *data,
                                                      unsigned int usDelay) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -228,7 +224,7 @@ aditof::Status OfflineDepthSensor::adsd3500_read_cmd(uint16_t cmd,
 aditof::Status OfflineDepthSensor::adsd3500_write_cmd(uint16_t cmd,
                                                       uint16_t data,
                                                       unsigned int usDelay) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -238,7 +234,7 @@ aditof::Status OfflineDepthSensor::adsd3500_write_cmd(uint16_t cmd,
 
 aditof::Status OfflineDepthSensor::adsd3500_read_payload_cmd(
     uint32_t cmd, uint8_t *readback_data, uint16_t payload_len) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -248,7 +244,7 @@ aditof::Status OfflineDepthSensor::adsd3500_read_payload_cmd(
 
 aditof::Status OfflineDepthSensor::adsd3500_read_payload(uint8_t *payload,
                                                          uint16_t payload_len) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -259,7 +255,7 @@ aditof::Status OfflineDepthSensor::adsd3500_read_payload(uint8_t *payload,
 aditof::Status
 OfflineDepthSensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
                                                uint16_t payload_len) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -270,7 +266,7 @@ OfflineDepthSensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
 aditof::Status
 OfflineDepthSensor::adsd3500_write_payload(uint8_t *payload,
                                            uint16_t payload_len) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -279,7 +275,7 @@ OfflineDepthSensor::adsd3500_write_payload(uint8_t *payload,
 }
 
 aditof::Status OfflineDepthSensor::adsd3500_reset() {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -293,7 +289,7 @@ aditof::Status OfflineDepthSensor::adsd3500_getInterruptandReset() {
 
 aditof::Status OfflineDepthSensor::adsd3500_register_interrupt_callback(
     aditof::SensorInterruptCallback &cb) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -313,7 +309,7 @@ aditof::Status OfflineDepthSensor::adsd3500_unregister_interrupt_callback(
 
 aditof::Status OfflineDepthSensor::adsd3500_get_status(int &chipStatus,
                                                        int &imagerStatus) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -324,7 +320,7 @@ aditof::Status OfflineDepthSensor::adsd3500_get_status(int &chipStatus,
 aditof::Status OfflineDepthSensor::initTargetDepthCompute(
     uint8_t *iniFile, uint16_t iniFileLength, uint8_t *calData,
     uint16_t calDataLength) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -334,7 +330,7 @@ aditof::Status OfflineDepthSensor::initTargetDepthCompute(
 
 aditof::Status
 OfflineDepthSensor::setSensorConfiguration(const std::string &sensorConf) {
-    
+
     using namespace aditof;
 
     Status status = Status::OK;
@@ -351,7 +347,6 @@ OfflineDepthSensor::getIniParamsArrayForMode(int mode, std::string &iniStr) {
 
     return status;
 }
-
 
 #pragma region Stream_Recording_and_Playback
 
@@ -411,7 +406,7 @@ static std::string generateFileName(const std::string &prefix = "aditof_",
 
 aditof::Status OfflineDepthSensor::startRecording(std::string &fileName,
                                                   uint8_t *parameters,
-    uint32_t paramSize) {
+                                                  uint32_t paramSize) {
 
     using namespace aditof;
 
@@ -461,7 +456,8 @@ aditof::Status OfflineDepthSensor::getFrameCount(uint32_t &frameCount) {
     return aditof::Status::OK;
 }
 
-aditof::Status OfflineDepthSensor::getHeader(uint8_t* buffer, uint32_t bufferSize) {
+aditof::Status OfflineDepthSensor::getHeader(uint8_t *buffer,
+                                             uint32_t bufferSize) {
 
     if (m_state != ST_PLAYBACK) {
         LOG(ERROR) << "Not in playback mode";
@@ -532,7 +528,8 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t* buffer, uint32_t bufferSiz
 }
 
 aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
-                                             uint32_t &bufferSize, uint32_t index) {
+                                             uint32_t &bufferSize,
+                                             uint32_t index) {
 
     if (m_state != ST_PLAYBACK) {
         LOG(ERROR) << "Not in playback mode";
@@ -544,13 +541,12 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
 
             m_stream_file_in.clear();
 
-            m_stream_file_in.seekg(m_frameIndex[index], std::ios::beg); 
+            m_stream_file_in.seekg(m_frameIndex[index], std::ios::beg);
 
             auto p = m_stream_file_in.tellg();
 
             uint32_t x;
-            m_stream_file_in.read(reinterpret_cast<char *>(&x),
-                                  sizeof(x));
+            m_stream_file_in.read(reinterpret_cast<char *>(&x), sizeof(x));
 
             // Read size of buffer
             uint32_t _bufferSize = 0;

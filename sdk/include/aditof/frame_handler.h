@@ -134,7 +134,10 @@ class FrameHandler {
      */
     SDK_API aditof::Status setFrameContent(const std::string &frameContent);
 
-    SDK_API aditof::Status SnapShotFrames(const char* baseFileName, aditof::Frame *frame, const uint8_t* ab, const uint8_t* depth);
+    SDK_API aditof::Status SnapShotFrames(const char *baseFileName,
+                                          aditof::Frame *frame,
+                                          const uint8_t *ab,
+                                          const uint8_t *depth);
 
   private:
     std::unique_ptr<FrameHandlerImpl> m_impl;

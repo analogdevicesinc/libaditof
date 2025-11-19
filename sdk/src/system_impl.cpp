@@ -107,7 +107,8 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
 #ifdef HAS_OFFLINE
     if (uri.compare(0, 8, "offline:") == 0) {
         LOG(INFO) << "Creating offline sensor.";
-        sensorEnumerator = SensorEnumeratorFactory::buildOfflineSensorEnumerator();
+        sensorEnumerator =
+            SensorEnumeratorFactory::buildOfflineSensorEnumerator();
         if (!sensorEnumerator) {
             LOG(ERROR) << "Could not create OfflineSensorEnumerator";
             return Status::GENERIC_ERROR;
@@ -162,7 +163,8 @@ SystemImpl::getCameraListAtIp(std::vector<std::shared_ptr<Camera>> &cameraList,
         SensorEnumeratorFactory::buildNetworkSensorEnumerator(onlyIp);
 
     if (!sensorEnumerator) {
-        LOG(WARNING) << "getCameraListAtIp(...) called, but network interface is not enabled.";
+        LOG(WARNING) << "getCameraListAtIp(...) called, but network interface "
+                        "is not enabled.";
         return Status::GENERIC_ERROR;
     }
     Status status = sensorEnumerator->searchSensors();

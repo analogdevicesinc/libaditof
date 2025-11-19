@@ -36,9 +36,9 @@
 #else
 #include <aditof/log.h>
 #endif
+#include <algorithm>
 #include <cstring>
 #include <memory>
-#include <algorithm>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <aditof/stb_image_write.h>
 
@@ -377,7 +377,10 @@ FrameHandlerImpl::getOutputFileFullPath(const std::string &fileName) {
     return fullPath;
 }
 
-aditof::Status FrameHandlerImpl::SaveFloatAsJPEG(const char* filename, const float *data, uint32_t width, uint32_t height) {
+aditof::Status FrameHandlerImpl::SaveFloatAsJPEG(const char *filename,
+                                                 const float *data,
+                                                 uint32_t width,
+                                                 uint32_t height) {
 
     if (data == nullptr) {
         return aditof::Status::GENERIC_ERROR;
@@ -397,14 +400,18 @@ aditof::Status FrameHandlerImpl::SaveFloatAsJPEG(const char* filename, const flo
         img_8bit[i] = static_cast<uint8_t>(norm * 255.0f + 0.5f);
     }
 
-    auto result  = stbi_write_jpg(filename, width, height, 1, img_8bit.data(), 100);
+    auto result =
+        stbi_write_jpg(filename, width, height, 1, img_8bit.data(), 100);
 
     LOG(INFO) << __func__ << ":  " << result << " " << filename;
 
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
 
-aditof::Status FrameHandlerImpl::SaveUint16AsJPEG(const char* filename, const uint16_t* data, uint32_t width, uint32_t height) {
+aditof::Status FrameHandlerImpl::SaveUint16AsJPEG(const char *filename,
+                                                  const uint16_t *data,
+                                                  uint32_t width,
+                                                  uint32_t height) {
 
     if (data == nullptr) {
         return aditof::Status::GENERIC_ERROR;
@@ -415,21 +422,26 @@ aditof::Status FrameHandlerImpl::SaveUint16AsJPEG(const char* filename, const ui
     auto minmax = std::minmax_element(data, data + width * height);
     uint16_t min_val = *minmax.first;
     uint16_t max_val = *minmax.second;
-    float range = (max_val == min_val) ? 1.0f : static_cast<float>(max_val - min_val);
+    float range =
+        (max_val == min_val) ? 1.0f : static_cast<float>(max_val - min_val);
 
     for (int i = 0; i < width * height; ++i) {
         float norm = static_cast<float>(data[i] - min_val) / range; // [0,1]
         img_8bit[i] = static_cast<uint8_t>(norm * 255.0f + 0.5f);
     }
 
-    auto result = stbi_write_jpg(filename, width, height, 1, img_8bit.data(), 100);
+    auto result =
+        stbi_write_jpg(filename, width, height, 1, img_8bit.data(), 100);
 
     LOG(INFO) << __func__ << ":  " << result << " " << filename;
 
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
 
-aditof::Status FrameHandlerImpl::SaveRGBAsJPEG(const char* filename, const uint8_t* data, uint32_t width, uint32_t height) {
+aditof::Status FrameHandlerImpl::SaveRGBAsJPEG(const char *filename,
+                                               const uint8_t *data,
+                                               uint32_t width,
+                                               uint32_t height) {
 
     if (data == nullptr) {
         return aditof::Status::GENERIC_ERROR;
@@ -444,7 +456,10 @@ aditof::Status FrameHandlerImpl::SaveRGBAsJPEG(const char* filename, const uint8
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
 
-aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char* filename, const uint16_t* data, uint32_t width, uint32_t height) {
+aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char *filename,
+                                                         const uint16_t *data,
+                                                         uint32_t width,
+                                                         uint32_t height) {
 
     if (data == nullptr) {
         return aditof::Status::GENERIC_ERROR;
@@ -456,22 +471,24 @@ aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char* filename, c
         return aditof::Status::GENERIC_ERROR;
     }
 
-	uint32_t num_points = width * height;
+    uint32_t num_points = width * height;
 
     // Write the PLY header
-    std::string header =
-        "ply\n"
-        "format binary_little_endian 1.0\n"
-        "element vertex " + std::to_string(num_points) + "\n"
-        "property float x\n"
-        "property float y\n"
-        "property float z\n"
-        "end_header\n";
+    std::string header = "ply\n"
+                         "format binary_little_endian 1.0\n"
+                         "element vertex " +
+                         std::to_string(num_points) +
+                         "\n"
+                         "property float x\n"
+                         "property float y\n"
+                         "property float z\n"
+                         "end_header\n";
 
     file.write(header.c_str(), header.size());
 
     // Write binary float data: 3 floats per point
-    file.write(reinterpret_cast<const char*>(data), num_points * 3 * sizeof(uint16_t));
+    file.write(reinterpret_cast<const char *>(data),
+               num_points * 3 * sizeof(uint16_t));
 
     file.close();
 
@@ -480,13 +497,13 @@ aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char* filename, c
     return aditof::Status::OK;
 }
 
-
-aditof::Status FrameHandlerImpl::SaveMetaAsTxt(const char* filename, const aditof::Metadata *data) {
+aditof::Status FrameHandlerImpl::SaveMetaAsTxt(const char *filename,
+                                               const aditof::Metadata *data) {
 
     if (data == nullptr) {
         return aditof::Status::GENERIC_ERROR;
     }
-    
+
     std::ofstream out(filename);
     if (!out.is_open()) {
         std::cerr << "Failed to open file for writing: " << filename << "\n";
@@ -495,19 +512,24 @@ aditof::Status FrameHandlerImpl::SaveMetaAsTxt(const char* filename, const adito
 
     out << "width: " << data->width << " pixels" << '\n';
     out << "height: " << data->height << " pixels" << '\n';
-    out << "outputConfiguration: " << static_cast<int>(data->outputConfiguration) << '\n';
+    out << "outputConfiguration: "
+        << static_cast<int>(data->outputConfiguration) << '\n';
     out << "bitsInDepth: " << static_cast<int>(data->bitsInDepth) << '\n';
     out << "bitsInAb: " << static_cast<int>(data->bitsInAb) << '\n';
-    out << "bitsInConfidence: " << static_cast<int>(data->bitsInConfidence) << '\n';
+    out << "bitsInConfidence: " << static_cast<int>(data->bitsInConfidence)
+        << '\n';
     out << "invalidPhaseValue: " << data->invalidPhaseValue << '\n';
     out << "frequencyIndex: " << static_cast<int>(data->frequencyIndex) << '\n';
-    out << "abFrequencyIndex: " << static_cast<int>(data->abFrequencyIndex) << '\n';
+    out << "abFrequencyIndex: " << static_cast<int>(data->abFrequencyIndex)
+        << '\n';
     out << "frameNumber: " << data->frameNumber << '\n';
     out << "imagerMode: " << static_cast<int>(data->imagerMode) << '\n';
     out << "numberOfPhases: " << static_cast<int>(data->numberOfPhases) << '\n';
-    out << "numberOfFrequencies: " << static_cast<int>(data->numberOfFrequencies) << '\n';
+    out << "numberOfFrequencies: "
+        << static_cast<int>(data->numberOfFrequencies) << '\n';
     out << "xyzEnabled: " << static_cast<int>(data->xyzEnabled) << '\n';
-    out << "elapsedTimeFractionalValue: " << data->elapsedTimeFractionalValue << '\n';
+    out << "elapsedTimeFractionalValue: " << data->elapsedTimeFractionalValue
+        << '\n';
     out << "elapsedTimeSecondsValue: " << data->elapsedTimeSecondsValue << '\n';
     out << "sensorTemperature: " << data->sensorTemperature << " C" << '\n';
     out << "laserTemperature: " << data->laserTemperature << " C" << '\n';
@@ -519,30 +541,32 @@ aditof::Status FrameHandlerImpl::SaveMetaAsTxt(const char* filename, const adito
     return aditof::Status::OK;
 }
 
-aditof::Status FrameHandlerImpl::SnapShotFrames(const char * baseFileName, aditof::Frame *frame, const uint8_t* ab, const uint8_t* depth) {
+aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
+                                                aditof::Frame *frame,
+                                                const uint8_t *ab,
+                                                const uint8_t *depth) {
 
-	if (baseFileName == nullptr || frame == nullptr) {
-		return aditof::Status::GENERIC_ERROR;
-	}
+    if (baseFileName == nullptr || frame == nullptr) {
+        return aditof::Status::GENERIC_ERROR;
+    }
 
     std::string stringBaseFileName(baseFileName);
 
-	if (stringBaseFileName.empty()) {
-		LOG(ERROR) << "Base file name is empty!";
-		return aditof::Status::GENERIC_ERROR;
-	}
-
+    if (stringBaseFileName.empty()) {
+        LOG(ERROR) << "Base file name is empty!";
+        return aditof::Status::GENERIC_ERROR;
+    }
 
     aditof::Status status;
 
-	Metadata metadata;
-	uint16_t* abFrame;
-    uint16_t* depthFrame;
-	float* confFrame;
-	uint16_t* xyzFrame;
+    Metadata metadata;
+    uint16_t *abFrame;
+    uint16_t *depthFrame;
+    float *confFrame;
+    uint16_t *xyzFrame;
     FrameDetails frameDetails;
 
-	status = frame->getMetadataStruct(metadata);
+    status = frame->getMetadataStruct(metadata);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to get metadata location";
         return status;
@@ -560,7 +584,7 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char * baseFileName, adito
         return status;
     }
 
-    status = frame->getData("conf", (uint16_t **) & confFrame);
+    status = frame->getData("conf", (uint16_t **)&confFrame);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to get confidence location";
         return status;
@@ -578,33 +602,52 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char * baseFileName, adito
         return status;
     }
 
-	std::string metadataFileName = stringBaseFileName + "_" + std::to_string(metadata.frameNumber) + "_metadata.txt";
-    std::string xyzFileName = stringBaseFileName + "_" + std::to_string(metadata.frameNumber) + "_pointcloud.ply";
-    std::string depthFileName = stringBaseFileName + "_" + std::to_string(metadata.frameNumber) + "_depth.jpg";
-    std::string depthProcessedFileName = stringBaseFileName + "_" + std::to_string(metadata.frameNumber) + "_depth_processed.jpg";
-    std::string abFileName = stringBaseFileName + "_" + std::to_string(metadata.frameNumber) + "_ab.jpg";
-    std::string abProcessedFileName = stringBaseFileName + "_" + std::to_string(metadata.frameNumber) + "_ab_processed.jpg";
-    std::string confFileName = stringBaseFileName + "_" + std::to_string(metadata.frameNumber) + "_conf.jpg";
+    std::string metadataFileName = stringBaseFileName + "_" +
+                                   std::to_string(metadata.frameNumber) +
+                                   "_metadata.txt";
+    std::string xyzFileName = stringBaseFileName + "_" +
+                              std::to_string(metadata.frameNumber) +
+                              "_pointcloud.ply";
+    std::string depthFileName = stringBaseFileName + "_" +
+                                std::to_string(metadata.frameNumber) +
+                                "_depth.jpg";
+    std::string depthProcessedFileName = stringBaseFileName + "_" +
+                                         std::to_string(metadata.frameNumber) +
+                                         "_depth_processed.jpg";
+    std::string abFileName = stringBaseFileName + "_" +
+                             std::to_string(metadata.frameNumber) + "_ab.jpg";
+    std::string abProcessedFileName = stringBaseFileName + "_" +
+                                      std::to_string(metadata.frameNumber) +
+                                      "_ab_processed.jpg";
+    std::string confFileName = stringBaseFileName + "_" +
+                               std::to_string(metadata.frameNumber) +
+                               "_conf.jpg";
 
     status = SaveMetaAsTxt(metadataFileName.c_str(), &metadata);
-    
-    status = SavePointCloudPLYBinary(xyzFileName.c_str(), xyzFrame, frameDetails.width, frameDetails.height);
-    
-    status = SaveUint16AsJPEG(depthFileName.c_str(), depthFrame, frameDetails.width, frameDetails.height);
+
+    status = SavePointCloudPLYBinary(xyzFileName.c_str(), xyzFrame,
+                                     frameDetails.width, frameDetails.height);
+
+    status = SaveUint16AsJPEG(depthFileName.c_str(), depthFrame,
+                              frameDetails.width, frameDetails.height);
     if (depth != nullptr) {
-        status = SaveRGBAsJPEG(depthProcessedFileName.c_str(), depth, frameDetails.width, frameDetails.height);
+        status = SaveRGBAsJPEG(depthProcessedFileName.c_str(), depth,
+                               frameDetails.width, frameDetails.height);
     }
-    
-    status = SaveUint16AsJPEG(abFileName.c_str(), abFrame, frameDetails.width, frameDetails.height);
+
+    status = SaveUint16AsJPEG(abFileName.c_str(), abFrame, frameDetails.width,
+                              frameDetails.height);
     if (ab != nullptr) {
-        status = SaveRGBAsJPEG(abProcessedFileName.c_str(), ab, frameDetails.width, frameDetails.height);
+        status = SaveRGBAsJPEG(abProcessedFileName.c_str(), ab,
+                               frameDetails.width, frameDetails.height);
     }
 
     if (frameDetails.width == 1024 && frameDetails.height == 1024) {
-        status = SaveFloatAsJPEG(confFileName.c_str(), confFrame, frameDetails.width, frameDetails.height);
-    }
-    else {
-        status = SaveUint16AsJPEG(confFileName.c_str(), (uint16_t *)confFrame, frameDetails.width, frameDetails.height);
+        status = SaveFloatAsJPEG(confFileName.c_str(), confFrame,
+                                 frameDetails.width, frameDetails.height);
+    } else {
+        status = SaveUint16AsJPEG(confFileName.c_str(), (uint16_t *)confFrame,
+                                  frameDetails.width, frameDetails.height);
     }
 
     return aditof::Status::OK;
