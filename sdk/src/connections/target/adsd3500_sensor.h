@@ -239,7 +239,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
                                   uint32_t paramSize) override;
     aditof::Status stopRecording() override;
-    aditof::Status startPlayback(const std::string filePath) override;
+    aditof::Status setPlaybackFile(const std::string filePath) override;
     aditof::Status stopPlayback() override;
     aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) override;
     aditof::Status getFrameCount(uint32_t &frameCount) override;

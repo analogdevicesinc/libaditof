@@ -2407,7 +2407,7 @@ aditof::Status Adsd3500Sensor::stopRecording() {
     return status;
 }
 
-aditof::Status Adsd3500Sensor::startPlayback(const std::string filePath) {
+aditof::Status Adsd3500Sensor::setPlaybackFile(const std::string filePath) {
 
     return aditof::Status::GENERIC_ERROR;
 }

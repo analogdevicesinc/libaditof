@@ -341,6 +341,10 @@ aditof::Status CameraItof::start() {
 aditof::Status CameraItof::stop() {
     aditof::Status status = aditof::Status::OK;
 
+    if (m_isOffline) {
+        status = m_depthSensor->stopPlayback();
+    }
+
     status = m_depthSensor->stop();
     if (status != aditof::Status::OK) {
         LOG(INFO) << "Failed to stop camera!";
@@ -714,26 +718,14 @@ CameraItof::setFrameProcessParams(std::map<std::string, std::string> &params,
     return status;
 }
 
-aditof::Status CameraItof::startPlayback(std::string &filePath) {
+aditof::Status CameraItof::setPlaybackFile(std::string &filePath) {
     aditof::Status status = aditof::Status::OK;
 
     if (!m_isOffline) {
         status = aditof::Status::GENERIC_ERROR; // Invalid call
     } else {
 
-        status = m_depthSensor->startPlayback(filePath);
-    }
-
-    return status;
-}
-
-aditof::Status CameraItof::stopPlayback() {
-    aditof::Status status = aditof::Status::OK;
-
-    if (!m_isOffline) {
-        status = aditof::Status::GENERIC_ERROR; // Invalid call
-    } else {
-        status = m_depthSensor->stopPlayback();
+        status = m_depthSensor->setPlaybackFile(filePath);
     }
 
     return status;

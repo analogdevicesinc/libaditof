@@ -334,7 +334,7 @@ class DepthSensorInterface {
                                           uint8_t *parameters,
                                           uint32_t paramSize) = 0;
     virtual aditof::Status stopRecording() = 0;
-    virtual aditof::Status startPlayback(const std::string filePath) = 0;
+    virtual aditof::Status setPlaybackFile(const std::string filePath) = 0;
     virtual aditof::Status stopPlayback() = 0;
     virtual aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) = 0;
     virtual aditof::Status getFrameCount(uint32_t &frameCount) = 0;
