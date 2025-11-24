@@ -41,8 +41,7 @@
 
 struct OfflineDepthSensor::ImplData {};
 
-OfflineDepthSensor::OfflineDepthSensor()
-    : m_state(ST_STOP), m_frame_count(0) {
+OfflineDepthSensor::OfflineDepthSensor() : m_state(ST_STOP), m_frame_count(0) {
     m_implData = std::make_unique<ImplData>();
 }
 
@@ -450,7 +449,7 @@ aditof::Status OfflineDepthSensor::setPlaybackFile(const std::string filePath) {
 aditof::Status OfflineDepthSensor::stopPlayback() {
     m_state = ST_STOP;
     m_frameIndex.clear();
-    
+
     if (m_stream_file_in.is_open()) {
         m_stream_file_in.close();
         return aditof::Status::OK;
@@ -508,13 +507,14 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t *buffer,
             }
 
             if (_bufferSize > bufferSize) {
-                LOG(ERROR) << "Buffer too small: need " << _bufferSize 
+                LOG(ERROR) << "Buffer too small: need " << _bufferSize
                            << " bytes, have " << bufferSize;
                 return aditof::Status::INSUFFICIENT_MEMORY;
             }
 
             // Read buffer data
-            m_stream_file_in.read(reinterpret_cast<char *>(buffer), _bufferSize);
+            m_stream_file_in.read(reinterpret_cast<char *>(buffer),
+                                  _bufferSize);
 
             if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
                 LOG(ERROR) << "EOF or read error while reading header data";
@@ -583,8 +583,8 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
 
     // Check if index is valid
     if (index >= m_frameIndex.size()) {
-        LOG(ERROR) << "Frame index " << index << " out of range (max: " 
-                   << m_frameIndex.size() - 1 << ")";
+        LOG(ERROR) << "Frame index " << index
+                   << " out of range (max: " << m_frameIndex.size() - 1 << ")";
         return aditof::Status::GENERIC_ERROR;
     }
 
@@ -620,7 +620,7 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
 
             // Validate buffer size is sufficient
             if (bufferSize > 0 && _bufferSize > bufferSize) {
-                LOG(ERROR) << "Buffer too small: need " << _bufferSize 
+                LOG(ERROR) << "Buffer too small: need " << _bufferSize
                            << " bytes, have " << bufferSize;
                 return aditof::Status::INSUFFICIENT_MEMORY;
             }
