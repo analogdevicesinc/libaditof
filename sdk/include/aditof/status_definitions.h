@@ -51,6 +51,7 @@ enum class Status {
     UNREACHABLE,      //!< Device or resource is unreachable
     INVALID_ARGUMENT, //!< Invalid arguments provided
     UNAVAILABLE,      //!< The requested action or resource is unavailable
+    INSUFFICIENT_MEMORY, //!< Insufficient memory or buffer size
     GENERIC_ERROR     //!< An error occured but there are no details available.
 };
 

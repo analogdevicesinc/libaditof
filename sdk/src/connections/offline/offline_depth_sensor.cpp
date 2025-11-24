@@ -135,10 +135,13 @@ OfflineDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 aditof::Status OfflineDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     using namespace aditof;
 
-    Status status = Status::OK;
+    if (buffer == nullptr) {
+        LOG(ERROR) << "Null buffer provided";
+        return Status::INVALID_ARGUMENT;
+    }
 
     uint32_t sz = 0;
-    status = readFrame((uint8_t *)buffer, sz, index);
+    Status status = readFrame((uint8_t *)buffer, sz, index);
 
     return status;
 }
@@ -434,6 +437,11 @@ aditof::Status OfflineDepthSensor::startPlayback(const std::string filePath) {
     m_frameIndex.clear();
     m_stream_file_in = std::ifstream(filePath, std::ios::binary);
 
+    if (!m_stream_file_in.is_open() || !m_stream_file_in.good()) {
+        LOG(ERROR) << "Failed to open file for playback: " << filePath;
+        return aditof::Status::GENERIC_ERROR;
+    }
+
     m_state = ST_PLAYBACK;
 
     return aditof::Status::OK;
@@ -441,8 +449,9 @@ aditof::Status OfflineDepthSensor::startPlayback(const std::string filePath) {
 
 aditof::Status OfflineDepthSensor::stopPlayback() {
     m_state = ST_STOP;
+    m_frameIndex.clear();
+    
     if (m_stream_file_in.is_open()) {
-        m_frameIndex.clear();
         m_stream_file_in.close();
         return aditof::Status::OK;
     }
@@ -465,29 +474,57 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t *buffer,
         return aditof::Status::GENERIC_ERROR;
     }
 
+    if (buffer == nullptr) {
+        LOG(ERROR) << "Null buffer provided";
+        return aditof::Status::INVALID_ARGUMENT;
+    }
+
     try {
         if (m_stream_file_in.is_open()) {
 
             m_stream_file_in.seekg(0, std::ios::beg);
 
+            if (m_stream_file_in.fail()) {
+                LOG(ERROR) << "Failed to seek to beginning of file";
+                return aditof::Status::GENERIC_ERROR;
+            }
+
             uint32_t x;
             m_stream_file_in.read(reinterpret_cast<char *>(&x), sizeof(x));
+
+            if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
+                LOG(ERROR) << "EOF or read error while reading header marker";
+                return aditof::Status::GENERIC_ERROR;
+            }
 
             // Read size of buffer
             uint32_t _bufferSize = 0;
             m_stream_file_in.read(reinterpret_cast<char *>(&_bufferSize),
                                   sizeof(_bufferSize));
 
-            bufferSize = _bufferSize;
+            if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
+                LOG(ERROR) << "EOF or read error while reading header size";
+                return aditof::Status::GENERIC_ERROR;
+            }
+
+            if (_bufferSize > bufferSize) {
+                LOG(ERROR) << "Buffer too small: need " << _bufferSize 
+                           << " bytes, have " << bufferSize;
+                return aditof::Status::INSUFFICIENT_MEMORY;
+            }
 
             // Read buffer data
-            m_stream_file_in.read(reinterpret_cast<char *>(buffer), bufferSize);
+            m_stream_file_in.read(reinterpret_cast<char *>(buffer), _bufferSize);
+
+            if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
+                LOG(ERROR) << "EOF or read error while reading header data";
+                return aditof::Status::GENERIC_ERROR;
+            }
 
             m_frameIndex.clear();
 
             std::streampos pos = m_stream_file_in.tellg();
 
-            static uint32_t idx = 0;
             LOG(INFO) << "Building Index";
             while (true) {
 
@@ -520,9 +557,10 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t *buffer,
 
             return aditof::Status::OK;
         }
-    } catch (const std::ofstream::failure &e) {
+    } catch (const std::ios_base::failure &e) {
         LOG(ERROR) << "File I/O exception caught: " << e.what();
         m_stream_file_in.close();
+        m_frameIndex.clear();
         m_state = ST_STOP;
     }
     return aditof::Status::GENERIC_ERROR;
@@ -536,6 +574,11 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
     if (m_state != ST_PLAYBACK) {
         LOG(ERROR) << "Not in playback mode";
         return aditof::Status::GENERIC_ERROR;
+    }
+
+    if (buffer == nullptr) {
+        LOG(ERROR) << "Null buffer provided";
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     // Check if index is valid
@@ -557,8 +600,6 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
                 return aditof::Status::GENERIC_ERROR;
             }
 
-            auto p = m_stream_file_in.tellg();
-
             uint32_t x;
             m_stream_file_in.read(reinterpret_cast<char *>(&x), sizeof(x));
 
@@ -577,6 +618,13 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
                 return aditof::Status::GENERIC_ERROR;
             }
 
+            // Validate buffer size is sufficient
+            if (bufferSize > 0 && _bufferSize > bufferSize) {
+                LOG(ERROR) << "Buffer too small: need " << _bufferSize 
+                           << " bytes, have " << bufferSize;
+                return aditof::Status::INSUFFICIENT_MEMORY;
+            }
+
             bufferSize = _bufferSize;
 
             // Read buffer data
@@ -589,9 +637,10 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
 
             return aditof::Status::OK;
         }
-    } catch (const std::ofstream::failure &e) {
+    } catch (const std::ios_base::failure &e) {
         LOG(ERROR) << "File I/O exception caught: " << e.what();
         m_stream_file_in.close();
+        m_frameIndex.clear();
         m_state = ST_STOP;
     }
     return aditof::Status::GENERIC_ERROR;
