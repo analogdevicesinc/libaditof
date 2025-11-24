@@ -42,7 +42,7 @@
 struct OfflineDepthSensor::ImplData {};
 
 OfflineDepthSensor::OfflineDepthSensor()
-    : m_state(ST_STANDARD), m_frame_count(0) {
+    : m_state(ST_STOP), m_frame_count(0) {
     m_implData = std::make_unique<ImplData>();
 }
 
@@ -138,7 +138,7 @@ aditof::Status OfflineDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     Status status = Status::OK;
 
     uint32_t sz = 0;
-    readFrame((uint8_t *)buffer, sz, index);
+    status = readFrame((uint8_t *)buffer, sz, index);
 
     return status;
 }
@@ -425,7 +425,7 @@ aditof::Status OfflineDepthSensor::stopRecording() {
 }
 
 aditof::Status OfflineDepthSensor::startPlayback(const std::string filePath) {
-    m_state = ST_STANDARD;
+    m_state = ST_STOP;
 
     if (m_stream_file_in.is_open()) {
         m_stream_file_in.close();
@@ -440,7 +440,7 @@ aditof::Status OfflineDepthSensor::startPlayback(const std::string filePath) {
 }
 
 aditof::Status OfflineDepthSensor::stopPlayback() {
-    m_state = ST_STANDARD;
+    m_state = ST_STOP;
     if (m_stream_file_in.is_open()) {
         m_frameIndex.clear();
         m_stream_file_in.close();
@@ -451,6 +451,7 @@ aditof::Status OfflineDepthSensor::stopPlayback() {
 }
 
 aditof::Status OfflineDepthSensor::getFrameCount(uint32_t &frameCount) {
+
     frameCount = m_frameIndex.size();
 
     return aditof::Status::OK;
@@ -522,7 +523,7 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t *buffer,
     } catch (const std::ofstream::failure &e) {
         LOG(ERROR) << "File I/O exception caught: " << e.what();
         m_stream_file_in.close();
-        m_state = ST_STANDARD;
+        m_state = ST_STOP;
     }
     return aditof::Status::GENERIC_ERROR;
 }
@@ -531,8 +532,16 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
                                              uint32_t &bufferSize,
                                              uint32_t index) {
 
+    LOG(INFO) << "Reading frame index: " << index;
     if (m_state != ST_PLAYBACK) {
         LOG(ERROR) << "Not in playback mode";
+        return aditof::Status::GENERIC_ERROR;
+    }
+
+    // Check if index is valid
+    if (index >= m_frameIndex.size()) {
+        LOG(ERROR) << "Frame index " << index << " out of range (max: " 
+                   << m_frameIndex.size() - 1 << ")";
         return aditof::Status::GENERIC_ERROR;
     }
 
@@ -543,27 +552,47 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
 
             m_stream_file_in.seekg(m_frameIndex[index], std::ios::beg);
 
+            if (m_stream_file_in.fail()) {
+                LOG(ERROR) << "Failed to seek to frame index: " << index;
+                return aditof::Status::GENERIC_ERROR;
+            }
+
             auto p = m_stream_file_in.tellg();
 
             uint32_t x;
             m_stream_file_in.read(reinterpret_cast<char *>(&x), sizeof(x));
+
+            if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
+                LOG(ERROR) << "EOF or read error while reading frame marker";
+                return aditof::Status::GENERIC_ERROR;
+            }
 
             // Read size of buffer
             uint32_t _bufferSize = 0;
             m_stream_file_in.read(reinterpret_cast<char *>(&_bufferSize),
                                   sizeof(_bufferSize));
 
+            if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
+                LOG(ERROR) << "EOF or read error while reading buffer size";
+                return aditof::Status::GENERIC_ERROR;
+            }
+
             bufferSize = _bufferSize;
 
             // Read buffer data
             m_stream_file_in.read(reinterpret_cast<char *>(buffer), bufferSize);
+
+            if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
+                LOG(ERROR) << "EOF or read error while reading frame data";
+                return aditof::Status::GENERIC_ERROR;
+            }
 
             return aditof::Status::OK;
         }
     } catch (const std::ofstream::failure &e) {
         LOG(ERROR) << "File I/O exception caught: " << e.what();
         m_stream_file_in.close();
-        m_state = ST_STANDARD;
+        m_state = ST_STOP;
     }
     return aditof::Status::GENERIC_ERROR;
 }

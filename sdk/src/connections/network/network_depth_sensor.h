@@ -137,7 +137,7 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
     aditof::Status automaticStop();
     aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize);
     aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize);
-    enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;
+    enum StreamType { ST_STOP, ST_RECORD, ST_PLAYBACK } m_state;
     const std::string m_folder_path_folder =
         (aditof::Utils::getExecutableFolder() + "/recordings");
     std::string m_folder_path;

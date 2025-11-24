@@ -248,7 +248,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     aditof::Status automaticStop();
     aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize,
                              uint32_t index);
-    enum StreamType { ST_STANDARD, ST_RECORD, ST_PLAYBACK } m_state;
+    enum StreamType { ST_STOP, ST_RECORD, ST_PLAYBACK } m_state;
     const std::string m_folder_path = "./recordings";
     std::ofstream m_stream_file_out;
     std::ifstream m_stream_file_in;
