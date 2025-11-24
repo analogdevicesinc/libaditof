@@ -60,7 +60,7 @@ class CameraItof : public aditof::Camera {
     aditof::Status
     getAvailableModes(std::vector<uint8_t> &availableModes) const override;
     aditof::Status requestFrame(aditof::Frame *frame,
-                                uint32_t index = 0) override;
+                                uint32_t index = 0) override; 
     void normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
                            uint16_t abHeight, bool advanceScaling,
                            bool useLogScaling) override;
@@ -200,8 +200,7 @@ class CameraItof : public aditof::Camera {
     aditof::Status startRecording(std::string &filePath) override;
     aditof::Status stopRecording() override;
 
-    aditof::Status startPlayback(std::string &filePath) override;
-    aditof::Status stopPlayback() override;
+    aditof::Status setPlaybackFile(std::string &filePath) override;
     void UpdateDepthParamsMap(bool update, const char *index,
                               std::string value);
 

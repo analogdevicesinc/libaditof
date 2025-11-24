@@ -1535,7 +1535,7 @@ aditof::Status NetworkDepthSensor::stopRecording() {
     return aditof::Status::GENERIC_ERROR;
 }
 
-aditof::Status NetworkDepthSensor::startPlayback(const std::string filePath) {
+aditof::Status NetworkDepthSensor::setPlaybackFile(const std::string filePath) {
 
     return aditof::Status::GENERIC_ERROR;
 }

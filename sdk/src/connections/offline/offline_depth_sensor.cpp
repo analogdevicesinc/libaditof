@@ -427,7 +427,7 @@ aditof::Status OfflineDepthSensor::stopRecording() {
     return status;
 }
 
-aditof::Status OfflineDepthSensor::startPlayback(const std::string filePath) {
+aditof::Status OfflineDepthSensor::setPlaybackFile(const std::string filePath) {
     m_state = ST_STOP;
 
     if (m_stream_file_in.is_open()) {

@@ -619,8 +619,7 @@ class SDK_API Camera {
 
     virtual aditof::Status startRecording(std::string &filePath) = 0;
     virtual aditof::Status stopRecording() = 0;
-    virtual aditof::Status startPlayback(std::string &filePath) = 0;
-    virtual aditof::Status stopPlayback() = 0;
+    virtual aditof::Status setPlaybackFile(std::string &filePath) = 0;
     virtual aditof::Status
     getDepthParamtersMap(uint16_t mode,
                          std::map<std::string, std::string> &params) = 0;
