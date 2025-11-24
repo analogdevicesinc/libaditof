@@ -60,7 +60,7 @@ int NetworkDepthSensor::frame_size = 0;
 NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
                                        const std::string &ip)
     : m_implData(new NetworkDepthSensor::ImplData), m_stopServerCheck(false),
-      m_state(ST_STANDARD) {
+      m_state(ST_STOP) {
 
     extern std::vector<std::string> m_connectionList;
     m_sensorIndex = -1;
@@ -1486,7 +1486,7 @@ aditof::Status NetworkDepthSensor::startRecording(std::string &fileName,
                                                   uint8_t *parameters,
                                                   uint32_t paramSize) {
 
-    m_state = ST_STANDARD;
+    m_state = ST_STOP;
     m_folder_path = m_folder_path_folder;
     if (!folderExists(m_folder_path)) {
         if (!createFolder(m_folder_path)) {
@@ -1514,7 +1514,7 @@ aditof::Status NetworkDepthSensor::startRecording(std::string &fileName,
 }
 
 aditof::Status NetworkDepthSensor::stopRecording() {
-    m_state = ST_STANDARD;
+    m_state = ST_STOP;
     if (m_stream_file_out.is_open()) {
         // Write the number of frames recorded at the end of the file
 
@@ -1575,7 +1575,7 @@ aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
     } catch (const std::ofstream::failure &e) {
         LOG(ERROR) << "File I/O exception caught: " << e.what();
         m_stream_file_out.close();
-        m_state = ST_STANDARD;
+        m_state = ST_STOP;
     }
     return aditof::Status::GENERIC_ERROR;
 }

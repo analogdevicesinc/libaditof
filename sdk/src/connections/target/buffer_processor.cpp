@@ -853,7 +853,7 @@ aditof::Status BufferProcessor::startRecording(std::string &fileName,
 
     using namespace aditof;
 
-    m_state = ST_STANDARD;
+    m_state = ST_STOP;
     m_folder_path = m_folder_path_folder;
     if (!folderExists(m_folder_path)) {
         if (!createFolder(m_folder_path)) {
@@ -932,7 +932,7 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
     } catch (const std::ofstream::failure &e) {
         LOG(ERROR) << "File I/O exception caught: " << e.what();
         m_stream_file_out.close();
-        m_state = ST_STANDARD;
+        m_state = ST_STOP;
     }
     return aditof::Status::GENERIC_ERROR;
 }

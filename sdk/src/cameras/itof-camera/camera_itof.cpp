@@ -399,6 +399,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             return status;
         }
 
+        LOG(INFO) << "Number of Frames: "
+                  << m_offline_parameters.numberOfFrames;
+        LOG(INFO) << "Frame Rate: " << m_offline_parameters.frameRate;
+
         m_modeDetailsCache.modeNumber =
             m_offline_parameters.modeDetailsCache.modeNumber;
         m_modeDetailsCache.numberOfPhases =
@@ -948,7 +952,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     }
 
     if (m_dropFirstFrame && m_dropFrameOnce && !m_isOffline) {
-        m_depthSensor->getFrame(frameDataLocation, index);
+        status = m_depthSensor->getFrame(frameDataLocation, index);
         m_dropFrameOnce = false;
         if (status != Status::OK) {
             LOG(INFO) << "Failed to drop first frame!";
