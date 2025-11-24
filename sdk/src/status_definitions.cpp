@@ -50,6 +50,9 @@ std::ostream &operator<<(std::ostream &os, aditof::Status status) {
     case aditof::Status::UNAVAILABLE:
         os << "Status::UNAVAILABLE";
         break;
+    case aditof::Status::INSUFFICIENT_MEMORY:
+        os << "Status::INSUFFICIENT_MEMORY";
+        break;
     case aditof::Status::GENERIC_ERROR:
         os << "Status::GENERIC_ERROR";
         break;
