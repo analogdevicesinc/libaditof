@@ -42,6 +42,18 @@
 #endif
 #include "aditof/utils.h"
 
+#include <sys/stat.h>
+#include <sys/types.h>
+#ifdef _WIN32
+#include <direct.h>
+#endif
+#include <cstdlib>
+#include <ctime>
+#include <iomanip>
+#include <iostream>
+#include <random>
+#include <sstream>
+
 using namespace std;
 using namespace aditof;
 
@@ -75,4 +87,46 @@ std::string Utils::getExecutableFolder() {
 #else
     return "."; // Unsupported platform
 #endif
+}
+
+bool Utils::folderExists(const std::string &path) {
+    struct stat info;
+    return (stat(path.c_str(), &info) == 0 && (info.st_mode & S_IFDIR));
+}
+
+bool Utils::createFolder(const std::string &path) {
+#ifdef _WIN32
+    return _mkdir(path.c_str()) == 0 || errno == EEXIST;
+#else
+    return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
+#endif
+}
+
+std::string Utils::generateFileName(const std::string &prefix,
+                                    const std::string &extension) {
+    // Get current UTC time
+    std::time_t now = std::time(nullptr);
+    std::tm utc_tm;
+#ifdef _WIN32
+    gmtime_s(&utc_tm, &now); // Windows
+#else
+    gmtime_r(&now, &utc_tm); // Linux/macOS
+#endif
+
+    std::ostringstream oss;
+
+    // Format time: YYYYMMDD_HHMMSS
+    oss << prefix;
+    oss << std::put_time(&utc_tm, "%Y%m%d_%H%M%S");
+
+    // Generate random 8-digit hex
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
+    uint32_t randNum = dis(gen);
+    oss << "_" << std::hex << std::setw(8) << std::setfill('0') << randNum;
+
+    oss << extension;
+
+    return oss.str();
 }

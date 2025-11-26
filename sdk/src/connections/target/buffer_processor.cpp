@@ -72,14 +72,18 @@ BufferProcessor::BufferProcessor()
     : m_v4l2_input_buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_capture_to_process_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
-      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE), m_vidPropSet(false),
-      m_processorPropSet(false), m_outputFrameWidth(0), m_outputFrameHeight(0),
-      m_tofiConfig(nullptr), m_tofiComputeContext(nullptr),
-      m_inputVideoDev(nullptr) {
+      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE) {
 
     m_outputVideoDev = new VideoDev();
+    m_outputFrameWidth = 0;
+    m_outputFrameHeight = 0;
+    m_processorPropSet = false;
+    m_vidPropSet = false;
     stopThreadsFlag = true;
     streamRunning = false;
+    m_tofiConfig = nullptr;
+    m_tofiComputeContext = nullptr;
+    m_inputVideoDev = nullptr;
     m_v4l2_input_buffer_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
     m_capture_to_process_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
     m_tofi_io_Buffer_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
@@ -198,7 +202,7 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
                   << (BufferProcessor::MAX_QUEUE_SIZE * m_rawFrameBufferSize) /
                          (1024.0 * 1024.0)
                   << " MB)";
-        for (int i = 0; i < BufferProcessor::MAX_QUEUE_SIZE; ++i) {
+        for (int i = 0; i < (int)BufferProcessor::MAX_QUEUE_SIZE; ++i) {
             auto buffer =
                 std::shared_ptr<uint8_t>(new uint8_t[m_rawFrameBufferSize],
                                          std::default_delete<uint8_t[]>());
@@ -226,7 +230,7 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
                   sizeof(uint16_t)) /
                      (1024.0 * 1024.0)
               << " MB)";
-    for (int i = 0; i < BufferProcessor::MAX_QUEUE_SIZE; ++i) {
+    for (int i = 0; i < (int)BufferProcessor::MAX_QUEUE_SIZE; ++i) {
         auto buffer = std::shared_ptr<uint16_t>(
             new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
         if (!buffer) {
@@ -407,11 +411,14 @@ void BufferProcessor::captureFrameThread() {
         // (Optional) A short sleep to avoid hammering the device, if needed.
         //std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
+#ifdef DBG_MEASURE_TIME
     if (totalV4L2Captured > 0) {
         double averageCaptureTime =
             static_cast<double>(totalCaptureTime) / totalV4L2Captured;
-        //LOG(INFO) << __func__ << ": Average capture time: " << averageCaptureTime << " ms";
+        LOG(INFO) << __func__
+                  << ": Average capture time: " << averageCaptureTime << " ms";
     }
+#endif //DBG_MEASURE_TIME
 }
 
 /**
@@ -427,8 +434,10 @@ void BufferProcessor::captureFrameThread() {
  * After processing, it restores compute context pointers and returns used buffers.
  */
 void BufferProcessor::processThread() {
+#ifdef DBG_MEASURE_TIME
     long long totalProcessTime = 0;
     int totalProcessedFrame = 0;
+#endif //DBG_MEASURE_TIME
 
     while (!stopThreadsFlag) {
         Tofi_v4l2_buffer process_frame;
@@ -551,11 +560,13 @@ void BufferProcessor::processThread() {
             continue;
         }
     }
+#ifdef DBG_MEASURE_TIME
     if (totalProcessedFrame > 0) {
         double averageProcessTime =
             static_cast<double>(totalProcessTime) / totalProcessedFrame;
         //LOG(INFO) << __func__ << ": Average tofi_comupte process time: " << averageProcessTime << " ms";
     }
+#endif //DBG_MEASURE_TIME
 }
 
 /**
@@ -807,46 +818,8 @@ void BufferProcessor::stopThreads() {
 
 #pragma region Stream_Recording_and_Playback
 
-static bool folderExists(const std::string &path) {
-    struct stat info;
-    return (stat(path.c_str(), &info) == 0 && (info.st_mode & S_IFDIR));
-}
+#include <aditof/utils.h>
 
-static bool createFolder(const std::string &path) {
-#ifdef _WIN32
-    return _mkdir(path.c_str()) == 0 || errno == EEXIST;
-#else
-    return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
-#endif
-}
-static std::string generateFileName(const std::string &prefix = "aditof_",
-                                    const std::string &extension = ".adcam") {
-    // Get current UTC time
-    std::time_t now = std::time(nullptr);
-    std::tm utc_tm;
-#ifdef _WIN32
-    gmtime_s(&utc_tm, &now); // Windows
-#else
-    gmtime_r(&now, &utc_tm); // Linux/macOS
-#endif
-
-    std::ostringstream oss;
-
-    // Format time: YYYYMMDD_HHMMSS
-    oss << prefix;
-    oss << std::put_time(&utc_tm, "%Y%m%d_%H%M%S");
-
-    // Generate random 8-digit hex
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
-    uint32_t randNum = dis(gen);
-    oss << "_" << std::hex << std::setw(8) << std::setfill('0') << randNum;
-
-    oss << extension;
-
-    return oss.str();
-}
 aditof::Status BufferProcessor::startRecording(std::string &fileName,
                                                uint8_t *parameters,
                                                uint32_t paramSize) {
@@ -855,15 +828,15 @@ aditof::Status BufferProcessor::startRecording(std::string &fileName,
 
     m_state = ST_STOP;
     m_folder_path = m_folder_path_folder;
-    if (!folderExists(m_folder_path)) {
-        if (!createFolder(m_folder_path)) {
+    if (!Utils::folderExists(m_folder_path)) {
+        if (!Utils::createFolder(m_folder_path)) {
             LOG(ERROR) << "Failed to create folder for recordings: "
                        << m_folder_path;
             return aditof::Status::GENERIC_ERROR;
         }
     }
 
-    fileName = m_folder_path + "/" + generateFileName();
+    fileName = m_folder_path + "/" + Utils::generateFileName();
 
     if (m_stream_file_out.is_open()) {
         m_stream_file_out.close();
@@ -914,7 +887,6 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
         return aditof::Status::GENERIC_ERROR;
     }
 
-    static uint32_t idx = 0;
     try {
         if (m_stream_file_out.is_open()) {
             // Write size of buffer
