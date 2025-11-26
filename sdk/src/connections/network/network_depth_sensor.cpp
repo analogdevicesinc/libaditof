@@ -1428,7 +1428,7 @@ NetworkDepthSensor::getIniParamsArrayForMode(int mode, std::string &iniStr) {
 
 #pragma region Stream_Recording_and_Playback
 
-#include <aditof/utils.h>
+#include "aditof/utils.h"
 
 aditof::Status NetworkDepthSensor::startRecording(std::string &fileName,
                                                   uint8_t *parameters,
@@ -1436,15 +1436,15 @@ aditof::Status NetworkDepthSensor::startRecording(std::string &fileName,
 
     m_state = ST_STOP;
     m_folder_path = m_folder_path_folder;
-    if (!Utils::folderExists(m_folder_path)) {
-        if (!Utils::createFolder(m_folder_path)) {
+    if (!aditof::Utils::folderExists(m_folder_path)) {
+        if (!aditof::Utils::createFolder(m_folder_path)) {
             LOG(ERROR) << "Failed to create folder for recordings: "
                        << m_folder_path;
             return aditof::Status::GENERIC_ERROR;
         }
     }
 
-    fileName = m_folder_path + "/" + Utils::generateFileName();
+    fileName = m_folder_path + "/" + aditof::Utils::generateFileName();
 
     if (m_stream_file_out.is_open()) {
         m_stream_file_out.close();
