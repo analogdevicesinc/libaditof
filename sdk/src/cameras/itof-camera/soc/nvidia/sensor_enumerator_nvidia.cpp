@@ -72,8 +72,8 @@ aditof::Status findDevicePathsAtVideo(const std::string &video,
     /* Read the media-ctl output stream */
     buf = (char *)malloc(128 * 1024);
     while (!feof(fp)) {
-        fread(&buf[size], 1, 1, fp);
-        size++;
+        auto sz = fread(&buf[size], 1, 1, fp);
+        size += sz;
     }
     pclose(fp);
     buf[size] = '\0';

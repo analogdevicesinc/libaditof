@@ -80,7 +80,7 @@ class ThreadSafeQueue {
     size_t max_size_;
 
   public:
-    explicit ThreadSafeQueue(size_t max_size) : max_size_(max_size) {}
+    explicit ThreadSafeQueue(size_t max_size) { max_size_ = max_size; }
 
     bool
     push(T item,

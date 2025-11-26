@@ -78,7 +78,7 @@ CameraItof::CameraItof(
       m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
-      m_dropFrameOnce(true), m_isOffline(false) {
+      m_dropFrameOnce(true) {
 
     FloatToLinGenerateTable();
     memset(&m_xyzTable, 0, sizeof(m_xyzTable));
@@ -87,6 +87,7 @@ CameraItof::CameraItof(
     m_details.kernelVersion = kernelVersion;
     m_details.sdCardImageVersion = sdCardImageVersion;
     m_netLinkTest = netLinkTest;
+    m_isOffline = false;
 
     // Define some of the controls of this camera
     // For now there are none. To add one use: m_controls.emplace("your_control_name", "default_control_value");
@@ -394,7 +395,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         // 2. Frame dealias parameters
 
         // 0. Get the parameters
-        memset(&m_offline_parameters, 0, sizeof(m_offline_parameters));
+        memset((void *)&m_offline_parameters, 0, sizeof(m_offline_parameters));
 
         status = m_depthSensor->getHeader((uint8_t *)&m_offline_parameters,
                                           sizeof(m_offline_parameters));
@@ -598,7 +599,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         // We want computed frames (Depth & AB). Tell target to initialize depth compute
         if (!m_pcmFrame) {
             size_t dataSize = 0;
-            unsigned char *pData = nullptr;
             std::string s;
 
             auto iniParamsMode = m_depth_params_map.find(mode);
@@ -1680,6 +1680,7 @@ void CameraItof::configureSensorModeDetails() {
     }
 }
 
+/* // Not currently used, but leaving in case it is needed later.
 static int16_t getValueFromJSON(cJSON *config_json, std::string key) {
     int16_t value = -1;
     const cJSON *json_value =
@@ -1689,6 +1690,7 @@ static int16_t getValueFromJSON(cJSON *config_json, std::string key) {
     }
     return value;
 }
+*/
 
 aditof::Status CameraItof::retrieveDepthProcessParams() {
 

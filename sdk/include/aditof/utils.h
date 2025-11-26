@@ -50,6 +50,11 @@ class SDK_API Utils {
     static void splitIntoTokens(const std::string &s, const char delimiter,
                                 std::vector<std::string> &tokens);
     static std::string getExecutableFolder();
+    static bool folderExists(const std::string &path);
+    static bool createFolder(const std::string &path);
+    static std::string
+    generateFileName(const std::string &prefix = "aditof_",
+                     const std::string &extension = ".adcam");
 };
 } // namespace aditof
 

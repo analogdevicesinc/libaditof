@@ -122,9 +122,10 @@ struct Adsd3500Sensor::ImplData {
 
     ImplData()
         : numVideoDevs(1),
-          videoDevs(nullptr), imagerType{SensorImagerType::IMAGER_UNKNOWN},
-          ccbVersion{CCBVersion::CCB_UNKNOWN}, modeDetails{0, {}, 0, 0, 0, 0,
-                                                           0, 0,  0, 0, {}} {}
+          videoDevs(nullptr), modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
+        ccbVersion = CCBVersion::CCB_UNKNOWN;
+        imagerType = SensorImagerType::IMAGER_UNKNOWN;
+    }
 };
 
 // TO DO: This exists in linux_utils.h which is not included on Dragoboard.
@@ -168,13 +169,14 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     : m_driverPath(driverPath), m_driverSubPath(driverSubPath),
       m_captureDev(captureDev), m_implData(new Adsd3500Sensor::ImplData),
       m_firstRun(true), m_adsd3500Queried(false), m_depthComputeOnTarget(true),
-      m_chipStatus(0), m_imagerStatus(0), isOpen(0), first_reset(false),
-      m_hostConnectionType(aditof::ConnectionType::ON_TARGET) {
+      m_chipStatus(0), m_imagerStatus(0), isOpen(0) {
     m_sensorName = "adsd3500";
     m_interruptAvailable = false;
     m_sensorDetails.connectionType = aditof::ConnectionType::ON_TARGET;
     m_sensorDetails.id = driverPath;
     m_sensorConfiguration = "standard";
+    first_reset = false;
+    m_hostConnectionType = aditof::ConnectionType::ON_TARGET;
 
     // Define the controls that this sensor has available
     m_controls.emplace("abAveraging", "0");
@@ -294,7 +296,7 @@ aditof::Status Adsd3500Sensor::open() {
     Utils::splitIntoTokens(captureDeviceName, '|', cards);
 
     LOG(INFO) << "Looking for the following cards:";
-    for (const auto card : cards) {
+    for (const auto &card : cards) {
         LOG(INFO) << card;
     }
 
@@ -1500,9 +1502,17 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     struct stat st;
     if (stat("/sys/class/gpio/PAC.00/value", &st) == 0) {
 
-        system("echo 0 > /sys/class/gpio/PAC.00/value");
+        auto ret_system = system("echo 0 > /sys/class/gpio/PAC.00/value");
+        if (ret_system != 0) {
+            LOG(ERROR) << "Failed to set GPIO PAC.00 to 0";
+            return aditof::Status::GENERIC_ERROR;
+        }
         usleep(100000);
-        system("echo 1 > /sys/class/gpio/PAC.00/value");
+        ret_system = system("echo 1 > /sys/class/gpio/PAC.00/value");
+        if (ret_system != 0) {
+            LOG(ERROR) << "Failed to set GPIO PAC.00 to 1";
+            return aditof::Status::GENERIC_ERROR;
+        }
 
         if (interruptsAvailable) {
             LOG(INFO) << "Waiting for ADSD3500 to reset.";
@@ -1894,8 +1904,8 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             LOG(ERROR) << "Old modes are no longer supported!";
             return Status::GENERIC_ERROR;
         } else if (m_implData->ccbVersion == CCBVersion::CCB_VERSION3 ||
-                   m_implData->ccbVersion == CCBVersion::CCB_VERSION2 &&
-                       m_controls["disableCCBM"] == "0") {
+                   (m_implData->ccbVersion == CCBVersion::CCB_VERSION2 &&
+                    m_controls["disableCCBM"] == "0")) {
 
             uint16_t data;
             status = adsd3500_read_cmd(0x39, &data);
@@ -1923,7 +1933,7 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
 
             for (int i = 0; i < NR_OF_MODES_FROM_CCB; i++) {
                 DepthSensorModeDetails modeDetails;
-                memset(&modeDetails, 0, sizeof(DepthSensorModeDetails));
+                memset((void *)&modeDetails, 0, sizeof(DepthSensorModeDetails));
 
                 modeDetails.modeNumber = modeStruct[i].CFG_mode;
                 if (modeDetails.modeNumber == 0xFF) {

@@ -34,6 +34,7 @@
 #define LOG_H
 
 #include <chrono>
+#include <cstdint>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -71,7 +72,7 @@ typedef uint32_t uint32;
 typedef uint64_t uint64;
 #endif
 
-static void InitGoogleLogging(char *val){};
+[[maybe_unused]] static inline void InitGoogleLogging(char *val) { (void)val; }
 } // namespace google
 
 class Log {
@@ -119,8 +120,8 @@ class Log {
     }
 };
 
-static int FLAGS_alsologtostderr;
-static int FLAGS_logtostderr;
+[[maybe_unused]] static int FLAGS_alsologtostderr = 0;
+[[maybe_unused]] static int FLAGS_logtostderr = 0;
 
 #define INFO "I"
 #define ERROR "E"

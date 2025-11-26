@@ -48,9 +48,10 @@ FrameHandlerImpl::FrameHandlerImpl()
     : m_concatFrames(true), m_enableMultithreading(false),
       m_customFormat(false), m_bitsInDepth(0), m_bitsInAB(0), m_bitsInConf(0),
       m_frameWidth(0), m_frameHeight(0), m_frameIndex(0), m_fileCreated(false),
-      m_endOfFile(false), m_dir("."), m_pos(0), m_threadRunning(false) {}
+      m_endOfFile(false), m_pos(0), m_threadRunning(false) {}
 
 FrameHandlerImpl::~FrameHandlerImpl() {
+    m_dir = ".";
     if (m_threadWorker.joinable()) {
         m_threadWorker.join();
     }
@@ -395,7 +396,7 @@ aditof::Status FrameHandlerImpl::SaveFloatAsJPEG(const char *filename,
     // Avoid divide by zero
     float range = (max_val == min_val) ? 1.0f : (max_val - min_val);
 
-    for (int i = 0; i < width * height; ++i) {
+    for (uint32_t i = 0; i < width * height; ++i) {
         float norm = (data[i] - min_val) / range; // [0,1]
         img_8bit[i] = static_cast<uint8_t>(norm * 255.0f + 0.5f);
     }
@@ -425,7 +426,7 @@ aditof::Status FrameHandlerImpl::SaveUint16AsJPEG(const char *filename,
     float range =
         (max_val == min_val) ? 1.0f : static_cast<float>(max_val - min_val);
 
-    for (int i = 0; i < width * height; ++i) {
+    for (uint32_t i = 0; i < width * height; ++i) {
         float norm = static_cast<float>(data[i] - min_val) / range; // [0,1]
         img_8bit[i] = static_cast<uint8_t>(norm * 255.0f + 0.5f);
     }
