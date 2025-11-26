@@ -35,7 +35,7 @@
 #include <string>
 
 #define ADCAM_API_VERSION_MAJOR "0"
-#define ADCAM_API_VERSION_MINOR "0"
+#define ADCAM_API_VERSION_MINOR "2"
 #define ADCAM_API_VERSION_PATCH "0"
 #define ADCAM_API_VERSION                                                     \
     (ADCAM_API_VERSION_MAJOR "." ADCAM_API_VERSION_MINOR                     \
