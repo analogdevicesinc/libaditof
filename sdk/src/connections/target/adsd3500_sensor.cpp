@@ -833,15 +833,14 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
     return status;
 }
 
-aditof::Status Adsd3500Sensor::getFrame(uint16_t *buffer,
-                                        const uint8_t &frameContent) {
+aditof::Status Adsd3500Sensor::getFrame(uint16_t *buffer) {
 
     using namespace aditof;
     Status status;
 
     if (m_depthComputeOnTarget && !m_implData->modeDetails.isPCM) {
 
-        status = m_bufferProcessor->processBuffer(buffer, frameContent);
+        status = m_bufferProcessor->processBuffer(buffer);
 
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to process buffer!";

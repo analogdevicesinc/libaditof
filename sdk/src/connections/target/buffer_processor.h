@@ -145,14 +145,14 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
                                           uint8_t *calData,
                                           uint16_t calDataLength, uint16_t mode,
                                           bool ispEnabled);
-    aditof::Status processBuffer(uint16_t *buffer,
-                                 const uint8_t &frameContent = 0);
+    aditof::Status processBuffer(uint16_t *buffer);
     TofiConfig *getTofiCongfig();
     aditof::Status getDepthComputeVersion(uint8_t &enabled);
 
     void startThreads();
     void stopThreads();
-    static int getTimeoutDelay() { return TIME_OUT_DELAY; }
+    static int getTimeoutDelay() {
+        return TIME_OUT_DELAY; }
 
   public:
     virtual aditof::Status waitForBuffer() override;
