@@ -2025,6 +2025,9 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
         }
     }
 
+    // Initialize the bits table
+    status = m_modeSelector.init_bitsPerPixelTable();
+
     if (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3100) {
         status = DeviceParameters::createIniParams(
             m_iniFileStructList, m_availableModes, "adsd3100", chip_id);
