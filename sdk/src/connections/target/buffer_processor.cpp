@@ -498,15 +498,6 @@ void BufferProcessor::processThread() {
                        process_frame.data.get() + numPixels * 2, numPixels * 2);
                 memset(m_tofiComputeContext->p_conf_frame, 0, numPixels * 4);
             } else {
-                LOG(INFO) << "processThread DUAL mode " << m_currentModeNumber
-                          << ": process_frame.size=" << process_frame.size
-                          << " numPixels=" << numPixels;
-                // dump the process_frame.data.get() to a file for debug
-                std::ofstream g("out_mode_2_before_deinterleave.bin",
-                                std::ios::binary);
-
-                g.write((char *)process_frame.data.get(), process_frame.size);
-                g.close();
                 uint32_t ret = TofiCompute(
                     reinterpret_cast<uint16_t *>(process_frame.data.get()),
                     m_tofiComputeContext, NULL);
@@ -519,13 +510,6 @@ void BufferProcessor::processThread() {
                     m_tofiComputeContext->p_conf_frame = tempConfFrame;
                     continue;
                 }
-                // memcpy(m_tofiComputeContext->p_depth_frame,
-                //        process_frame.data.get(), numPixels * 2);
-
-                // // memcpy(m_tofiComputeContext->p_ab_frame,
-                // //        process_frame.data.get() + numPixels * 2, numPixels * 2);
-                // memcpy(m_tofiComputeContext->p_conf_frame,
-                //        process_frame.data.get() + numPixels * 2, numPixels * 4);
             }
 #else
             // auto processStart = std::chrono::high_resolution_clock::now();
