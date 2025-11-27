@@ -263,7 +263,6 @@ Adsd3500Sensor::~Adsd3500Sensor() {
             }
         }
     }
-
     delete m_bufferProcessor;
 }
 
@@ -826,7 +825,7 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         status = m_bufferProcessor->setVideoProperties(
             type.baseResolutionWidth, type.baseResolutionHeight,
             type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
-            bitsInAB, bitsInConf);
+            bitsInAB[type.modeNumber], bitsInConf[type.modeNumber]);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             return status;
@@ -2046,22 +2045,26 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
         return status;
     }
 
+    // Allocate the size of vector based on available modes
+    bitsInAB.resize(m_availableModes.size());
+    bitsInConf.resize(m_availableModes.size());
+
     // Allocate the frames based on bits combination selected to capture frames
-    for (int i = 0; i < m_iniFileStructList.size(); ++i) {
+    for (int i = 0; i < m_availableModes.size(); ++i) {
         iniFileStruct iniFile = m_iniFileStructList[i];
-        auto &mode = m_availableModes[i];
+        auto &modeDetails = m_availableModes[i];
         std::string value;
-        if (!mode.isPCM) {
-            mode.frameContent.clear();
-            mode.frameContent = {"raw", "depth"};
+        if (!modeDetails.isPCM) {
+            modeDetails.frameContent.clear();
+            modeDetails.frameContent = {"raw", "depth"};
 
             // check for AB frame
             auto it = iniFile.iniKeyValPairs.find("bitsInAB");
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
-                bitsInAB = (uint8_t)std::stoi(value);
-                if (bitsInAB != 0) {
-                    mode.frameContent.push_back("ab");
+                bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
+                if (bitsInAB[modeDetails.modeNumber] != 0) {
+                    modeDetails.frameContent.push_back("ab");
                 }
             } else {
                 LOG(WARNING) << "bits In AB was not found in parameter list, "
@@ -2072,9 +2075,9 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             it = iniFile.iniKeyValPairs.find("bitsInConf");
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
-                bitsInConf = (uint8_t)std::stoi(value);
-                if (bitsInConf != 0) {
-                    mode.frameContent.push_back("conf");
+                bitsInConf[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
+                if (bitsInConf[bitsInConf.size() - 1] != 0) {
+                    modeDetails.frameContent.push_back("conf");
                 }
             } else {
                 LOG(WARNING)
@@ -2083,12 +2086,27 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             }
 
             // now push back the remaining frames
-            mode.frameContent.push_back("xyz");
-            mode.frameContent.push_back("metadata");
+            modeDetails.frameContent.push_back("xyz");
+            modeDetails.frameContent.push_back("metadata");
 
         } else {
-            mode.frameContent.clear();
-            mode.frameContent = {"ab", "metadata"};
+            modeDetails.frameContent.clear();
+
+            // check for AB frame
+            auto it = iniFile.iniKeyValPairs.find("bitsInAB");
+            if (it != iniFile.iniKeyValPairs.end()) {
+                value = it->second;
+                bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
+                if (bitsInAB[bitsInAB.size() - 1] != 0) {
+                    modeDetails.frameContent.push_back("ab");
+                }
+            } else {
+                LOG(WARNING) << "bits In AB was not found in parameter list, "
+                                "discarding it";
+            }
+
+            bitsInConf[modeDetails.modeNumber] = 0;
+            modeDetails.frameContent.push_back("metadata");
         }
     }
 

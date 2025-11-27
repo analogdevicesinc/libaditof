@@ -233,8 +233,8 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     bool isOpen;
     bool m_ccbmEnabled;
     bool first_reset;
-    uint8_t bitsInAB;
-    uint8_t bitsInConf;
+    std::vector<uint8_t> bitsInAB;
+    std::vector<uint8_t> bitsInConf;
 
   public:
     // Stream record and playback support
