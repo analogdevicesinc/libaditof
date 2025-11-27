@@ -269,6 +269,8 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     } else if ((bitsInAB == 0) && (bitsInConf != 0)) {
         // AB bit is set to 0
         confSize = m_outputFrameWidth * m_outputFrameHeight * 4;
+    } else if ((bitsInAB == 0) && (bitsInConf == 0)) {
+        // No need to add size
     } else {
         if (bitsInAB == 8) {
             abSize = m_outputFrameWidth * m_outputFrameHeight;
@@ -522,15 +524,18 @@ void BufferProcessor::processThread() {
                 tofi_compute_io_buff.get() +
                 numPixels * 2); // Confidence follows AB
 #ifdef DUAL
-            if (m_currentModeNumber == 0 ||
-                m_currentModeNumber ==
-                    1) { // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
+            // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
+            // The frame data will come as deinterleaved when only depth frame is requested.
+            // it means numPixels * 2 should be equal to allocate m_tofiBuffersize.
+            if (m_currentModeNumber == 0 || m_currentModeNumber == 1 ||
+                ((numPixels * 2) == m_tofiBufferSize)) {
                 memcpy(m_tofiComputeContext->p_depth_frame,
                        process_frame.data.get(), numPixels * 2);
 
                 memcpy(m_tofiComputeContext->p_ab_frame,
                        process_frame.data.get() + numPixels * 2, numPixels * 2);
-                memset(m_tofiComputeContext->p_conf_frame, 0, numPixels * 4);
+                memcpy(m_tofiComputeContext->p_conf_frame,
+                       process_frame.data.get() + numPixels * 4, numPixels * 4);
             } else {
                 uint32_t ret = TofiCompute(
                     reinterpret_cast<uint16_t *>(process_frame.data.get()),
@@ -546,7 +551,6 @@ void BufferProcessor::processThread() {
                 }
             }
 #else
-            // auto processStart = std::chrono::high_resolution_clock::now();
 
             uint32_t ret = TofiCompute(
                 reinterpret_cast<uint16_t *>(process_frame.data.get()),
@@ -565,8 +569,6 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_ab_frame = tempAbFrame;
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
         }
-
-        // uint32_t frameSize = m_outputFrameWidth * m_outputFrameHeight * 8 + 128;
 
         if (m_state == ST_RECORD) {
             aditof::Status writeStatus = writeFrame(
