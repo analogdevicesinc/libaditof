@@ -400,70 +400,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         status = m_depthSensor->getHeader((uint8_t *)&m_offline_parameters,
                                           sizeof(m_offline_parameters));
         if (status != Status::OK) {
-            LOG(WARNING) << "Failed to reset the camera!";
-            return status;
-        }
-    }
-
-    m_iniKeyValPairs = m_depth_params_map[mode];
-
-
-    configureSensorModeDetails();
-    status = m_depthSensor->setMode(mode);
-    if (status != Status::OK) {
-        LOG(WARNING) << "Failed to set frame type";
-        return status;
-    }
-
-    status = m_depthSensor->getModeDetails(mode, m_modeDetailsCache);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to get frame type details!";
-        return status;
-    }
-
-    m_pcmFrame = m_modeDetailsCache.isPCM;
-
-    uint16_t chipCmd = 0xDA00;
-    chipCmd += mode;
-    status = m_depthSensor->adsd3500_write_cmd(chipCmd, 0x280F, 200000);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to switch mode in chip using host commands!";
-        return status;
-    }
-
-    setAdsd3500IniParams(m_iniKeyValPairs);
-    configureSensorModeDetails();
-    m_details.mode = mode;
-
-    LOG(INFO) << "Using the following configuration parameters for mode "
-              << int(mode);
-    for (auto param : m_iniKeyValPairs) {
-        LOG(INFO) << param.first << " : " << param.second;
-    }
-
-    if (m_enableMetaDatainAB > 0) {
-        if (!m_pcmFrame) {
-            status = adsd3500SetEnableMetadatainAB(m_enableMetaDatainAB);
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to set enableMetaDatainAB.";
-                return status;
-            }
-            LOG(INFO) << "Metadata in AB is enabled and it is stored in the "
-                         "first 128 bytes.";
-
-        } else {
-            status = adsd3500SetEnableMetadatainAB(0);
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to disable enableMetaDatainAB.";
-                return status;
-            }
-            LOG(INFO) << "Metadata in AB is disabled for this frame type.";
-        }
-
-    } else {
-        status = adsd3500SetEnableMetadatainAB(m_enableMetaDatainAB);
-        if (status != Status::OK) {
-            LOG(ERROR) << "Failed to set enableMetaDatainAB.";
+            LOG(WARNING) << "Failed to get frame from device";
             return status;
         }
 
@@ -1006,8 +943,8 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         return status;
     }
 
-    if (m_dropFirstFrame && m_dropFrameOnce) {
-        m_depthSensor->getFrame(frameDataLocation);
+    if (m_dropFirstFrame && m_dropFrameOnce && !m_isOffline) {
+        m_depthSensor->getFrame(frameDataLocation, index);
         m_dropFrameOnce = false;
         if (status != Status::OK) {
             LOG(INFO) << "Failed to drop first frame!";
@@ -1016,7 +953,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         LOG(INFO) << "Dropped first frame";
     }
 
-    status = m_depthSensor->getFrame(frameDataLocation);
+    status = m_depthSensor->getFrame(frameDataLocation, index);
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get frame from device";
         return status;
@@ -2484,7 +2421,6 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
 
     return status;
 }
-
 
 aditof::Status CameraItof::adsd3500SetEnableEdgeConfidence(uint16_t value) {
 
