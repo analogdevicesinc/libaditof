@@ -53,7 +53,7 @@ struct FrameImpl::ImplData {
     size_t allDataNbBytes;
 };
 
-FrameImpl::FrameImpl() : m_implData(std::make_unique<FrameImpl::ImplData>()){};
+FrameImpl::FrameImpl() : m_implData(std::make_unique<FrameImpl::ImplData>()) {};
 FrameImpl::~FrameImpl() = default;
 
 FrameImpl::FrameImpl(const FrameImpl &op) {
@@ -119,7 +119,7 @@ aditof::Status FrameImpl::getData(const std::string &dataType,
     if (m_implData->m_dataLocations.count(dataType) > 0) {
         *dataPtr = m_implData->m_dataLocations[dataType];
     } else {
-        *dataPtr = nullptr;
+        dataPtr = nullptr;
         if (dataType !=
             "metadata") // TO DO: Silence this for now, handle it later
             LOG(ERROR) << dataType << " is not supported by this frame!";
@@ -186,28 +186,29 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
         }
     };
 
-    // compute total size in bytes
-    for (const FrameDataDetails &frameDetail : details.dataDetails) {
-        totalSizeBytes += getSubframeSizeBytes(frameDetail);
+    //compute total size TODO this could be precomputed TBD @dNechita
+    for (FrameDataDetails frameDetail : details.dataDetails) {
+        totalSize += getSubframeSize(frameDetail);
     }
 
     //LOG(INFO) << "Allocating frame data of total size: " << totalSize * sizeof(uint16_t) << " bytes";
 
     //store pointers to the contents described by FrameDetails
     m_implData->m_allData = std::shared_ptr<uint16_t[]>(
-        new uint16_t[totalElements], [](uint16_t *p) { delete[] p; });
-    m_implData->allDataNbBytes = totalElements * sizeof(uint16_t);
+        new uint16_t[totalSize], // Allocate the array
+        [](uint16_t *p) {
+            delete[] p;
+        } // Custom deleter to ensure correct deallocation
+    );
 
-    m_implData->m_dataLocations.clear();
-    m_implData->m_dataLocations.emplace("frameData",
-                                        m_implData->m_allData.get());
-
-    for (const FrameDataDetails &frameDetail : details.dataDetails) {
-        // compute pointer offset in uint16_t elements
-        size_t offsetElements = posBytes / sizeof(uint16_t);
+    //TODO wouldn`t it be safer to store relative position to .get() instead of absolute address ? TBD @dNechita
+    m_implData->m_dataLocations.emplace(
+        "frameData", m_implData->m_allData.get()); //frame data
+    for (FrameDataDetails frameDetail : details.dataDetails) {
         m_implData->m_dataLocations.emplace(
-            frameDetail.type, m_implData->m_allData.get() + offsetElements);
-        posBytes += getSubframeSizeBytes(frameDetail);
+            frameDetail.type, m_implData->m_allData.get() + pos); //raw data
+
+        pos += getSubframeSize(frameDetail);
     }
 }
 

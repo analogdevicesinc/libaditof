@@ -833,7 +833,7 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
     return status;
 }
 
-aditof::Status Adsd3500Sensor::getFrame(uint16_t *buffer) {
+aditof::Status Adsd3500Sensor::getFrame(uint16_t *buffer, uint32_t index) {
 
     using namespace aditof;
     Status status;
