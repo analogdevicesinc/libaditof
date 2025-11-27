@@ -253,7 +253,7 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     /* | AB Frame ( W * H (type: uint8_t)) |           */
     /* | Confidance Frame ( W * H * 4 (type: float)) | */
 
-    uint32_t depthSize = m_outputFrameWidth * m_outputFrameHeight * 2;
+    uint32_t depthSize = m_outputFrameWidth * m_outputFrameHeight;
     uint32_t abSize = 0;
     uint32_t confSize = 0;
 
@@ -262,22 +262,22 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     if ((bitsInAB != 0) && (bitsInConf == 0)) {
         // Conf bit is set to 0
         if (bitsInAB == 8) {
-            abSize = m_outputFrameWidth * m_outputFrameHeight;
+            abSize = m_outputFrameWidth * m_outputFrameHeight / 2;
         } else {
-            abSize = m_outputFrameWidth * m_outputFrameHeight * 2;
+            abSize = m_outputFrameWidth * m_outputFrameHeight;
         }
     } else if ((bitsInAB == 0) && (bitsInConf != 0)) {
         // AB bit is set to 0
-        confSize = m_outputFrameWidth * m_outputFrameHeight * 4;
+        confSize = m_outputFrameWidth * m_outputFrameHeight * 2;
     } else if ((bitsInAB == 0) && (bitsInConf == 0)) {
         // No need to add size
     } else {
         if (bitsInAB == 8) {
-            abSize = m_outputFrameWidth * m_outputFrameHeight;
+            abSize = m_outputFrameWidth * m_outputFrameHeight / 2;
         } else {
-            abSize = m_outputFrameWidth * m_outputFrameHeight * 2;
+            abSize = m_outputFrameWidth * m_outputFrameHeight;
         }
-        confSize = m_outputFrameWidth * m_outputFrameHeight * 4;
+        confSize = m_outputFrameWidth * m_outputFrameHeight * 2;
     }
 
     m_tofiBufferSize = depthSize + abSize + confSize;
