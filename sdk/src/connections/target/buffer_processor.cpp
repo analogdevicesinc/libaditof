@@ -168,11 +168,9 @@ aditof::Status BufferProcessor::setInputDevice(VideoDev *inputVideoDev) {
  *
  * @return aditof::Status    Returns OK on success, GENERIC_ERROR on allocation failure.
  */
-aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
-                                                   int frameHeight,
-                                                   int WidthInBytes,
-                                                   int HeightInBytes,
-                                                   int modeNumber) {
+aditof::Status BufferProcessor::setVideoProperties(
+    int frameWidth, int frameHeight, int WidthInBytes, int HeightInBytes,
+    int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf) {
 
     // Clear all queues to prevent memory leaks if setVideoProperties is called multiple times
     if (!stopThreadsFlag) {
@@ -214,14 +212,7 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
         }
     }
 
-    uint32_t depthSize =
-        m_outputFrameWidth * m_outputFrameHeight *
-        2; /* | Depth Frame ( W * H * 2 (type: uint16_t)) |   */
-    uint32_t abSize = m_outputFrameWidth * m_outputFrameHeight *
-                      2; /* | AB Frame ( W * H * 2 (type: uint16_t)) |      */
-    uint32_t confSize = m_outputFrameWidth * m_outputFrameHeight *
-                        4; /* | Confidance Frame ( W * H * 4 (type: float)) | */
-    m_tofiBufferSize = depthSize + abSize + confSize;
+    calculateFrameSize(bitsInAB, bitsInConf);
 
     LOG(INFO) << __func__ << ": Allocating " << BufferProcessor::MAX_QUEUE_SIZE
               << " ToFi buffers, each of size "
@@ -242,6 +233,52 @@ aditof::Status BufferProcessor::setVideoProperties(int frameWidth,
 
     //LOG(INFO) << __func__ << ": RawBufferSize: " << rawFrameBufferSize << "  m_tofiBufferSize: " << m_tofiBufferSize;
     return status;
+}
+
+/**
+ * @function BufferProcessor::calculateFrameSize
+ *
+ * Calculate the frame size for given bit combination of
+ * AB and confidence 
+ *
+ * @param bitsInAB           Bits per pixel for AB frame.
+ * @param bitsInConf         Bits per pixel for Confidence frame
+ */
+
+void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
+                                         uint8_t &bitsInConf) {
+
+    /* | Depth Frame ( W * H * 2 (type: uint16_t)) |   */
+    /* | AB Frame ( W * H * 2 (type: uint16_t)) | or
+    /* | AB Frame ( W * H (type: uint8_t)) |           */
+    /* | Confidance Frame ( W * H * 4 (type: float)) | */
+
+    uint32_t depthSize = m_outputFrameWidth * m_outputFrameHeight * 2;
+    uint32_t abSize = 0;
+    uint32_t confSize = 0;
+
+    // check whether the bit are not configured 0
+    // for 0 bit configuration, it'll not contribute in framesize
+    if ((bitsInAB != 0) && (bitsInConf == 0)) {
+        // Conf bit is set to 0
+        if (bitsInAB == 8) {
+            abSize = m_outputFrameWidth * m_outputFrameHeight;
+        } else {
+            abSize = m_outputFrameWidth * m_outputFrameHeight * 2;
+        }
+    } else if ((bitsInAB == 0) && (bitsInConf != 0)) {
+        // AB bit is set to 0
+        confSize = m_outputFrameWidth * m_outputFrameHeight * 4;
+    } else {
+        if (bitsInAB == 8) {
+            abSize = m_outputFrameWidth * m_outputFrameHeight;
+        } else {
+            abSize = m_outputFrameWidth * m_outputFrameHeight * 2;
+        }
+        confSize = m_outputFrameWidth * m_outputFrameHeight * 4;
+    }
+
+    m_tofiBufferSize = depthSize + abSize + confSize;
 }
 
 aditof::Status BufferProcessor::setProcessorProperties(
@@ -529,11 +566,11 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
         }
 
-        uint32_t frameSize = m_outputFrameWidth * m_outputFrameHeight * 8 + 128;
+        // uint32_t frameSize = m_outputFrameWidth * m_outputFrameHeight * 8 + 128;
 
         if (m_state == ST_RECORD) {
-            aditof::Status writeStatus =
-                writeFrame((uint8_t *)tofi_compute_io_buff.get(), frameSize);
+            aditof::Status writeStatus = writeFrame(
+                (uint8_t *)tofi_compute_io_buff.get(), m_tofiBufferSize);
             if (writeStatus != aditof::Status::OK) {
                 LOG(ERROR)
                     << "Failed to write processed frame during recording";
@@ -541,7 +578,7 @@ void BufferProcessor::processThread() {
         }
 
         process_frame.tofiBuffer = tofi_compute_io_buff;
-        process_frame.size = frameSize;
+        process_frame.size = m_tofiBufferSize;
 
         //LOG(INFO) << "**Size: " << sizeof(uint16_t) * process_frame.size;
 

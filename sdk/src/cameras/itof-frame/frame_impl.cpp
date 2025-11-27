@@ -53,7 +53,7 @@ struct FrameImpl::ImplData {
     size_t allDataNbBytes;
 };
 
-FrameImpl::FrameImpl() : m_implData(std::make_unique<FrameImpl::ImplData>()) {};
+FrameImpl::FrameImpl() : m_implData(std::make_unique<FrameImpl::ImplData>()){};
 FrameImpl::~FrameImpl() = default;
 
 FrameImpl::FrameImpl(const FrameImpl &op) {
@@ -188,6 +188,7 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
 
     //compute total size TODO this could be precomputed TBD @dNechita
     for (FrameDataDetails frameDetail : details.dataDetails) {
+        LOG(INFO) << "Frame type : " << frameDetail.type;
         totalSize += getSubframeSize(frameDetail);
     }
 

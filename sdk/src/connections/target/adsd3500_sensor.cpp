@@ -169,7 +169,9 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     : m_driverPath(driverPath), m_driverSubPath(driverSubPath),
       m_captureDev(captureDev), m_implData(new Adsd3500Sensor::ImplData),
       m_firstRun(true), m_adsd3500Queried(false), m_depthComputeOnTarget(true),
-      m_chipStatus(0), m_imagerStatus(0), isOpen(0) {
+      m_chipStatus(0), m_imagerStatus(0), isOpen(0), first_reset(false),
+      bitsInAB(0), bitsInConf(0),
+      m_hostConnectionType(aditof::ConnectionType::ON_TARGET) {
     m_sensorName = "adsd3500";
     m_interruptAvailable = false;
     m_sensorDetails.connectionType = aditof::ConnectionType::ON_TARGET;
@@ -820,10 +822,11 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
     }
 
     if (!type.isPCM) {
-        //TO DO: update this values when frame_impl gets restructured
+
         status = m_bufferProcessor->setVideoProperties(
             type.baseResolutionWidth, type.baseResolutionHeight,
-            type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber);
+            type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
+            bitsInAB, bitsInConf);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             return status;
@@ -2046,23 +2049,46 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
     // Allocate the frames based on bits combination selected to capture frames
     for (int i = 0; i < m_iniFileStructList.size(); ++i) {
         iniFileStruct iniFile = m_iniFileStructList[i];
-        auto& mode = m_availableModes[i];
-        if ((iniFile.iniKeyValPairs["bitsAB"] == "0") &&
-            (iniFile.iniKeyValPairs["bitsconf"] == "0")) {
+        auto &mode = m_availableModes[i];
+        std::string value;
+        if (!mode.isPCM) {
             mode.frameContent.clear();
-            mode.frameContent = {"raw", "depth", "xyz", "metadata"};
-        } else if ((iniFile.iniKeyValPairs["bitsAB"] != "0") &&
-                   (iniFile.iniKeyValPairs["bitsconf"] == "0")) {
-            mode.frameContent.clear();
-            mode.frameContent = {"raw", "depth", "ab", "xyz", "metadata"};
-        } else if ((iniFile.iniKeyValPairs["bitsAB"] == "0") &&
-                   (iniFile.iniKeyValPairs["bitsconf"] != "0")) {
-            mode.frameContent.clear();
-            mode.frameContent = {"raw", "depth", "conf", "xyz", "metadata"};
+            mode.frameContent = {"raw", "depth"};
+
+            // check for AB frame
+            auto it = iniFile.iniKeyValPairs.find("bitsInAB");
+            if (it != iniFile.iniKeyValPairs.end()) {
+                value = it->second;
+                bitsInAB = (uint8_t)std::stoi(value);
+                if (bitsInAB != 0) {
+                    mode.frameContent.push_back("ab");
+                }
+            } else {
+                LOG(WARNING) << "bits In AB was not found in parameter list, "
+                                "discarding it";
+            }
+
+            // check for Conf frame
+            it = iniFile.iniKeyValPairs.find("bitsInConf");
+            if (it != iniFile.iniKeyValPairs.end()) {
+                value = it->second;
+                bitsInConf = (uint8_t)std::stoi(value);
+                if (bitsInConf != 0) {
+                    mode.frameContent.push_back("conf");
+                }
+            } else {
+                LOG(WARNING)
+                    << "bits In Confidence was not found in parameter list, "
+                       "discarding it";
+            }
+
+            // now push back the remaining frames
+            mode.frameContent.push_back("xyz");
+            mode.frameContent.push_back("metadata");
+
         } else {
             mode.frameContent.clear();
-            mode.frameContent = {"raw",  "depth", "ab",
-                                 "conf", "xyz",   "metadata"};
+            mode.frameContent = {"ab", "metadata"};
         }
     }
 
