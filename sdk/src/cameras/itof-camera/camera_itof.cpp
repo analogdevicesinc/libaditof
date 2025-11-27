@@ -431,7 +431,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         break;
     case 3:
         (*modeIt).frameContent.clear();
-        (*modeIt).frameContent = {"depth", "conf", "metadata"};
+        (*modeIt).frameContent = {"depth", "ab", "conf", "metadata"};
         m_iniKeyValPairs["bitsInAB"] = "0";
         m_iniKeyValPairs["xyzEnable"] = "0";
         m_iniKeyValPairs["headerSize"] = "0";
