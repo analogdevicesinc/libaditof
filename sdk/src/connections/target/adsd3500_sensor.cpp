@@ -1950,14 +1950,6 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                     continue;
                 }
 
-                modeDetails.frameContent.clear();
-                if (!modeDetails.isPCM) {
-                    modeDetails.frameContent = {"raw",  "depth", "ab",
-                                                "conf", "xyz",   "metadata"};
-                } else {
-                    modeDetails.frameContent = {"ab", "metadata"};
-                }
-
                 //Read ini file content and store it in the sdk
                 IniTableEntry iniTableContent;
                 memset(&iniTableContent, 0, sizeof(IniTableEntry));
