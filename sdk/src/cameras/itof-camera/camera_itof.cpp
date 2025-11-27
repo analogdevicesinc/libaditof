@@ -407,39 +407,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
     m_iniKeyValPairs = m_depth_params_map[mode];
 
-    //change the frame content based on user choice
-    switch (m_frameContent) {
-    case 0:
-        // All frames are required.
-        (*modeIt).frameContent.clear();
-        (*modeIt).frameContent = {"raw",  "depth", "ab",
-                                  "conf", "xyz",   "metadata"};
-        break;
-    case 1:
-        (*modeIt).frameContent.clear();
-        (*modeIt).frameContent = {"depth", "metadata"};
-        m_iniKeyValPairs["bitsInAB"] = "0";
-        m_iniKeyValPairs["bitsInConf"] = "0";
-        m_iniKeyValPairs["xyzEnable"] = "0";
-        m_iniKeyValPairs["headerSize"] = "0";
-        break;
-    case 2:
-        (*modeIt).frameContent.clear();
-        (*modeIt).frameContent = {"depth", "ab", "metadata"};
-        m_iniKeyValPairs["bitsInConf"] = "0";
-        m_iniKeyValPairs["xyzEnable"] = "0";
-        break;
-    case 3:
-        (*modeIt).frameContent.clear();
-        (*modeIt).frameContent = {"depth", "ab", "conf", "metadata"};
-        m_iniKeyValPairs["bitsInAB"] = "0";
-        m_iniKeyValPairs["xyzEnable"] = "0";
-        m_iniKeyValPairs["headerSize"] = "0";
-        break;
-    default:
-        LOG(INFO) << "Invalid frame content";
-        return Status::INVALID_ARGUMENT;
-    }
 
     configureSensorModeDetails();
     status = m_depthSensor->setMode(mode);
@@ -1040,7 +1007,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     }
 
     if (m_dropFirstFrame && m_dropFrameOnce) {
-        m_depthSensor->getFrame(frameDataLocation, m_frameContent);
+        m_depthSensor->getFrame(frameDataLocation);
         m_dropFrameOnce = false;
         if (status != Status::OK) {
             LOG(INFO) << "Failed to drop first frame!";
@@ -1049,7 +1016,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         LOG(INFO) << "Dropped first frame";
     }
 
-    status = m_depthSensor->getFrame(frameDataLocation, m_frameContent);
+    status = m_depthSensor->getFrame(frameDataLocation);
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get frame from device";
         return status;
@@ -2518,15 +2485,6 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
     return status;
 }
 
-aditof::Status CameraItof::setframeContent(const uint8_t value) {
-    aditof::Status status = aditof::Status::OK;
-    if (value > 3 || value < 0) {
-        status = aditof::Status::INVALID_ARGUMENT;
-        return status;
-    }
-    m_frameContent = value;
-    return status;
-}
 
 aditof::Status CameraItof::adsd3500SetEnableEdgeConfidence(uint16_t value) {
 

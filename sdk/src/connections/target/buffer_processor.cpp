@@ -579,8 +579,7 @@ void BufferProcessor::processThread() {
  * It copies the computed output into the user-provided buffer and manages buffer reuse.
  * Returns a status indicating success, busy (no frames), or error.
  */
-aditof::Status BufferProcessor::processBuffer(uint16_t *buffer,
-                                              const uint8_t &frameContent) {
+aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     Tofi_v4l2_buffer tof_processed_frame;
     const std::chrono::milliseconds m_retryDelay(10);
 
@@ -590,28 +589,8 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer,
             if (buffer && tof_processed_frame.tofiBuffer &&
                 tof_processed_frame.size > 0) {
 
-                const int numPixels = m_outputFrameWidth * m_outputFrameHeight;
-                // copy the frame based on frameContent requirement
-                switch (frameContent) {
-                case 0:
-                    memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
-                           tof_processed_frame.size);
-                    break;
-                case 1:
-                    memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
-                           numPixels * 2);
-                    break;
-                case 2:
-                    memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
-                           numPixels * 4);
-                    break;
-                case 3:
-                    memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
-                           tof_processed_frame.size);
-                    break;
-                default:
-                    LOG(INFO) << "Invalid frameContent choice";
-                }
+                memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
+                       tof_processed_frame.size);
 
                 // Return buffers to their respective pools
                 m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
