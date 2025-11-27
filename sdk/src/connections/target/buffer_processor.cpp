@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <arm_neon.h>
 #include <cmath>
+#include <exception>
 #include <fcntl.h>
 #include <fstream>
 #include <unistd.h>
@@ -55,6 +56,15 @@
 #include "buffer_processor.h"
 
 uint8_t depthComputeOpenSourceEnabled = 0;
+
+// Named constants for configuration
+namespace {
+constexpr int MAX_RETRIES = 3;
+constexpr std::chrono::milliseconds RETRY_DELAY{10};
+constexpr std::chrono::milliseconds QUEUE_TIMEOUT{1100};
+constexpr int SELECT_TIMEOUT_SEC = 20;
+constexpr int THREAD_PRIORITY = 20;
+} // namespace
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
@@ -80,6 +90,7 @@ BufferProcessor::BufferProcessor()
     m_processorPropSet = false;
     m_vidPropSet = false;
     stopThreadsFlag = true;
+    stopThreadsFlag.store(true, std::memory_order_release);
     streamRunning = false;
     m_tofiConfig = nullptr;
     m_tofiComputeContext = nullptr;
@@ -92,13 +103,17 @@ BufferProcessor::BufferProcessor()
 }
 
 BufferProcessor::~BufferProcessor() {
-
-    automaticStop();
-
-    if (!stopThreadsFlag) {
-        stopThreads(); // Ensure threads are stopped before cleanup
+    // STEP 1: Stop threads first (this also drains all queues)
+    if (!stopThreadsFlag.load(std::memory_order_acquire)) {
+        stopThreads();
     }
 
+    // STEP 2: Free ToFi resources
+    // After stopThreads() completes, all worker threads have exited and queues are drained.
+    // The processThread() properly restores ToFi context pointers after each frame,
+    // so the context pointers should point to the original buffers allocated by InitTofiCompute().
+    // The context pointers should still point to the original buffers
+    // allocated by InitTofiCompute(), allowing proper cleanup
     if (NULL != m_tofiComputeContext) {
         LOG(INFO) << "freeComputeLibrary";
         FreeTofiCompute(m_tofiComputeContext);
@@ -110,14 +125,17 @@ BufferProcessor::~BufferProcessor() {
         m_tofiConfig = NULL;
     }
 
-    if (m_outputVideoDev->fd != -1) {
-        if (::close(m_outputVideoDev->fd) == -1) {
-            LOG(ERROR) << "Failed to close " << m_videoDeviceName
-                       << " error: " << strerror(errno);
+    // STEP 3: Close video device
+    if (m_outputVideoDev != nullptr) {
+        if (m_outputVideoDev->fd != -1) {
+            if (::close(m_outputVideoDev->fd) == -1) {
+                LOG(ERROR) << "Failed to close " << m_videoDeviceName
+                           << " error: " << strerror(errno);
+            }
         }
+        delete m_outputVideoDev;
+        m_outputVideoDev = nullptr;
     }
-    delete m_outputVideoDev;
-    m_outputVideoDev = nullptr;
 }
 
 aditof::Status BufferProcessor::open() {
@@ -173,7 +191,7 @@ aditof::Status BufferProcessor::setVideoProperties(
     int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf) {
 
     // Clear all queues to prevent memory leaks if setVideoProperties is called multiple times
-    if (!stopThreadsFlag) {
+    if (!stopThreadsFlag.load(std::memory_order_acquire)) {
         stopThreads();
     }
 
@@ -231,7 +249,6 @@ aditof::Status BufferProcessor::setVideoProperties(
         m_tofi_io_Buffer_Q.push(buffer);
     }
 
-    //LOG(INFO) << __func__ << ": RawBufferSize: " << rawFrameBufferSize << "  m_tofiBufferSize: " << m_tofiBufferSize;
     return status;
 }
 
@@ -248,10 +265,10 @@ aditof::Status BufferProcessor::setVideoProperties(
 void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
                                          uint8_t &bitsInConf) {
 
-    /* | Depth Frame ( W * H * 2 (type: uint16_t)) |   */
-    /* | AB Frame ( W * H * 2 (type: uint16_t)) | or
+    /* | Depth Frame ( W * H (type: uint16_t)) |   */
+    /* | AB Frame ( W * H (type: uint16_t)) | or
     /* | AB Frame ( W * H (type: uint8_t)) |           */
-    /* | Confidance Frame ( W * H * 4 (type: float)) | */
+    /* | Confidance Frame ( W * H * 2 (type: float)) | */
 
     uint32_t depthSize = m_outputFrameWidth * m_outputFrameHeight;
     uint32_t abSize = 0;
@@ -356,7 +373,7 @@ void BufferProcessor::captureFrameThread() {
     long long totalCaptureTime = 0;
     int totalV4L2Captured = 0;
 
-    while (!stopThreadsFlag) {
+    while (!stopThreadsFlag.load(std::memory_order_acquire)) {
         aditof::Status status;
         struct v4l2_buffer buf;
         struct VideoDev *dev = m_inputVideoDev;
@@ -366,7 +383,7 @@ void BufferProcessor::captureFrameThread() {
 
         if (!m_v4l2_input_buffer_Q.pop(v4l2_frame_holder) ||
             !v4l2_frame_holder) {
-            if (stopThreadsFlag)
+            if (stopThreadsFlag.load(std::memory_order_acquire))
                 break;
             LOG(WARNING) << "captureFrameThread: No free buffers "
                             "m_v4l2_input_buffer_Q size: "
@@ -478,10 +495,10 @@ void BufferProcessor::processThread() {
     int totalProcessedFrame = 0;
 #endif //DBG_MEASURE_TIME
 
-    while (!stopThreadsFlag) {
+    while (!stopThreadsFlag.load(std::memory_order_acquire)) {
         Tofi_v4l2_buffer process_frame;
         if (!m_capture_to_process_Q.pop(process_frame)) {
-            if (stopThreadsFlag)
+            if (stopThreadsFlag.load(std::memory_order_acquire))
                 break;
             LOG(WARNING) << "processThread: No new frames, "
                             "m_captureToProcessQueue Size: "
@@ -492,7 +509,7 @@ void BufferProcessor::processThread() {
         }
         std::shared_ptr<uint16_t> tofi_compute_io_buff;
         if (!m_tofi_io_Buffer_Q.pop(tofi_compute_io_buff)) {
-            if (stopThreadsFlag)
+            if (stopThreadsFlag.load(std::memory_order_acquire))
                 break;
             LOG(WARNING)
                 << "processThread: No ToFi buffers, m_tofi_io_Buffer_Q Size: "
@@ -509,45 +526,111 @@ void BufferProcessor::processThread() {
 
         if (tofi_compute_io_buff) {
 
-            // Each ToFi buffer holds three sections: depth (uint16), AB (uint16), and confidence (float)
-            // Layout: [depth: W * H * 2 | AB: W * H * 2 | confidence: W * H * 4]
-            // All sections are packed into a single buffer to optimize allocation and cache locality.
+            // Buffer layout depends on bit configuration via m_tofiBufferSize
+            // m_tofiBufferSize = depthSize + abSize + confSize (in uint16_t units)
+            // Only allocate/point to components that are actually configured
 
             const int numPixels = m_outputFrameWidth * m_outputFrameHeight;
 
-            // Map ToFi processing outputs to sections of the shared buffer
-            m_tofiComputeContext->p_depth_frame =
-                tofi_compute_io_buff.get(); // Depth starts at offset 0
-            m_tofiComputeContext->p_ab_frame =
-                tofi_compute_io_buff.get() + numPixels; // AB follows depth
-            m_tofiComputeContext->p_conf_frame = reinterpret_cast<float *>(
-                tofi_compute_io_buff.get() +
-                numPixels * 2); // Confidence follows AB
+            // Always have depth frame (always allocated)
+            m_tofiComputeContext->p_depth_frame = tofi_compute_io_buff.get();
+
+            // Calculate what's actually allocated after depth
+            uint32_t allocatedAfterDepth =
+                m_tofiBufferSize - static_cast<uint32_t>(numPixels);
+
+            // Set AB pointer only if AB is allocated
+            if (allocatedAfterDepth > 0) {
+                m_tofiComputeContext->p_ab_frame =
+                    tofi_compute_io_buff.get() + numPixels;
+
+                // Calculate remaining space after AB (for confidence)
+                // AB can be either numPixels or numPixels/2 depending on 8-bit vs 16-bit
+                uint32_t abSize = std::min(allocatedAfterDepth,
+                                           static_cast<uint32_t>(numPixels));
+                uint32_t allocatedAfterAB = allocatedAfterDepth - abSize;
+
+                // Set confidence pointer only if confidence is allocated
+                if (allocatedAfterAB > 0) {
+                    m_tofiComputeContext->p_conf_frame =
+                        reinterpret_cast<float *>(tofi_compute_io_buff.get() +
+                                                  numPixels + abSize);
+                } else {
+                    // No confidence allocated - point to a safe dummy location or keep original
+                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                }
+            } else {
+                // No AB or confidence allocated - keep original pointers
+                m_tofiComputeContext->p_ab_frame = tempAbFrame;
+                m_tofiComputeContext->p_conf_frame = tempConfFrame;
+            }
 #ifdef DUAL
-            // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
-            // The frame data will come as deinterleaved when only depth frame is requested.
-            // it means numPixels * 2 should be equal to allocate m_tofiBuffersize.
-            if (m_currentModeNumber == 0 || m_currentModeNumber == 1 ||
-                ((numPixels * 2) == m_tofiBufferSize)) {
+            // For dual pulsatrix mode 1 and 0, data comes deinterleaved from ISP
+            // Copy only the frames that are actually allocated based on m_tofiBufferSize
+            // Buffer layout: [depth: numPixels uint16_t | AB: varies | conf: varies]
+            if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
+                // Always copy depth frame
                 memcpy(m_tofiComputeContext->p_depth_frame,
                        process_frame.data.get(), numPixels * 2);
 
-                memcpy(m_tofiComputeContext->p_ab_frame,
-                       process_frame.data.get() + numPixels * 2, numPixels * 2);
-                memcpy(m_tofiComputeContext->p_conf_frame,
-                       process_frame.data.get() + numPixels * 4, numPixels * 4);
+                // Calculate actual sizes based on m_tofiBufferSize
+                // m_tofiBufferSize is in uint16_t units: depth + AB + conf
+                uint32_t remainingSize =
+                    m_tofiBufferSize -
+                    static_cast<uint32_t>(numPixels); // After depth
+
+                // Copy AB frame if allocated (remainingSize > 0)
+                if (remainingSize > 0) {
+                    uint32_t abCopySize =
+                        std::min(remainingSize,
+                                 static_cast<uint32_t>(
+                                     numPixels)); // AB is at most numPixels
+                    memcpy(m_tofiComputeContext->p_ab_frame,
+                           process_frame.data.get() + numPixels * 2,
+                           abCopySize * 2);
+                    remainingSize -= abCopySize;
+                }
+
+                // Copy confidence frame if allocated (remainingSize > 0 after AB)
+                // Confidence is numPixels*2 uint16_t (same as numPixels float)
+                if (remainingSize > 0) {
+                    uint32_t confCopySize =
+                        std::min(remainingSize,
+                                 static_cast<uint32_t>(numPixels * 2)) *
+                        2; // In bytes
+                    memcpy(m_tofiComputeContext->p_conf_frame,
+                           process_frame.data.get() + numPixels * 4,
+                           confCopySize);
+                }
             } else {
-                uint32_t ret = TofiCompute(
-                    reinterpret_cast<uint16_t *>(process_frame.data.get()),
-                    m_tofiComputeContext, NULL);
-                if (ret != ADI_TOFI_SUCCESS) {
-                    LOG(ERROR) << "processThread: TofiCompute failed";
-                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                    m_v4l2_input_buffer_Q.push(process_frame.data);
-                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
-                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
-                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
-                    continue;
+                // If only depth (no deinterleaving needed), just copy
+                // m_tofiBufferSize tells us what's allocated: depth + AB + conf sizes
+
+                bool needsTofiCompute = true;
+                uint32_t allocatedAfterDepth =
+                    m_tofiBufferSize - static_cast<uint32_t>(numPixels);
+
+                // Case 1: Only depth (0 AB, 0 Conf) - direct copy
+                if (allocatedAfterDepth == 0) {
+                    memcpy(m_tofiComputeContext->p_depth_frame,
+                           process_frame.data.get(), numPixels * 2);
+                    needsTofiCompute = false;
+                }
+
+                // For other combinations, use TofiCompute
+                if (needsTofiCompute) {
+                    uint32_t ret = TofiCompute(
+                        reinterpret_cast<uint16_t *>(process_frame.data.get()),
+                        m_tofiComputeContext, NULL);
+                    if (ret != ADI_TOFI_SUCCESS) {
+                        LOG(ERROR) << "processThread: TofiCompute failed";
+                        m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                        m_v4l2_input_buffer_Q.push(process_frame.data);
+                        m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+                        m_tofiComputeContext->p_ab_frame = tempAbFrame;
+                        m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                        continue;
+                    }
                 }
             }
 #else
@@ -571,8 +654,9 @@ void BufferProcessor::processThread() {
         }
 
         if (m_state == ST_RECORD) {
-            aditof::Status writeStatus = writeFrame(
-                (uint8_t *)tofi_compute_io_buff.get(), m_tofiBufferSize);
+            aditof::Status writeStatus =
+                writeFrame((uint8_t *)tofi_compute_io_buff.get(),
+                           m_tofiBufferSize * sizeof(uint16_t));
             if (writeStatus != aditof::Status::OK) {
                 LOG(ERROR)
                     << "Failed to write processed frame during recording";
@@ -611,16 +695,15 @@ void BufferProcessor::processThread() {
  */
 aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     Tofi_v4l2_buffer tof_processed_frame;
-    const std::chrono::milliseconds m_retryDelay(10);
 
-    // Loop for maxTries attempts. 'attempt' counts from 0 to m_maxTries - 1.
-    for (int attempt = 0; attempt < m_maxTries; ++attempt) {
+    // Loop for MAX_RETRIES attempts. 'attempt' counts from 0 to MAX_RETRIES - 1.
+    for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
         if (m_process_done_Q.pop(tof_processed_frame)) {
             if (buffer && tof_processed_frame.tofiBuffer &&
                 tof_processed_frame.size > 0) {
 
                 memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
-                       tof_processed_frame.size);
+                       tof_processed_frame.size * sizeof(uint16_t));
 
                 // Return buffers to their respective pools
                 m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
@@ -635,26 +718,25 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                 return aditof::Status::GENERIC_ERROR;
             }
         } else {
-            if (attempt < m_maxTries - 1) {
+            if (attempt < MAX_RETRIES - 1) {
                 // If it's not the last attempt, wait and then the loop will try again.
-                LOG(INFO) << "processBuffer: Pop failed on attempt #"
-                          << (attempt + 1) << ". Retrying in "
-                          << m_retryDelay.count() << "ms...\n";
-                std::this_thread::sleep_for(m_retryDelay);
-            } else {
-                // This was the last attempt (m_maxTries - 1 index) and it failed.
                 LOG(WARNING)
-                    << "processBuffer: Failed to pop frame after " << m_maxTries
-                    << " attempts. "
-                    << "m_process_done_Q size: " << m_process_done_Q.size()
-                    << "\n";
+                    << "processBuffer: Pop failed on attempt #" << (attempt + 1)
+                    << ". Retrying in " << RETRY_DELAY.count() << "ms...\n";
+                std::this_thread::sleep_for(RETRY_DELAY);
+            } else {
+                // This was the last attempt (MAX_RETRIES - 1 index) and it failed.
+                LOG(ERROR) << "processBuffer: Failed to pop frame after "
+                           << MAX_RETRIES << " attempts. "
+                           << "m_process_done_Q size: "
+                           << m_process_done_Q.size() << "\n";
                 return aditof::Status::
                     GENERIC_ERROR; // Indicate final failure to the caller
             }
         }
     }
 
-    // This line should technically not be reached if m_maxTries > 0,
+    // This line should technically not be reached if MAX_RETRIES > 0,
     // as the loop will either return OK or GENERIC_ERROR.
     // Included as a safeguard.
     return aditof::Status::GENERIC_ERROR;
@@ -671,8 +753,9 @@ aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
     FD_ZERO(&fds);
     FD_SET(dev->fd, &fds);
 
-    tv.tv_sec = stopThreadsFlag ? 0 : 20;
-    //tv.tv_sec = 20;
+    tv.tv_sec = stopThreadsFlag.load(std::memory_order_acquire)
+                    ? 0
+                    : SELECT_TIMEOUT_SEC;
     tv.tv_usec = 0;
 
     r = select(dev->fd + 1, &fds, NULL, NULL, &tv);
@@ -777,50 +860,35 @@ aditof::Status BufferProcessor::enqueueInternalBuffer(struct v4l2_buffer &buf) {
     return enqueueInternalBufferPrivate(buf);
 }
 
-TofiConfig *BufferProcessor::getTofiCongfig() { return m_tofiConfig; }
+TofiConfig *BufferProcessor::getTofiCongfig() const { return m_tofiConfig; }
 
-aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled) {
+aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled) const {
     enabled = depthComputeOpenSourceEnabled;
     return aditof::Status::OK;
 }
 
 void BufferProcessor::startThreads() {
-    stopThreadsFlag = false;
+    stopThreadsFlag.store(false, std::memory_order_release);
     streamRunning = true;
 
     LOG(INFO) << __func__ << ": Starting Threads..";
     m_captureThread = std::thread(&BufferProcessor::captureFrameThread, this);
     m_processingThread = std::thread(&BufferProcessor::processThread, this);
     sched_param param;
-    param.sched_priority = 20;
+    param.sched_priority = THREAD_PRIORITY;
     pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO,
                           &param);
 }
 
 void BufferProcessor::stopThreads() {
-    stopThreadsFlag = true;
+    // Signal threads to stop
+    stopThreadsFlag.store(true, std::memory_order_release);
     streamRunning = false;
 
     stopRecording();
 
-    // Flush all remaining frames from capture-to-process queue
-    Tofi_v4l2_buffer frame;
-    while (m_capture_to_process_Q.pop(frame)) {
-        if (frame.data)
-            m_v4l2_input_buffer_Q.push(frame.data);
-        if (frame.tofiBuffer)
-            m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
-    }
-
-    // Flush all remaining frames from process-done queue
-    while (m_process_done_Q.pop(frame)) {
-        if (frame.data)
-            m_v4l2_input_buffer_Q.push(frame.data);
-        if (frame.tofiBuffer)
-            m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
-    }
-
-    // Join threads if running
+    // Join threads FIRST - wait for them to fully exit before touching any buffers
+    // This prevents race conditions where threads access buffers during cleanup
     if (m_captureThread.joinable()) {
         m_captureThread.join();
     }
@@ -828,24 +896,37 @@ void BufferProcessor::stopThreads() {
         m_processingThread.join();
     }
 
-    // Optionally reset thread objects
+    // Reset thread objects
     m_captureThread = std::thread();
     m_processingThread = std::thread();
 
-    size_t rawFreed = 0, tofiFreed = 0;
-    std::shared_ptr<uint8_t> inputBuf;
-    while (m_v4l2_input_buffer_Q.pop(inputBuf)) {
-        ++rawFreed;
+    // Now that threads are stopped, flush remaining frames from intermediate queues
+    // Return buffers to their pools for potential reuse
+    {
+        Tofi_v4l2_buffer frame;
+        while (m_capture_to_process_Q.pop(frame)) {
+            if (frame.data)
+                m_v4l2_input_buffer_Q.push(frame.data);
+            if (frame.tofiBuffer)
+                m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
+        }
     }
 
-    std::shared_ptr<uint16_t> tofiBuf;
-    while (m_tofi_io_Buffer_Q.pop(tofiBuf)) {
-        ++tofiFreed;
+    {
+        Tofi_v4l2_buffer frame;
+        while (m_process_done_Q.pop(frame)) {
+            if (frame.data)
+                m_v4l2_input_buffer_Q.push(frame.data);
+            if (frame.tofiBuffer)
+                m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
+        }
     }
 
-    LOG(INFO) << __func__
-              << ": Threads Stopped. Raw buffers freed: " << rawFreed
-              << ", ToFi buffers freed: " << tofiFreed;
+    LOG(INFO) << __func__ << ": Threads stopped successfully. Queue sizes - "
+              << "v4l2_input: " << m_v4l2_input_buffer_Q.size()
+              << ", capture_to_process: " << m_capture_to_process_Q.size()
+              << ", tofi_io: " << m_tofi_io_Buffer_Q.size()
+              << ", process_done: " << m_process_done_Q.size();
 }
 
 #pragma region Stream_Recording_and_Playback

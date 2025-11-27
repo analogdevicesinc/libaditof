@@ -147,8 +147,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
                                           uint16_t calDataLength, uint16_t mode,
                                           bool ispEnabled);
     aditof::Status processBuffer(uint16_t *buffer);
-    TofiConfig *getTofiCongfig();
-    aditof::Status getDepthComputeVersion(uint8_t &enabled);
+    TofiConfig *getTofiCongfig() const;
+    aditof::Status getDepthComputeVersion(uint8_t &enabled) const;
 
     void startThreads();
     void stopThreads();
