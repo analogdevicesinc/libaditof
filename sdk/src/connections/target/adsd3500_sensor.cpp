@@ -166,12 +166,12 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
                                const std::string &driverSubPath,
                                const std::string &captureDev)
-    : m_driverPath(driverPath), m_driverSubPath(driverSubPath),
+    : m_hostConnectionType(aditof::ConnectionType::ON_TARGET),
+      m_driverPath(driverPath), m_driverSubPath(driverSubPath),
       m_captureDev(captureDev), m_implData(new Adsd3500Sensor::ImplData),
       m_firstRun(true), m_adsd3500Queried(false), m_depthComputeOnTarget(true),
       m_chipStatus(0), m_imagerStatus(0), isOpen(0), first_reset(false),
-      bitsInAB(0), bitsInConf(0),
-      m_hostConnectionType(aditof::ConnectionType::ON_TARGET) {
+      bitsInAB(0), bitsInConf(0) {
     m_sensorName = "adsd3500";
     m_interruptAvailable = false;
     m_sensorDetails.connectionType = aditof::ConnectionType::ON_TARGET;
@@ -2050,7 +2050,7 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
     bitsInConf.resize(m_availableModes.size());
 
     // Allocate the frames based on bits combination selected to capture frames
-    for (int i = 0; i < m_availableModes.size(); ++i) {
+    for (size_t i = 0; i < m_availableModes.size(); ++i) {
         iniFileStruct iniFile = m_iniFileStructList[i];
         auto &modeDetails = m_availableModes[i];
         std::string value;
