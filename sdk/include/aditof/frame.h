@@ -82,9 +82,13 @@ class Frame {
     /**
      * @brief Configures the frame with the given details
      * @param details
+     * @param Bits Per Pixel in Confidence
+     * @param Bits Per Pixel in AB
      * @return Status
      */
-    SDK_API Status setDetails(const FrameDetails &details);
+    SDK_API Status setDetails(const FrameDetails &details,
+                              const uint8_t &m_bitsInConf,
+                              const uint8_t &m_bitsInAB);
 
     /**
      * @brief Gets the current details of the frame

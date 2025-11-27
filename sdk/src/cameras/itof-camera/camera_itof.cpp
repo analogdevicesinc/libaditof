@@ -928,7 +928,8 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     frame->getDetails(frameDetails);
 
     if (m_details.frameType != frameDetails) {
-        frame->setDetails(m_details.frameType);
+        frame->setDetails(m_details.frameType, m_confBitsPerPixel,
+                          m_abBitsPerPixel);
     }
 
     uint16_t *frameDataLocation = nullptr;

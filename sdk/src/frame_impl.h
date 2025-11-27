@@ -40,6 +40,9 @@
 #include <stdint.h>
 #include <vector>
 
+#define MAX_BITSINAB 16
+#define MAX_BITSINCONF 8
+
 class FrameImpl {
   public:
     FrameImpl();
@@ -49,7 +52,9 @@ class FrameImpl {
     ~FrameImpl();
 
   public: // from TofFrame
-    aditof::Status setDetails(const aditof::FrameDetails &details);
+    aditof::Status setDetails(const aditof::FrameDetails &details,
+                              const uint8_t &m_bitsInConf,
+                              const uint8_t &m_bitsInAB);
     aditof::Status getDetails(aditof::FrameDetails &details) const;
     aditof::Status getDataDetails(const std::string &dataType,
                                   aditof::FrameDataDetails &details) const;
@@ -58,7 +63,8 @@ class FrameImpl {
     bool haveDataType(const std::string &dataType);
 
   private:
-    void allocFrameData(const aditof::FrameDetails &details);
+    void allocFrameData(const aditof::FrameDetails &details,
+                        const uint8_t &m_bitsInConf, const uint8_t &m_bitsInAB);
 
   private:
     struct ImplData;

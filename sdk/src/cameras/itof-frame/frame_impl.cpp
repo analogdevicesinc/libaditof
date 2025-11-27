@@ -57,7 +57,9 @@ FrameImpl::FrameImpl() : m_implData(std::make_unique<FrameImpl::ImplData>()){};
 FrameImpl::~FrameImpl() = default;
 
 FrameImpl::FrameImpl(const FrameImpl &op) {
-    allocFrameData(op.m_details);
+    allocFrameData(
+        op.m_details, (uint8_t)MAX_BITSINCONF,
+        (uint8_t)MAX_BITSINAB); // allocate the frame with maximum buffer size
     memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
            m_implData->allDataNbBytes);
     m_details = op.m_details;
@@ -65,7 +67,10 @@ FrameImpl::FrameImpl(const FrameImpl &op) {
 
 FrameImpl &FrameImpl::operator=(const FrameImpl &op) {
     if (this != &op) {
-        allocFrameData(op.m_details);
+        allocFrameData(
+            op.m_details, (uint8_t)MAX_BITSINCONF,
+            (uint8_t)
+                MAX_BITSINAB); // allocate the frame with maximum buffer size
         memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
                m_implData->allDataNbBytes);
         m_details = op.m_details;
@@ -74,7 +79,9 @@ FrameImpl &FrameImpl::operator=(const FrameImpl &op) {
     return *this;
 }
 
-aditof::Status FrameImpl::setDetails(const aditof::FrameDetails &details) {
+aditof::Status FrameImpl::setDetails(const aditof::FrameDetails &details,
+                                     const uint8_t &m_bitsInConf,
+                                     const uint8_t &m_bitsInAB) {
     using namespace aditof;
     Status status = Status::OK;
 
@@ -83,7 +90,7 @@ aditof::Status FrameImpl::setDetails(const aditof::FrameDetails &details) {
         return status;
     }
 
-    allocFrameData(details);
+    allocFrameData(details, m_bitsInConf, m_bitsInAB);
     m_details = details;
 
     return status;
@@ -120,8 +127,7 @@ aditof::Status FrameImpl::getData(const std::string &dataType,
         *dataPtr = m_implData->m_dataLocations[dataType];
     } else {
         dataPtr = nullptr;
-        if (dataType !=
-            "metadata") // TO DO: Silence this for now, handle it later
+        if (dataType != "metadata")
             LOG(ERROR) << dataType << " is not supported by this frame!";
         return Status::INVALID_ARGUMENT;
     }
@@ -153,45 +159,45 @@ FrameImpl::getFrameDetailByName(const aditof::FrameDetails &details,
     return *frame_detail;
 }
 
-void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
+void FrameImpl::allocFrameData(const aditof::FrameDetails &details,
+                               const uint8_t &m_bitsInConf,
+                               const uint8_t &m_bitsInAB) {
     using namespace aditof;
     unsigned long int totalSize = 0;
     unsigned long int pos = 0;
     uint16_t embed_hdr_length = skMetaDataBytesCount;
     uint8_t total_captures = 0;
 
-    auto getSubframeSize = [embed_hdr_length,
-                            total_captures](FrameDataDetails frameDetail) {
+    auto getSubframeSize = [embed_hdr_length, total_captures,
+                            m_bitsInAB](FrameDataDetails frameDetail) {
         if (frameDetail.type == "metadata") {
             unsigned long int sz =
                 (unsigned long int)(embed_hdr_length / sizeof(uint16_t));
-            //LOG(INFO) << "metadata: " << sz * sizeof(uint16_t) << " bytes";
             return sz;
         } else if (frameDetail.type == "xyz") {
             unsigned long int sz =
                 (unsigned long int)(frameDetail.height * frameDetail.width * 3);
-            //LOG(INFO) << "XYZ: " << sz * sizeof(uint16_t) << " bytes";
             return sz;
         } else if (frameDetail.type == "conf") {
             unsigned long int sz =
                 (unsigned long int)(frameDetail.height * frameDetail.width *
                                     sizeof(float) / sizeof(uint16_t));
-            //LOG(INFO) << "Conf: " << sz * sizeof(uint16_t) << " bytes";
+            return sz;
+        } else if (frameDetail.type == "ab") {
+            unsigned long int sz =
+                (unsigned long int)(frameDetail.height * frameDetail.width *
+                                    m_bitsInAB / MAX_BITSINAB);
             return sz;
         } else {
             unsigned long int sz =
                 (unsigned long int)(frameDetail.height * frameDetail.width);
-            //LOG(INFO) << "Other: " << sz * sizeof(uint16_t) << " bytes";
             return sz;
         }
     };
 
-    //compute total size TODO this could be precomputed TBD @dNechita
     for (FrameDataDetails frameDetail : details.dataDetails) {
         totalSize += getSubframeSize(frameDetail);
     }
-
-    //LOG(INFO) << "Allocating frame data of total size: " << totalSize * sizeof(uint16_t) << " bytes";
 
     //store pointers to the contents described by FrameDetails
     m_implData->m_allData = std::shared_ptr<uint16_t[]>(
@@ -201,7 +207,6 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
         } // Custom deleter to ensure correct deallocation
     );
 
-    //TODO wouldn`t it be safer to store relative position to .get() instead of absolute address ? TBD @dNechita
     m_implData->m_dataLocations.emplace(
         "frameData", m_implData->m_allData.get()); //frame data
     for (FrameDataDetails frameDetail : details.dataDetails) {

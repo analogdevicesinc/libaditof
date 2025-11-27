@@ -54,8 +54,10 @@ Frame &Frame::operator=(const Frame &op) {
     return *this;
 }
 
-Status Frame::setDetails(const FrameDetails &details) {
-    return m_impl->setDetails(details);
+Status Frame::setDetails(const FrameDetails &details,
+                         const uint8_t &m_bitsInConf,
+                         const uint8_t &m_bitsInAB) {
+    return m_impl->setDetails(details, m_bitsInConf, m_bitsInAB);
 }
 
 Status Frame::getDetails(FrameDetails &details) const {
