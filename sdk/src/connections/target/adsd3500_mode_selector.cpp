@@ -144,17 +144,10 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
     int depth_i = std::stoi(m_controls["depthBits"]);
     int ab_i = std::stoi(m_controls["abBits"]);
     int conf_i = std::stoi(m_controls["confBits"]);
-    std::vector<int> depth_v = {16, 14, 12, 10, 8, 0};
-    std::vector<int> ab_v = {16, 14, 12, 10, 8, 0};
-    std::vector<int> conf_v = {8, 4, 0};
 
-    if (std::find(depth_v.begin(), depth_v.end(), depth_i) == depth_v.end()) {
-        return aditof::Status::INVALID_ARGUMENT;
-    }
-    if (std::find(ab_v.begin(), ab_v.end(), ab_i) == ab_v.end()) {
-        return aditof::Status::INVALID_ARGUMENT;
-    }
-    if (std::find(conf_v.begin(), conf_v.end(), conf_i) == conf_v.end()) {
+    std::string key = make_key(depth_i, conf_i, ab_i);
+    if (m_bitsPerPixelTable.find(key) == m_bitsPerPixelTable.end()) {
+        LOG(ERROR) << "Invalid bits combination";
         return aditof::Status::INVALID_ARGUMENT;
     }
 
@@ -266,4 +259,18 @@ aditof::Status Adsd3500ModeSelector::getControl(const std::string &control,
     value = m_controls[control];
 
     return status;
+}
+
+std::string Adsd3500ModeSelector::make_key(int &depthbits, int &confbits,
+                                           int &ABbits) {
+    return std::to_string(depthbits) + "_" + std::to_string(confbits) + "_" +
+           std::to_string(ABbits);
+}
+
+aditof::Status Adsd3500ModeSelector::init_bitsPerPixelTable() {
+    for (auto row : m_validbitsperpixel) {
+        m_bitsPerPixelTable[make_key(row.depth_bits, row.conf_bits,
+                                     row.ab_bits)] = true;
+    }
+    return aditof::Status::OK;
 }

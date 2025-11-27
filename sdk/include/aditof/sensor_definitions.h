@@ -61,6 +61,16 @@ struct SensorDetails {
 };
 
 /**
+ * @struct BitsConfiguration
+ * @brief describes the bits configuration for depth, AB and conf
+ */
+struct BitsConfiguration {
+    int depth_bits;
+    int conf_bits;
+    int ab_bits;
+};
+
+/**
  * @struct DriverConfiguration
  * @brief Describes the configuration of the used driver
  */
