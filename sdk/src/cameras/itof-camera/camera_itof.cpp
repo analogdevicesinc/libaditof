@@ -2424,7 +2424,7 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
 
 aditof::Status CameraItof::setframeContent(const uint8_t value) {
     aditof::Status status = aditof::Status::OK;
-    if (value > 4 || value < 0) {
+    if (value > 3 || value < 0) {
         status = aditof::Status::INVALID_ARGUMENT;
         return status;
     }
