@@ -972,15 +972,6 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                                (int16_t *)xyzFrame,
                                m_modeDetailsCache.baseResolutionHeight,
                                m_modeDetailsCache.baseResolutionWidth);
-    } else {
-        uint16_t *xyzFrame;
-
-        frame->getData("xyz", &xyzFrame);
-
-        memset(xyzFrame, 0,
-               m_modeDetailsCache.baseResolutionHeight *
-                   m_modeDetailsCache.baseResolutionWidth * 3 *
-                   sizeof(uint16_t));
     }
 
     if (!m_depthEnabled) {

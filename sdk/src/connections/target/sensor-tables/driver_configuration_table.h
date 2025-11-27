@@ -64,8 +64,9 @@ const std::vector<DriverConfiguration> m_adsd3500standard = {
     {"1024", "1024", "3", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
     {"1024", "1024", "2", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
     {"1024", "1024", "2", "16", "0", "0", "mipiRaw12_8", 1024, 4096, 0},
-    {"1024", "1024", "2", "16", "0", "0", "mipiRaw12_8", 1024, 4096, 0}};
+};
 
+// All supported valid bitsPerPixel combination : {bitsInDepth, bitsInConf, bitsInAB}
 const std::vector<BitsConfiguration> m_validbitsperpixel = {
     /*depth confidence AB*/
     {16, 8, 16}, {16, 8, 8},  {12, 4, 16}, {12, 4, 8}, {16, 8, 0},
@@ -74,17 +75,7 @@ const std::vector<BitsConfiguration> m_validbitsperpixel = {
 const std::vector<DepthSensorModeDetails> adsd3100_standardModes = {
     {0, {}, 2, 0, 0, 0, 1024, 1024, 128, 0, DriverConfiguration()},
     {1, {}, 3, 0, 0, 0, 1024, 1024, 128, 0, DriverConfiguration()},
-    {4,
-     {"ab", "metadata"},
-     1,
-     0,
-     0,
-     0,
-     1024,
-     1024,
-     128,
-     1,
-     DriverConfiguration()},
+    {4, {}, 1, 0, 0, 0, 1024, 1024, 128, 1, DriverConfiguration()},
     {2, {}, 2, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()},
     {3, {}, 3, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()},
     {6, {}, 2, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()},
@@ -93,17 +84,7 @@ const std::vector<DepthSensorModeDetails> adsd3100_standardModes = {
 const std::vector<DepthSensorModeDetails> adsd3030_standardModes = {
     {0, {}, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
     {1, {}, 3, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
-    {4,
-     {"ab", "metadata"},
-     1,
-     0,
-     0,
-     0,
-     512,
-     640,
-     128,
-     1,
-     DriverConfiguration()},
+    {4, {}, 1, 0, 0, 0, 512, 640, 128, 1, DriverConfiguration()},
     {2, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
     {3, {}, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
     {6, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
@@ -112,17 +93,7 @@ const std::vector<DepthSensorModeDetails> adsd3030_standardModes = {
 const std::vector<DepthSensorModeDetails> adtf3080_standardModes = {
     {0, {}, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
     {1, {}, 3, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
-    {4,
-     {"ab", "metadata"},
-     1,
-     0,
-     0,
-     0,
-     512,
-     640,
-     128,
-     1,
-     DriverConfiguration()},
+    {4, {}, 1, 0, 0, 0, 512, 640, 128, 1, DriverConfiguration()},
     {7, {}, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
     {3, {}, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
     {6, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
