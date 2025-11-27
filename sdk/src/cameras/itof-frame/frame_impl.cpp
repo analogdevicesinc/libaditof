@@ -188,7 +188,6 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
 
     //compute total size TODO this could be precomputed TBD @dNechita
     for (FrameDataDetails frameDetail : details.dataDetails) {
-        LOG(INFO) << "Frame type : " << frameDetail.type;
         totalSize += getSubframeSize(frameDetail);
     }
 
