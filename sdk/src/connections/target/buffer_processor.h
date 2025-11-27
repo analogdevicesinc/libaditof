@@ -139,7 +139,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status setInputDevice(VideoDev *inputVideoDev);
     aditof::Status setVideoProperties(int frameWidth, int frameHeight,
                                       int WidthInBytes, int HeightInBytes,
-                                      int modeNumber);
+                                      int modeNumber, uint8_t bitsInAB,
+                                      uint8_t bitsInConf);
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
@@ -151,8 +152,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     void startThreads();
     void stopThreads();
-    static int getTimeoutDelay() {
-        return TIME_OUT_DELAY; }
+    static int getTimeoutDelay() { return TIME_OUT_DELAY; }
 
   public:
     virtual aditof::Status waitForBuffer() override;
@@ -179,6 +179,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     void captureFrameThread();
     void processThread();
+    void calculateFrameSize(uint8_t &bitsInAB, uint8_t &bitsInConf);
 
   private:
     bool m_vidPropSet;
