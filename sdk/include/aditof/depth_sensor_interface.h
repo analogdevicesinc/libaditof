@@ -116,9 +116,11 @@ class DepthSensorInterface {
      * @param buffer - a valid location where the new frame should be stored.
      * The size of the frame is known (cached) internally and gets updated each
      * time setMode() is called.
+     * @param frameContent reqested by user
      * @return Status
      */
-    virtual aditof::Status getFrame(uint16_t *buffer, uint32_t index = 0) = 0;
+    virtual aditof::Status getFrame(uint16_t *buffer,
+                                    const uint8_t &frameContent) = 0;
 
     /**
      * @brief Send a read command to adsd3500.
