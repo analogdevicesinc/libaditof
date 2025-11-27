@@ -2043,6 +2043,29 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
         return status;
     }
 
+    // Allocate the frames based on bits combination selected to capture frames
+    for (int i = 0; i < m_iniFileStructList.size(); ++i) {
+        iniFileStruct iniFile = m_iniFileStructList[i];
+        auto& mode = m_availableModes[i];
+        if ((iniFile.iniKeyValPairs["bitsAB"] == "0") &&
+            (iniFile.iniKeyValPairs["bitsconf"] == "0")) {
+            mode.frameContent.clear();
+            mode.frameContent = {"raw", "depth", "xyz", "metadata"};
+        } else if ((iniFile.iniKeyValPairs["bitsAB"] != "0") &&
+                   (iniFile.iniKeyValPairs["bitsconf"] == "0")) {
+            mode.frameContent.clear();
+            mode.frameContent = {"raw", "depth", "ab", "xyz", "metadata"};
+        } else if ((iniFile.iniKeyValPairs["bitsAB"] == "0") &&
+                   (iniFile.iniKeyValPairs["bitsconf"] != "0")) {
+            mode.frameContent.clear();
+            mode.frameContent = {"raw", "depth", "conf", "xyz", "metadata"};
+        } else {
+            mode.frameContent.clear();
+            mode.frameContent = {"raw",  "depth", "ab",
+                                 "conf", "xyz",   "metadata"};
+        }
+    }
+
     mergeIniParams(m_iniFileStructList);
 
     return status;

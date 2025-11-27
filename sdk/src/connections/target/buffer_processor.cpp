@@ -488,9 +488,6 @@ void BufferProcessor::processThread() {
             if (m_currentModeNumber == 0 ||
                 m_currentModeNumber ==
                     1) { // For dual pulsatrix mode 1 and 0 confidance frame is not enabled
-                LOG(INFO) << "processThread DUAL mode " << m_currentModeNumber
-                          << ": process_frame.size=" << process_frame.size
-                          << " numPixels=" << numPixels;
                 memcpy(m_tofiComputeContext->p_depth_frame,
                        process_frame.data.get(), numPixels * 2);
 
@@ -527,12 +524,6 @@ void BufferProcessor::processThread() {
                 continue;
             }
 #endif
-            // auto processEnd = std::chrono::high_resolution_clock::now();
-            // std::chrono::duration<double, std::milli> processTime =
-            //     processEnd - processStart;
-            // totalProcessTime += static_cast<long long>(processTime.count());
-            // totalProcessedFrame++;
-
             m_tofiComputeContext->p_depth_frame = tempDepthFrame;
             m_tofiComputeContext->p_ab_frame = tempAbFrame;
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
