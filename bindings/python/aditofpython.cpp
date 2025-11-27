@@ -642,7 +642,8 @@ PYBIND11_MODULE(aditofpython, m) {
     // Frame
     py::class_<aditof::Frame>(m, "Frame")
         .def(py::init<>())
-        .def("setDetails", &aditof::Frame::setDetails, py::arg("details"))
+        .def("setDetails", &aditof::Frame::setDetails, py::arg("details"),
+             py::arg("bitsInConf"), py::arg("bitsInAB"))
         .def("getDetails", &aditof::Frame::getDetails, py::arg("details"))
         .def("getDataDetails", &aditof::Frame::getDataDetails,
              py::arg("dataType"), py::arg("dataDetails"))
