@@ -266,7 +266,8 @@ Status FrameHandlerImpl::readNextFrame(aditof::Frame &frame,
         m_frDetails.dataDetails.emplace_back(frDataDetails);
     }
 
-    status = frame.setDetails(m_frDetails);
+    status = frame.setDetails(m_frDetails, m_metadataStruct.bitsInConfidence,
+                              m_metadataStruct.bitsInAb);
     if (status != aditof::Status::OK) {
         LOG(ERROR) << "Failed to set frame details.";
         return status;
