@@ -266,8 +266,8 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
                                          uint8_t &bitsInConf) {
 
     /* | Depth Frame ( W * H (type: uint16_t)) |   */
-    /* | AB Frame ( W * H (type: uint16_t)) | or
-    /* | AB Frame ( W * H (type: uint8_t)) |           */
+    /* | AB Frame ( W * H (type: uint16_t)) | or     */
+    /* | AB Frame ( W * H (type: uint8_t)) |         */
     /* | Confidance Frame ( W * H * 2 (type: float)) | */
 
     uint32_t depthSize = m_outputFrameWidth * m_outputFrameHeight;

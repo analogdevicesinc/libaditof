@@ -72,13 +72,13 @@ CameraItof::CameraItof(
     const std::string &ubootVersion, const std::string &kernelVersion,
     const std::string &sdCardImageVersion, const std::string &netLinkTest)
     : m_depthSensor(depthSensor), m_devStarted(false), m_devStreaming(false),
-      m_adsd3500Enabled(false), m_xyzEnabled(true), m_xyzSetViaApi(false),
-      m_cameraFps(0), m_fsyncMode(-1), m_mipiOutputSpeed(1),
-      m_isdeskewEnabled(1), m_enableTempCompenstation(-1),
+      m_adsd3500Enabled(false), m_isOffline(false), m_xyzEnabled(true),
+      m_xyzSetViaApi(false), m_cameraFps(0), m_fsyncMode(-1),
+      m_mipiOutputSpeed(1), m_isdeskewEnabled(1), m_enableTempCompenstation(-1),
       m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
-      m_dropFrameOnce(true), m_isOffline(false) {
+      m_dropFrameOnce(true) {
 
     FloatToLinGenerateTable();
     memset(&m_xyzTable, 0, sizeof(m_xyzTable));
