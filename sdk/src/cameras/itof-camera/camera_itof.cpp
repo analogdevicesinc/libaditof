@@ -78,7 +78,7 @@ CameraItof::CameraItof(
       m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
-      m_dropFrameOnce(true) {
+      m_dropFrameOnce(true), m_isOffline(false) {
 
     FloatToLinGenerateTable();
     memset(&m_xyzTable, 0, sizeof(m_xyzTable));
@@ -2419,6 +2419,16 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
         LOG(INFO) << "Camera FPS set from parameter list at: " << m_cameraFps;
     }
 
+    return status;
+}
+
+aditof::Status CameraItof::setframeContent(const uint8_t value) {
+    aditof::Status status = aditof::Status::OK;
+    if (value > 4 || value < 0) {
+        status = aditof::Status::INVALID_ARGUMENT;
+        return status;
+    }
+    m_frameContent = value;
     return status;
 }
 
