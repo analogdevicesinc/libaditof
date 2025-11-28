@@ -40,6 +40,10 @@
 #include <chrono>
 #include <unordered_map>
 
+#ifdef HAS_NETWORK_COMPRESSION_LZ4
+#include "lz4.h"
+#endif //HAS_NETWORK_COMPRESSION_LZ4
+
 struct CalibrationData {
     std::string mode;
     float gain;
@@ -664,6 +668,57 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
     return status;
 }
 
+static inline std::vector<char> decompress_buffer(const void* compressedBuffer,
+    size_t compressedSize,
+    size_t expectedDecompressedSize)
+{
+    if (compressedBuffer == nullptr && compressedSize != 0) {
+        throw std::invalid_argument("compressedBuffer is null but compressedSize > 0");
+    }
+
+    // Fast path: both zero -> empty result
+    if (compressedSize == 0 && expectedDecompressedSize == 0) {
+        return {};
+    }
+
+    // LZ4 C API uses int for sizes; ensure sizes fit
+    if (compressedSize > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        throw std::overflow_error("compressedSize too large for LZ4 API");
+    }
+    if (expectedDecompressedSize > static_cast<size_t>(std::numeric_limits<int>::max())) {
+        throw std::overflow_error("expectedDecompressedSize too large for LZ4 API");
+    }
+
+    int cSize = static_cast<int>(compressedSize);
+    int dSize = static_cast<int>(expectedDecompressedSize);
+
+    // Allocate output buffer sized to expected decompressed size
+    std::vector<char> out;
+    try {
+        out.resize(static_cast<size_t>(dSize));
+    }
+    catch (const std::bad_alloc&) {
+        throw std::runtime_error("failed to allocate output buffer for decompression");
+    }
+
+    // Perform decompression
+    int decompressed = LZ4_decompress_safe(
+        static_cast<const char*>(compressedBuffer),
+        out.data(),
+        cSize,
+        dSize
+    );
+
+    if (decompressed < 0) {
+        // negative return indicates an error (corrupted input, etc.)
+        throw std::runtime_error("LZ4_decompress_safe failed (corrupted input or bad sizes)");
+    }
+
+    // Resize to actual decompressed size (could be smaller than expected)
+    out.resize(static_cast<size_t>(decompressed));
+    return out;
+}
+
 aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     using namespace aditof;
 
@@ -671,10 +726,32 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
 #ifdef RECV_ASYNC
-    int ret = net->getFrame(buffer, frame_size);
-    if (ret == -1) {
+    int sz = net->getFrame(buffer, frame_size);
+
+#ifdef HAS_NETWORK_COMPRESSION_LZ4
+    if (sz <= 0) {
+		return Status::GENERIC_ERROR;
+    }
+
+    auto start = std::chrono::high_resolution_clock::now();
+    auto decompressed = decompress_buffer(buffer, sz, frame_size);
+
+    std::memcpy(buffer, decompressed.data(), decompressed.size());
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    if (duration > 0) {
+        LOG(WARNING) << "LZ4 decompression took " << duration << " milliseconds.";
+    }
+
+	LOG(INFO) << "Decompressed frame size: " << sz << " " << decompressed.size();
+      
+#endif //HAS_NETWORK_COMPRESSION_LZ4
+
+    if (sz == -1) {
         return Status::GENERIC_ERROR;
     } else {
+
         if (m_state == ST_RECORD) {
             writeFrame((uint8_t *)buffer, frame_size);
         }
