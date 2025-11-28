@@ -70,7 +70,7 @@ public:
     bool getFrame(AR0234Frame& frame, uint32_t timeoutMs = 1000) override;
     std::string getStatistics() const override;
 
-    // Legacy API (kept for backward compatibility - deprecated)
+    // Internal implementation methods (used by public interface)
     /**
      * @brief Initialize GStreamer library (call once per application)
      * @return Status
@@ -81,33 +81,20 @@ public:
      * @brief Create and configure the GStreamer pipeline
      * @param config Pipeline configuration
      * @return Status
-     * @deprecated Use initialize() with AR0234SensorConfig instead
      */
     Status createPipeline(const GStreamerConfig& config);
 
     /**
      * @brief Start the pipeline and begin capturing frames
      * @return Status
-     * @deprecated Use start() instead
      */
     Status startPipeline();
 
     /**
      * @brief Stop the pipeline
      * @return Status
-     * @deprecated Use stop() instead
      */
     Status stopPipeline();
-
-    /**
-     * @brief Get the latest captured frame (non-blocking)
-     * @param[out] buffer Buffer to copy frame data into
-     * @param[in,out] bufferSize Size of buffer (in), actual bytes copied (out)
-     * @param[out] timestamp Frame timestamp (optional)
-     * @return Status
-     * @deprecated Use getFrame() instead
-     */
-    Status getLatestFrame(uint8_t* buffer, size_t& bufferSize, uint64_t* timestamp = nullptr);
 
     /**
      * @brief Wait for and get the next frame (blocking with timeout)
@@ -116,33 +103,8 @@ public:
      * @param timeoutMs Timeout in milliseconds
      * @param[out] timestamp Frame timestamp (optional)
      * @return Status
-     * @deprecated Use getFrame() instead
      */
     Status waitForFrame(uint8_t* buffer, size_t& bufferSize, int timeoutMs = 2000, uint64_t* timestamp = nullptr);
-
-    /**
-     * @brief Get the configured frame width
-     * @return Frame width in pixels
-     */
-    int getWidth() const { return m_config.width; }
-
-    /**
-     * @brief Get the configured frame height
-     * @return Frame height in pixels
-     */
-    int getHeight() const { return m_config.height; }
-
-    /**
-     * @brief Get the configured framerate
-     * @return Framerate in fps
-     */
-    int getFramerate() const { return m_config.framerate; }
-
-    /**
-     * @brief Get total number of frames captured
-     * @return Frame count
-     */
-    uint64_t getFrameCount() const { return m_frameCount; }
 
 private:
     // GStreamer elements
