@@ -266,8 +266,7 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
                                          uint8_t &bitsInConf) {
 
     /* | Depth Frame ( W * H (type: uint16_t)) |   */
-    /* | AB Frame ( W * H (type: uint16_t)) | or     */
-    /* | AB Frame ( W * H (type: uint8_t)) |         */
+    /* | AB Frame ( W * H (type: uint16_t)) |    */
     /* | Confidance Frame ( W * H * 2 (type: float)) | */
 
     uint32_t depthSize = m_outputFrameWidth * m_outputFrameHeight;
@@ -278,22 +277,16 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     // for 0 bit configuration, it'll not contribute in framesize
     if ((bitsInAB != 0) && (bitsInConf == 0)) {
         // Conf bit is set to 0
-        if (bitsInAB == 8) {
-            abSize = m_outputFrameWidth * m_outputFrameHeight / 2;
-        } else {
-            abSize = m_outputFrameWidth * m_outputFrameHeight;
-        }
+        abSize = m_outputFrameWidth * m_outputFrameHeight;
+
     } else if ((bitsInAB == 0) && (bitsInConf != 0)) {
         // AB bit is set to 0
         confSize = m_outputFrameWidth * m_outputFrameHeight * 2;
     } else if ((bitsInAB == 0) && (bitsInConf == 0)) {
         // No need to add size
     } else {
-        if (bitsInAB == 8) {
-            abSize = m_outputFrameWidth * m_outputFrameHeight / 2;
-        } else {
-            abSize = m_outputFrameWidth * m_outputFrameHeight;
-        }
+
+        abSize = m_outputFrameWidth * m_outputFrameHeight;
         confSize = m_outputFrameWidth * m_outputFrameHeight * 2;
     }
 
@@ -569,27 +562,6 @@ void BufferProcessor::processThread() {
             // Copy only the frames that are actually allocated based on m_tofiBufferSize
             // Buffer layout: [depth: numPixels uint16_t | AB: varies | conf: varies]
             if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
-                // MP modes: Dynamic payload validation based on actual frame composition
-                // m_tofiBufferSize already accounts for depth + AB + conf based on bitsInAB/bitsInConf
-                size_t expectedPayloadSize =
-                    m_tofiBufferSize * 2; // Convert uint16_t units to bytes
-
-                if (process_frame.size < expectedPayloadSize) {
-                    LOG(ERROR)
-                        << "processThread: V4L2 payload size mismatch: got "
-                        << process_frame.size << ", expected "
-                        << expectedPayloadSize << " bytes for MP mode "
-                        << m_currentModeNumber
-                        << " (tofiBufferSize: " << m_tofiBufferSize
-                        << " uint16_t units)";
-                    // Return buffers to circulation and continue
-                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                    m_v4l2_input_buffer_Q.push(process_frame.data);
-                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
-                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
-                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
-                    continue;
-                }
 
                 // Always copy depth frame
                 memcpy(m_tofiComputeContext->p_depth_frame,
@@ -625,26 +597,6 @@ void BufferProcessor::processThread() {
                            confCopySize);
                 }
             } else {
-                // QMP modes (2-6): Dynamic payload validation based on actual frame composition
-                // m_tofiBufferSize already accounts for depth + AB + conf based on bitsInAB/bitsInConf
-                size_t expectedPayloadSize =
-                    m_tofiBufferSize * 2; // Convert uint16_t units to bytes
-                if (process_frame.size < expectedPayloadSize) {
-                    LOG(ERROR)
-                        << "processThread: V4L2 payload size mismatch: got "
-                        << process_frame.size << ", expected "
-                        << expectedPayloadSize << " bytes for QMP mode "
-                        << m_currentModeNumber
-                        << " (tofiBufferSize: " << m_tofiBufferSize
-                        << " uint16_t units)";
-                    // Return buffers to circulation and continue
-                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                    m_v4l2_input_buffer_Q.push(process_frame.data);
-                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
-                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
-                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
-                    continue;
-                }
 
                 // If only depth (no deinterleaving needed), just copy
                 // m_tofiBufferSize tells us what's allocated: depth + AB + conf sizes
