@@ -98,6 +98,63 @@ file(GLOB OFFLINE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/connections/offline/*.h
 )
 
+# RGB Camera sources (GStreamer-based - conditional)
+if(WITH_RGB_CAMERA)
+    # Only AR0234 sensor needed (interface and factory are now internal to ar0234_sensor)
+    set(RGB_CAMERA_COMMON_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/ar0234_sensor.cpp
+    )
+    set(RGB_CAMERA_COMMON_HEADERS
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/ar0234_sensor.h
+    )
+
+    # Backend-specific sources
+    set(RGB_CAMERA_SOURCES "")
+    set(RGB_CAMERA_HEADERS "")
+
+    # GStreamer backend (default)
+    if(NOT DEFINED RGB_CAMERA_BACKEND OR RGB_CAMERA_BACKEND STREQUAL "GSTREAMER")
+        set(RGB_CAMERA_BACKEND "GSTREAMER")
+        list(APPEND RGB_CAMERA_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/gstreamer_frame_grabber.cpp
+        )
+        list(APPEND RGB_CAMERA_HEADERS
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/gstreamer_frame_grabber.h
+        )
+        add_definitions(-DHAS_GSTREAMER_BACKEND)
+        message(STATUS "RGB Camera backend: GStreamer")
+    elseif(RGB_CAMERA_BACKEND STREQUAL "V4L2")
+        # Future V4L2 implementation
+        # list(APPEND RGB_CAMERA_SOURCES
+        #     ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/v4l2_frame_grabber.cpp
+        # )
+        # list(APPEND RGB_CAMERA_HEADERS
+        #     ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/v4l2_frame_grabber.h
+        # )
+        # add_definitions(-DHAS_V4L2_BACKEND)
+        message(WARNING "V4L2 backend not yet implemented, falling back to GStreamer")
+        set(RGB_CAMERA_BACKEND "GSTREAMER")
+    elseif(RGB_CAMERA_BACKEND STREQUAL "NVARGUS")
+        # Future nvargus implementation
+        # list(APPEND RGB_CAMERA_SOURCES
+        #     ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/nvargus_frame_grabber.cpp
+        # )
+        # list(APPEND RGB_CAMERA_HEADERS
+        #     ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/nvargus_frame_grabber.h
+        # )
+        # add_definitions(-DHAS_NVARGUS_BACKEND)
+        message(WARNING "NVARGUS backend not yet implemented, falling back to GStreamer")
+        set(RGB_CAMERA_BACKEND "GSTREAMER")
+    endif()
+
+    # Combine common and backend-specific sources
+    set(RGB_CAMERA_ALL_SOURCES ${RGB_CAMERA_COMMON_SOURCES} ${RGB_CAMERA_SOURCES})
+    set(RGB_CAMERA_ALL_HEADERS ${RGB_CAMERA_COMMON_HEADERS} ${RGB_CAMERA_HEADERS})
+
+    message(STATUS "RGB Camera support enabled")
+    message(STATUS "  Backend: ${RGB_CAMERA_BACKEND}")
+endif()
+
 # Create target and set properties
 add_library(${PROJECT_NAME} SHARED
     ${HEADERS}
@@ -108,6 +165,8 @@ add_library(${PROJECT_NAME} SHARED
     $<$<BOOL:${WITH_NETWORK}>:${NETWORK_HEADERS}>
     $<$<BOOL:${WITH_OFFLINE}>:${OFFLINE_SOURCES}>
     $<$<BOOL:${WITH_OFFLINE}>:${OFFLINE_HEADERS}>
+    $<$<BOOL:${WITH_RGB_CAMERA}>:${RGB_CAMERA_ALL_SOURCES}>
+    $<$<BOOL:${WITH_RGB_CAMERA}>:${RGB_CAMERA_ALL_HEADERS}>
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE crc32)
@@ -125,6 +184,36 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/json-c
     ${CMAKE_BINARY_DIR}/libaditof/dependencies/third-party/json-c
 )
+
+# GStreamer dependencies for RGB camera
+if(WITH_RGB_CAMERA)
+    if(RGB_CAMERA_BACKEND STREQUAL "GSTREAMER")
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0>=1.14)
+        pkg_check_modules(GSTREAMER_APP REQUIRED gstreamer-app-1.0>=1.14)
+
+        target_include_directories(${PROJECT_NAME} PRIVATE
+            ${GSTREAMER_INCLUDE_DIRS}
+            ${GSTREAMER_APP_INCLUDE_DIRS}
+        )
+
+        target_link_libraries(${PROJECT_NAME} PRIVATE
+            ${GSTREAMER_LIBRARIES}
+            ${GSTREAMER_APP_LIBRARIES}
+        )
+
+        message(STATUS "GStreamer libraries linked:")
+        message(STATUS "  Include: ${GSTREAMER_INCLUDE_DIRS}")
+        message(STATUS "  Libraries: ${GSTREAMER_LIBRARIES}")
+    elseif(RGB_CAMERA_BACKEND STREQUAL "V4L2")
+        # V4L2 is part of kernel, no extra dependencies needed
+        message(STATUS "V4L2 backend selected (no external dependencies)")
+    elseif(RGB_CAMERA_BACKEND STREQUAL "NVARGUS")
+        # Link against NVIDIA Argus libraries
+        # target_link_libraries(${PROJECT_NAME} PRIVATE nvargus)
+        message(STATUS "NVARGUS backend (dependencies to be added)")
+    endif()
+endif()
 
 if(WITH_GLOG_DEPENDENCY)
     # Prevent macro name collisions between custom log.h and glog
