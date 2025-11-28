@@ -69,12 +69,16 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 }
 
 BufferProcessor::BufferProcessor()
-<<<<<<< HEAD
     : m_v4l2_input_buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_capture_to_process_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
-      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE) {
-
+      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE)
+#ifdef HAS_RGB_CAMERA
+      m_rgb_frame_Q(MAX_QUEUE_SIZE),  // RGB frame queue
+      m_rgbSensor(nullptr), m_rgbCaptureEnabled(false),
+      m_totalRGBCaptured(0), m_totalRGBFailures(0),
+#endif
+    {
     m_outputVideoDev = new VideoDev();
     m_outputFrameWidth = 0;
     m_outputFrameHeight = 0;
@@ -89,27 +93,12 @@ BufferProcessor::BufferProcessor()
     m_capture_to_process_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
     m_tofi_io_Buffer_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
     m_process_done_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
-    LOG(INFO) << "BufferProcessor initialized";
-=======
-    : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE),
-      m_capture_to_process_Q(MAX_QUEUE_SIZE),
-      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE),
-#ifdef HAS_RGB_CAMERA
-      m_rgb_frame_Q(MAX_QUEUE_SIZE),  // RGB frame queue
-      m_rgbSensor(nullptr), m_rgbCaptureEnabled(false),
-      m_totalRGBCaptured(0), m_totalRGBFailures(0),
-#endif
-      m_vidPropSet(false), m_processorPropSet(false), m_outputFrameWidth(0),
-      m_outputFrameHeight(0), m_tofiConfig(nullptr),
-      m_tofiComputeContext(nullptr), m_inputVideoDev(nullptr) {
 
-    m_outputVideoDev = new VideoDev();
     LOG(INFO) << "BufferProcessor initialized"
 #ifdef HAS_RGB_CAMERA
               << " with RGB support"
 #endif
     ;
->>>>>>> 65a7bfa2 (AR0234: Add independent RGB capture thread to BufferProcessor)
 }
 
 BufferProcessor::~BufferProcessor() {
