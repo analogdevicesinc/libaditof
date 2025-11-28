@@ -26,6 +26,11 @@ option(CI_BUILD "Build for CI" OFF)
 option(WITH_SUBMODULES "Use submodules to build the library" ON)
 option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
 option(RECV_ASYNC "Receive the frames Asynchronously" ON)
+if (WITH_NETWORK)
+    option(WITH_NETWORK_COMPRESSION "Build network interface to compress data?" ON)
+else()
+    option(WITH_NETWORK_COMPRESSION "Build network interface to compress data?" OFF)
+endif()
 
 ######################### Target based Options ################################
 option(NXP "Set to ON when building on NXP" OFF)
@@ -125,6 +130,11 @@ endif()
 if (WITH_NETWORK)
         add_definitions(-DHAS_NETWORK)
 endif()
+
+if (WITH_NETWORK_COMPRESSION)
+        add_definitions(-DHAS_NETWORK_COMPRESSION_LZ4)
+endif()
+
 
 set(RESOURCES_DIR "${CMAKE_BINARY_DIR}/resources")
 make_directory(${RESOURCES_DIR})
