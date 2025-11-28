@@ -204,33 +204,6 @@ Status GStreamerFrameGrabber::stopPipeline() {
     return Status::OK;
 }
 
-Status GStreamerFrameGrabber::getLatestFrame(uint8_t* buffer, size_t& bufferSize, uint64_t* timestamp) {
-    if (!buffer) {
-        return Status::INVALID_ARGUMENT;
-    }
-
-    std::lock_guard<std::mutex> lock(m_frameMutex);
-
-    if (m_currentFrameBuffer.empty()) {
-        return Status::UNAVAILABLE;
-    }
-
-    size_t frameSize = m_currentFrameBuffer.size();
-    if (bufferSize < frameSize) {
-        bufferSize = frameSize;
-        return Status::INVALID_ARGUMENT;
-    }
-
-    std::memcpy(buffer, m_currentFrameBuffer.data(), frameSize);
-    bufferSize = frameSize;
-
-    if (timestamp) {
-        *timestamp = m_lastFrameTimestamp;
-    }
-
-    return Status::OK;
-}
-
 Status GStreamerFrameGrabber::waitForFrame(uint8_t* buffer, size_t& bufferSize, 
                                            int timeoutMs, uint64_t* timestamp) {
     if (!buffer) {
