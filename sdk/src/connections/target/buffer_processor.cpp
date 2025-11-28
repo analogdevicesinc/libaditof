@@ -569,6 +569,28 @@ void BufferProcessor::processThread() {
             // Copy only the frames that are actually allocated based on m_tofiBufferSize
             // Buffer layout: [depth: numPixels uint16_t | AB: varies | conf: varies]
             if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
+                // MP modes: Dynamic payload validation based on actual frame composition
+                // m_tofiBufferSize already accounts for depth + AB + conf based on bitsInAB/bitsInConf
+                size_t expectedPayloadSize =
+                    m_tofiBufferSize * 2; // Convert uint16_t units to bytes
+
+                if (process_frame.size < expectedPayloadSize) {
+                    LOG(ERROR)
+                        << "processThread: V4L2 payload size mismatch: got "
+                        << process_frame.size << ", expected "
+                        << expectedPayloadSize << " bytes for MP mode "
+                        << m_currentModeNumber
+                        << " (tofiBufferSize: " << m_tofiBufferSize
+                        << " uint16_t units)";
+                    // Return buffers to circulation and continue
+                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                    m_v4l2_input_buffer_Q.push(process_frame.data);
+                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
+                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                    continue;
+                }
+
                 // Always copy depth frame
                 memcpy(m_tofiComputeContext->p_depth_frame,
                        process_frame.data.get(), numPixels * 2);
@@ -603,9 +625,29 @@ void BufferProcessor::processThread() {
                            confCopySize);
                 }
             } else {
+                // QMP modes (2-6): Dynamic payload validation based on actual frame composition
+                // m_tofiBufferSize already accounts for depth + AB + conf based on bitsInAB/bitsInConf
+                size_t expectedPayloadSize =
+                    m_tofiBufferSize * 2; // Convert uint16_t units to bytes
+                if (process_frame.size < expectedPayloadSize) {
+                    LOG(ERROR)
+                        << "processThread: V4L2 payload size mismatch: got "
+                        << process_frame.size << ", expected "
+                        << expectedPayloadSize << " bytes for QMP mode "
+                        << m_currentModeNumber
+                        << " (tofiBufferSize: " << m_tofiBufferSize
+                        << " uint16_t units)";
+                    // Return buffers to circulation and continue
+                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                    m_v4l2_input_buffer_Q.push(process_frame.data);
+                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
+                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                    continue;
+                }
+
                 // If only depth (no deinterleaving needed), just copy
                 // m_tofiBufferSize tells us what's allocated: depth + AB + conf sizes
-
                 bool needsTofiCompute = true;
                 uint32_t allocatedAfterDepth =
                     m_tofiBufferSize - static_cast<uint32_t>(numPixels);
@@ -619,11 +661,14 @@ void BufferProcessor::processThread() {
 
                 // For other combinations, use TofiCompute
                 if (needsTofiCompute) {
+
                     uint32_t ret = TofiCompute(
                         reinterpret_cast<uint16_t *>(process_frame.data.get()),
                         m_tofiComputeContext, NULL);
                     if (ret != ADI_TOFI_SUCCESS) {
-                        LOG(ERROR) << "processThread: TofiCompute failed";
+                        LOG(ERROR)
+                            << "processThread: TofiCompute failed with code: "
+                            << ret;
                         m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
                         m_v4l2_input_buffer_Q.push(process_frame.data);
                         m_tofiComputeContext->p_depth_frame = tempDepthFrame;
@@ -634,12 +679,12 @@ void BufferProcessor::processThread() {
                 }
             }
 #else
-
             uint32_t ret = TofiCompute(
                 reinterpret_cast<uint16_t *>(process_frame.data.get()),
                 m_tofiComputeContext, NULL);
             if (ret != ADI_TOFI_SUCCESS) {
-                LOG(ERROR) << "processThread: TofiCompute failed";
+                LOG(ERROR) << "processThread: TofiCompute failed with code: "
+                           << ret;
                 m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
                 m_v4l2_input_buffer_Q.push(process_frame.data);
                 m_tofiComputeContext->p_depth_frame = tempDepthFrame;
@@ -666,8 +711,6 @@ void BufferProcessor::processThread() {
         process_frame.tofiBuffer = tofi_compute_io_buff;
         process_frame.size = m_tofiBufferSize;
 
-        //LOG(INFO) << "**Size: " << sizeof(uint16_t) * process_frame.size;
-
         if (!m_process_done_Q.push(std::move(process_frame))) {
             LOG(WARNING) << "processThread: Push timeout to "
                             "m_process_done_Q, ProcessedQueueSize: "
@@ -677,13 +720,6 @@ void BufferProcessor::processThread() {
             continue;
         }
     }
-#ifdef DBG_MEASURE_TIME
-    if (totalProcessedFrame > 0) {
-        double averageProcessTime =
-            static_cast<double>(totalProcessTime) / totalProcessedFrame;
-        //LOG(INFO) << __func__ << ": Average tofi_comupte process time: " << averageProcessTime << " ms";
-    }
-#endif //DBG_MEASURE_TIME
 }
 
 /**
@@ -886,6 +922,18 @@ void BufferProcessor::stopThreads() {
     streamRunning = false;
 
     stopRecording();
+
+    // Wait for queue drainage with timeout to prevent indefinite blocking
+    auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (((m_capture_to_process_Q.size() > 0) ||
+            (m_process_done_Q.size() > 0)) &&
+           std::chrono::steady_clock::now() < timeout) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (std::chrono::steady_clock::now() >= timeout) {
+        LOG(WARNING) << "stopThreads: Queue drainage timed out. Forcing thread "
+                        "shutdown.";
+    }
 
     // Join threads FIRST - wait for them to fully exit before touching any buffers
     // This prevents race conditions where threads access buffers during cleanup
