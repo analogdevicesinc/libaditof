@@ -36,3 +36,7 @@
 #include <aditof/status_definitions.h>
 #include <aditof/system.h>
 #include <aditof/version.h>
+
+#ifdef HAS_RGB_CAMERA
+#include <aditof/ar0234_sensor.h>
+#endif
