@@ -28,8 +28,6 @@ option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
 option(RECV_ASYNC "Receive the frames Asynchronously" ON)
 if (WITH_NETWORK)
     option(WITH_NETWORK_COMPRESSION "Build network interface to compress data?" ON)
-else()
-    option(WITH_NETWORK_COMPRESSION "Build network interface to compress data?" OFF)
 endif()
 
 ######################### Target based Options ################################
