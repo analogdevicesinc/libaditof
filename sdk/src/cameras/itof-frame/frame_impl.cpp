@@ -185,8 +185,7 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details,
             return sz;
         } else if (frameDetail.type == "ab") {
             unsigned long int sz =
-                (unsigned long int)(frameDetail.height * frameDetail.width *
-                                    m_bitsInAB / MAX_BITSINAB);
+                (unsigned long int)(frameDetail.height * frameDetail.width);
             return sz;
         } else {
             unsigned long int sz =
