@@ -163,55 +163,12 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
             configurationTable.baseResolutionHeight;
         configurationTable.pixelFormatIndex = 1;
 
-        //TO DO: hardcoded for now for the 9pcm usecase
+
         if (configurationTable.numberOfPhases == 9) {
             configurationTable.frameWidthInBytes = 1024;
             configurationTable.frameHeightInBytes = 2880;
         }
         return aditof::Status::OK;
-    }
-    if (m_controls["imagerType"] == imagerType.at(ImagerType::ADTF3080)) {
-
-        configurationTable.frameWidthInBytes =
-            configurationTable.baseResolutionWidth * totalBits / 8;
-        configurationTable.frameHeightInBytes =
-            configurationTable.baseResolutionHeight;
-        configurationTable.pixelFormatIndex = 0;
-        return aditof::Status::OK;
-
-    } else {
-
-        if ((configurationTable.modeNumber == 2 ||
-             configurationTable.modeNumber == 3 ||
-             configurationTable.modeNumber == 5 ||
-             configurationTable.modeNumber == 6) &&
-            m_controls["imagerType"] == imagerType.at(ImagerType::ADSD3100)) {
-            height = 512;
-        } else if ((configurationTable.modeNumber == 0 ||
-                    configurationTable.modeNumber == 1) &&
-                   m_controls["imagerType"] ==
-                       imagerType.at(ImagerType::ADSD3030)) {
-            height = 640;
-        } else if (configurationTable.modeNumber == 7 &&
-                   m_controls["imagerType"] ==
-                       imagerType.at(ImagerType::ADSD3030)) {
-            width = 2560;
-            height = 640;
-        } else if (configurationTable.modeNumber >= 2 &&
-                   m_controls["imagerType"] ==
-                       imagerType.at(ImagerType::ADSD3030)) {
-            configurationTable.frameWidthInBytes = 1280;
-            configurationTable.frameHeightInBytes = 320;
-            configurationTable.pixelFormatIndex = 0;
-            return aditof::Status::OK;
-        } else if ((configurationTable.modeNumber < 0 ||
-                    configurationTable.modeNumber > 6) &&
-                   m_controls["imagerType"] !=
-                       imagerType.at(ImagerType::ADSD3100) &&
-                   m_controls["imagerType"] !=
-                       imagerType.at(ImagerType::ADSD3030)) {
-            return aditof::Status::INVALID_ARGUMENT;
-        }
     }
 
     configurationTable.frameWidthInBytes = width;
