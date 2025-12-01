@@ -60,8 +60,7 @@ class FrameImpl {
     bool haveDataType(const std::string &dataType);
 
   private:
-    void allocFrameData(const aditof::FrameDetails &details,
-                        const uint8_t &m_bitsInConf, const uint8_t &m_bitsInAB);
+    void allocFrameData(const aditof::FrameDetails &details);
 
   private:
     struct ImplData;
