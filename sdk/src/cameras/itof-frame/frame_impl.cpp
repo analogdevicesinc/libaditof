@@ -57,9 +57,7 @@ FrameImpl::FrameImpl() : m_implData(std::make_unique<FrameImpl::ImplData>()){};
 FrameImpl::~FrameImpl() = default;
 
 FrameImpl::FrameImpl(const FrameImpl &op) {
-    allocFrameData(
-        op.m_details, (uint8_t)MAX_BITSINCONF,
-        (uint8_t)MAX_BITSINAB); // allocate the frame with maximum buffer size
+    allocFrameData(op.m_details);
     memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
            m_implData->allDataNbBytes);
     m_details = op.m_details;
@@ -67,10 +65,7 @@ FrameImpl::FrameImpl(const FrameImpl &op) {
 
 FrameImpl &FrameImpl::operator=(const FrameImpl &op) {
     if (this != &op) {
-        allocFrameData(
-            op.m_details, (uint8_t)MAX_BITSINCONF,
-            (uint8_t)
-                MAX_BITSINAB); // allocate the frame with maximum buffer size
+        allocFrameData(op.m_details);
         memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
                m_implData->allDataNbBytes);
         m_details = op.m_details;
@@ -90,7 +85,7 @@ aditof::Status FrameImpl::setDetails(const aditof::FrameDetails &details,
         return status;
     }
 
-    allocFrameData(details, m_bitsInConf, m_bitsInAB);
+    allocFrameData(details);
     m_details = details;
 
     return status;
@@ -159,17 +154,15 @@ FrameImpl::getFrameDetailByName(const aditof::FrameDetails &details,
     return *frame_detail;
 }
 
-void FrameImpl::allocFrameData(const aditof::FrameDetails &details,
-                               const uint8_t &m_bitsInConf,
-                               const uint8_t &m_bitsInAB) {
+void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
     using namespace aditof;
     unsigned long int totalSize = 0;
     unsigned long int pos = 0;
     uint16_t embed_hdr_length = skMetaDataBytesCount;
     uint8_t total_captures = 0;
 
-    auto getSubframeSize = [embed_hdr_length, total_captures,
-                            m_bitsInAB](FrameDataDetails frameDetail) {
+    auto getSubframeSize = [embed_hdr_length,
+                            total_captures](FrameDataDetails frameDetail) {
         if (frameDetail.type == "metadata") {
             unsigned long int sz =
                 (unsigned long int)(embed_hdr_length / sizeof(uint16_t));
