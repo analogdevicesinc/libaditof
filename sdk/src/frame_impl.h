@@ -40,9 +40,6 @@
 #include <stdint.h>
 #include <vector>
 
-#define MAX_BITSINAB 16
-#define MAX_BITSINCONF 8
-
 class FrameImpl {
   public:
     FrameImpl();
