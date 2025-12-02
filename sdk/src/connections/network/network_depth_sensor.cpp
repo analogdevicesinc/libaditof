@@ -338,7 +338,6 @@ aditof::Status NetworkDepthSensor::start() {
         return Status::UNREACHABLE;
     }
 
-#ifdef RECV_ASYNC
     LOG(INFO) << "Configuring to receive frame in async mode";
     std::string reply_async = "send_async";
     net->send_buff[m_sensorIndex].set_func_name("RecvAsync");
@@ -358,8 +357,6 @@ aditof::Status NetworkDepthSensor::start() {
         LOG(WARNING) << "Target is not build to send in async mode";
         return Status::GENERIC_ERROR;
     }
-
-#endif
 
     // Start the sensor
 
@@ -668,6 +665,7 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
     return status;
 }
 
+#ifdef HAS_NETWORK_COMPRESSION_LZ4
 static inline std::vector<char> decompress_buffer(const void* compressedBuffer,
     size_t compressedSize,
     size_t expectedDecompressedSize)
@@ -718,6 +716,7 @@ static inline std::vector<char> decompress_buffer(const void* compressedBuffer,
     out.resize(static_cast<size_t>(decompressed));
     return out;
 }
+#endif //HAS_NETWORK_COMPRESSION_LZ4
 
 aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     using namespace aditof;
@@ -725,7 +724,6 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
-#ifdef RECV_ASYNC
     int sz = net->getFrame(buffer, frame_size);
 
 #ifdef HAS_NETWORK_COMPRESSION_LZ4
@@ -740,11 +738,10 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
 
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    if (duration > 0) {
+    if (duration > 10) {
         LOG(WARNING) << "LZ4 decompression took " << duration << " milliseconds.";
+        LOG(INFO) << "Decompressed frame size: " << sz << " " << decompressed.size();
     }
-
-	LOG(INFO) << "Decompressed frame size: " << sz << " " << decompressed.size();
       
 #endif //HAS_NETWORK_COMPRESSION_LZ4
 
@@ -757,52 +754,6 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
         }
     }
     return Status::OK;
-
-#else
-
-    if (!net->isServer_Connected()) {
-        LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
-    }
-
-    net->send_buff[m_sensorIndex].set_func_name("GetFrame");
-    net->send_buff[m_sensorIndex].set_expect_reply(true);
-
-    uint32_t sz;
-    if (net->SendCommand(static_cast<void *>(buffer), &sz) != 0) {
-        LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
-    }
-
-    if (net->recv_server_data() != 0) {
-        LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
-    }
-
-    int ret = net->getFrame(buffer, frame_size);
-    if (ret == -1) {
-        return Status::GENERIC_ERROR;
-    }
-
-    if (net->recv_buff[m_sensorIndex].server_status() !=
-        payload::ServerStatus::REQUEST_ACCEPTED) {
-        LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
-    }
-
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
-    if (status != Status::OK) {
-        LOG(WARNING) << "getFrame() failed on target";
-        return status;
-    }
-
-    if (m_state == ST_RECORD) {
-        writeFrame((uint8_t *)buffer, frame_size);
-    }
-
-    return status;
-
-#endif
 }
 
 aditof::Status NetworkDepthSensor::getHeader(uint8_t *buffer,
