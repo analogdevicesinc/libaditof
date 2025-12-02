@@ -2085,8 +2085,19 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                        "discarding it";
             }
 
+            // check for xyz frame
+            it = iniFile.iniKeyValPairs.find("xyzEnable");
+            if (it != iniFile.iniKeyValPairs.end()) {
+                value = it->second;
+                if (value != "0") {
+                    modeDetails.frameContent.push_back("xyz");
+                }
+            } else {
+                LOG(WARNING) << "XYZ frame is disabled therefore "
+                                "discarding it";
+            }
+
             // now push back the remaining frames
-            modeDetails.frameContent.push_back("xyz");
             modeDetails.frameContent.push_back("metadata");
 
         } else {
