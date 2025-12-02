@@ -685,18 +685,54 @@ void BufferProcessor::processThread() {
 aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     Tofi_v4l2_buffer tof_processed_frame;
 
+    if (buffer == nullptr) {
+        LOG(ERROR) << "processBuffer: Provided buffer pointer is null.";
+        return aditof::Status::INVALID_ARGUMENT;
+    }
+
     // Loop for MAX_RETRIES attempts. 'attempt' counts from 0 to MAX_RETRIES - 1.
     for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
         if (m_process_done_Q.pop(tof_processed_frame)) {
+            if (stopThreadsFlag == true) {
+                LOG(INFO) << "processBuffer: Stopping processing as stop flag is set.";
+                return aditof::Status::GENERIC_ERROR;
+            }
             if (buffer && tof_processed_frame.tofiBuffer &&
                 tof_processed_frame.size > 0) {
+
+                if (stopThreadsFlag == true) {
+                    LOG(INFO) << "processBuffer: Stopping processing as stop flag is set.";
+                    return aditof::Status::GENERIC_ERROR;
+                }
 
                 memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
                        tof_processed_frame.size * sizeof(uint16_t));
 
+                if (stopThreadsFlag == true) {
+                    LOG(INFO) << "processBuffer: Stopping processing as stop flag is set.";
+                    return aditof::Status::GENERIC_ERROR;
+                }
+
                 // Return buffers to their respective pools
                 m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
+                
+                // Reset the shared_ptr to prevent double-free when tof_processed_frame is destroyed
+                tof_processed_frame.tofiBuffer.reset();
+
+                if (stopThreadsFlag == true) {
+                    LOG(INFO) << "processBuffer: Stopping processing as stop flag is set.";
+                    return aditof::Status::GENERIC_ERROR;
+                }
+
                 m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
+                
+                // Reset the shared_ptr to prevent double-free when tof_processed_frame is destroyed
+                tof_processed_frame.data.reset();
+
+                if (stopThreadsFlag == true) {
+                    LOG(INFO) << "processBuffer: Stopping processing as stop flag is set.";
+                    return aditof::Status::GENERIC_ERROR;
+                }
 
                 return aditof::Status::OK; // Success, exit function
             } else {
@@ -707,6 +743,12 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                 return aditof::Status::GENERIC_ERROR;
             }
         } else {
+
+	    if (stopThreadsFlag == true) {
+                LOG(INFO) << "processBuffer: Stopping processing as stop flag is set.";
+                return aditof::Status::GENERIC_ERROR;
+	    }
+
             if (attempt < MAX_RETRIES - 1) {
                 // If it's not the last attempt, wait and then the loop will try again.
                 LOG(WARNING)
