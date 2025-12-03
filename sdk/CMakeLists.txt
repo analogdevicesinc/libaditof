@@ -114,6 +114,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE crc32)
 target_link_libraries(${PROJECT_NAME} PRIVATE cjson)
 
 if(WITH_GLOG_DEPENDENCY)
+    # Prevent macro name collisions between custom log.h and glog
+    add_definitions(-DGLOG_NO_ABBREVIATED_SEVERITIES)
     # Check if submodule exists, and build the library
     if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../glog/.git")
         find_package(glog 0.3.5 REQUIRED)
