@@ -40,9 +40,9 @@
 #include <chrono>
 #include <unordered_map>
 
-#ifdef HAS_NETWORK_COMPRESSION_LZ4
+#ifdef HAS_NETWORK_COMPRESSION
 #include "lz4.h"
-#endif //HAS_NETWORK_COMPRESSION_LZ4
+#endif //HAS_NETWORK_COMPRESSION
 
 struct CalibrationData {
     std::string mode;
@@ -726,7 +726,7 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
 
     int sz = net->getFrame(buffer, frame_size);
 
-#ifdef HAS_NETWORK_COMPRESSION_LZ4
+#ifdef HAS_NETWORK_COMPRESSION
     if (sz <= 0) {
 		return Status::GENERIC_ERROR;
     }
@@ -743,7 +743,7 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
         LOG(INFO) << "Decompressed frame size: " << sz << " " << decompressed.size();
     }
       
-#endif //HAS_NETWORK_COMPRESSION_LZ4
+#endif //HAS_NETWORK_COMPRESSION
 
     if (sz == -1) {
         return Status::GENERIC_ERROR;

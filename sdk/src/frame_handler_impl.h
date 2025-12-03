@@ -64,30 +64,11 @@ class FrameHandlerImpl {
     aditof::Status saveFrameToFile(aditof::Frame &frame,
                                    const std::string &fileName = "");
 
-    //TO DO: write function to save frames on different thread
-    //aditof::Status enqueueFrameToSaveToFile(aditof::Frame frame);
-    aditof::Status saveFrameToFileMultithread(aditof::Frame &frame,
-                                              const std::string &filename = "");
-
-    //read new frame from file and process metadata to get new frame
-    //charateristics if we have different frame types in the same file
-    aditof::Status readNextFrame(aditof::Frame &frame,
-                                 const std::string &fullFileName = "");
-
-    //We could offer support for a couple of standart formats (avi/mp4/..)
-    //and let the users decide between them
-    aditof::Status setCustomFormat(const std::string &format);
-
     //aditof::Status splitFrames(bool enable);
     aditof::Status storeFramesToSingleFile(bool enable);
     //aditof::Status storeSingleFrameToFile(bool enable);
     //aditof::Status storeToSingleFile(bool enable);
-
-    //we should be able to give the users the ability to choose which data
-    //type they want to store (depth/ab/conf/metadata/full-data) or any combinations
-    //between this 2
-    //NOTE: metadata should be always enabled for a better data processing
-    aditof::Status setFrameContent(const std::string &frameContent);
+    
     aditof::Status SnapShotFrames(const char *baseFileName,
                                   aditof::Frame *frame, const uint8_t *ab,
                                   const uint8_t *depth);

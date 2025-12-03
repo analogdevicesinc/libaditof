@@ -666,7 +666,7 @@ int32_t Network::getFrame(uint16_t *buffer, uint32_t buf_size) {
         frame_socket->recv(message, zmq::recv_flags::none);
     }
 
-#ifdef HAS_NETWORK_COMPRESSION_LZ4
+#ifdef HAS_NETWORK_COMPRESSION
 	if (message.size() < LZ4_FRAME_HEADER_SIZE) {
         LOG(ERROR) << "Received message size " << message.size()
                    << " bytes is too small to contain LZ4 header, dropping the "
@@ -699,7 +699,7 @@ int32_t Network::getFrame(uint16_t *buffer, uint32_t buf_size) {
                    << " bytes , dropping the frame.";
 		return -1;
     }
-#endif // HAS_NETWORK_COMPRESSION_LZ4
+#endif // HAS_NETWORK_COMPRESSION
 }
 
 void Network::closeConnectionFrameSocket() {

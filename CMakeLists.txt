@@ -25,9 +25,14 @@ option(WITH_GLOG_DEPENDENCY "Build with GLOG dependency to be used for logging?"
 option(CI_BUILD "Build for CI" OFF)
 option(WITH_SUBMODULES "Use submodules to build the library" ON)
 option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
-option(RECV_ASYNC "Receive the frames Asynchronously" ON)
 if (WITH_NETWORK)
-    option(WITH_NETWORK_COMPRESSION "Build network interface to compress data?" ON)
+	option(WITH_NETWORK_COMPRESSION "Build network interface to compress data?" ON)
+endif()
+
+if (WITH_NETWORK_COMPRESSION)
+        # ON for LZ4
+        # OFF for RVL + JPEGTURBO
+        option(WITH_NETWORK_COMPRESSION_LZ4 "Build network interface to compress data?" ON)
 endif()
 
 ######################### Target based Options ################################
@@ -118,19 +123,18 @@ if(ENABLE_PCM)
     add_definitions(-DENABLE_PCM)
 endif()
 
-if (RECV_ASYNC)
-        message("Building Host App to receive frames Asynchronously from the Target.")
-        add_definitions(-DRECV_ASYNC)
-    else()
-        message("Building Host App to receive frames Synchronously from the Target.")
-endif()
-
 if (WITH_NETWORK)
         add_definitions(-DHAS_NETWORK)
 endif()
 
 if (WITH_NETWORK_COMPRESSION)
-        add_definitions(-DHAS_NETWORK_COMPRESSION_LZ4)
+        if (WITH_NETWORK_COMPRESSION_LZ4)
+                add_definitions(-DWITH_NETWORK_COMPRESSION_LZ4)
+                add_definitions(-DWITH_NETWORK_COMPRESSION)
+        else()
+                add_definitions(-DWITH_NETWORK_COMPRESSION_RVL_JPEGTURBO)
+                add_definitions(-DWITH_NETWORK_COMPRESSION)
+        endif()
 endif()
 
 

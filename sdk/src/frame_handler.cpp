@@ -61,27 +61,8 @@ Status FrameHandler::saveFrameToFile(aditof::Frame &frame,
     return m_impl->saveFrameToFile(frame, fileName);
 }
 
-Status FrameHandler::saveFrameToFileMultithread(aditof::Frame &frame,
-                                                const std::string &fileName) {
-
-    return m_impl->saveFrameToFileMultithread(frame, fileName);
-}
-
-Status FrameHandler::readNextFrame(aditof::Frame &frame,
-                                   const std::string &fullFileName) {
-    return m_impl->readNextFrame(frame, fullFileName);
-}
-
-Status FrameHandler::setCustomFormat(const std::string &format) {
-    return m_impl->setCustomFormat(format);
-}
-
 Status FrameHandler::storeFramesToSingleFile(bool enable) {
     return m_impl->storeFramesToSingleFile(enable);
-}
-
-Status FrameHandler::setFrameContent(const std::string &frameContent) {
-    return m_impl->setFrameContent(frameContent);
 }
 
 aditof::Status FrameHandler::SnapShotFrames(const char *baseFileName,

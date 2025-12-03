@@ -854,18 +854,8 @@ PYBIND11_MODULE(aditofpython, m) {
              py::arg("fullFileName"))
         .def("saveFrameToFile", &aditof::FrameHandler::saveFrameToFile,
              py::arg("frame"), py::arg("fileName") = "")
-        .def("saveFrameToFileMultithread",
-             &aditof::FrameHandler::saveFrameToFileMultithread,
-             py::arg("frame"), py::arg("fileName") = "")
-        .def("readNextFrame", &aditof::FrameHandler::readNextFrame,
-             py::arg("frame"), py::arg("fullFileName"),
-             py::return_value_policy::reference_internal)
-        .def("setCustomFormat", &aditof::FrameHandler::setCustomFormat,
-             py::arg("format"))
         .def("storeFramesToSingleFile",
-             &aditof::FrameHandler::storeFramesToSingleFile, py::arg("enable"))
-        .def("setFrameContent", &aditof::FrameHandler::setFrameContent,
-             py::arg("frameContent"));
+             &aditof::FrameHandler::storeFramesToSingleFile, py::arg("enable"));
 
     //SDK version
     m.def("getKitVersion", &aditof::getKitVersion);
