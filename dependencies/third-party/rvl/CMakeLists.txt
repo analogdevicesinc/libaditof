@@ -1,7 +1,16 @@
 cmake_minimum_required(VERSION 3.0)
 project(rvl)
 
+# User-visible option with default ON
 option(RVL_USE_NEON "Enable ARM64 optimized RVL implementation" ON)
+
+# Override default automatically on Windows x86/x64
+if (WIN32 AND NOT CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64|arm64")
+    set(RVL_USE_NEON OFF CACHE BOOL "" FORCE)
+elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|aarch64|arm64")
+    set(RVL_USE_NEON ON CACHE BOOL "" FORCE)
+endif()
+
 
 if(RVL_USE_NEON)
     add_library(${PROJECT_NAME} STATIC
