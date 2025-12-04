@@ -650,12 +650,13 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
         }
 
-        if (m_state == ST_RECORD) {
+        // Only attempt to write if recording is still active and stream is open
+        if (m_state == ST_RECORD && m_stream_file_out.is_open()) {
             aditof::Status writeStatus =
                 writeFrame((uint8_t *)tofi_compute_io_buff.get(),
                            m_tofiBufferSize * sizeof(uint16_t));
             if (writeStatus != aditof::Status::OK) {
-                LOG(ERROR)
+                LOG(WARNING)
                     << "Failed to write processed frame during recording";
             }
         }
