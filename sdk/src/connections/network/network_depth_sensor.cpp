@@ -39,10 +39,13 @@
 #endif
 #include <chrono>
 #include <unordered_map>
-
-#ifdef HAS_NETWORK_COMPRESSION
-#include "lz4.h"
-#endif //HAS_NETWORK_COMPRESSION
+#ifdef WITH_NETWORK_COMPRESSION
+#ifdef WITH_NETWORK_COMPRESSION_LZ4
+#include <lz4.h>
+#else
+#include <RVL.h>
+#endif //WITH_NETWORK_COMPRESSION_LZ4
+#endif //WITH_NETWORK_COMPRESSION
 
 struct CalibrationData {
     std::string mode;
@@ -336,26 +339,6 @@ aditof::Status NetworkDepthSensor::start() {
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
         return Status::UNREACHABLE;
-    }
-
-    LOG(INFO) << "Configuring to receive frame in async mode";
-    std::string reply_async = "send_async";
-    net->send_buff[m_sensorIndex].set_func_name("RecvAsync");
-    net->send_buff[m_sensorIndex].set_expect_reply(true);
-
-    if (net->SendCommand() != 0) {
-        LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
-    }
-
-    if (net->recv_server_data() != 0) {
-        LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (net->recv_buff[m_sensorIndex].message().c_str() != reply_async) {
-        LOG(WARNING) << "Target is not build to send in async mode";
-        return Status::GENERIC_ERROR;
     }
 
     // Start the sensor
@@ -665,7 +648,9 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
     return status;
 }
 
-#ifdef HAS_NETWORK_COMPRESSION_LZ4
+#ifdef WITH_NETWORK_COMPRESSION
+#ifdef WITH_NETWORK_COMPRESSION_LZ4
+// LZ4
 static inline std::vector<char> decompress_buffer(const void* compressedBuffer,
     size_t compressedSize,
     size_t expectedDecompressedSize)
@@ -716,7 +701,40 @@ static inline std::vector<char> decompress_buffer(const void* compressedBuffer,
     out.resize(static_cast<size_t>(decompressed));
     return out;
 }
-#endif //HAS_NETWORK_COMPRESSION_LZ4
+#else
+    // RVL and JPEG Turbo
+static inline std::vector<char> decompress_buffer(const void* compressedBuffer,
+    size_t compressedSize,
+    size_t expectedDecompressedSize) {
+    if (compressedBuffer == nullptr && compressedSize != 0) {
+        throw std::invalid_argument("compressedBuffer is null but compressedSize > 0");
+	}
+    // Fast path: both zero -> empty result
+    if (compressedSize == 0 && expectedDecompressedSize == 0) {
+        return {};
+    }
+
+    int cSize = static_cast<int>(compressedSize);
+    int dSize = static_cast<int>(expectedDecompressedSize);
+
+    // Allocate output buffer sized to expected decompressed size
+    std::vector<char> out;
+    try {
+        out.resize(static_cast<size_t>(dSize));
+    }
+    catch (const std::bad_alloc&) {
+        throw std::runtime_error("failed to allocate output buffer for decompression");
+    }
+
+    RVL::DecompressRVL(
+        (char*)compressedBuffer,
+        (short *)out.data(),
+        dSize/sizeof(uint16_t));
+
+    return out;
+}
+#endif //WITH_NETWORK_COMPRESSION_LZ4
+#endif //WITH_NETWORK_COMPRESSION
 
 aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     using namespace aditof;
@@ -726,7 +744,7 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
 
     int sz = net->getFrame(buffer, frame_size);
 
-#ifdef HAS_NETWORK_COMPRESSION
+#ifdef WITH_NETWORK_COMPRESSION
     if (sz <= 0) {
 		return Status::GENERIC_ERROR;
     }
@@ -739,11 +757,10 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     if (duration > 10) {
-        LOG(WARNING) << "LZ4 decompression took " << duration << " milliseconds.";
-        LOG(INFO) << "Decompressed frame size: " << sz << " " << decompressed.size();
+        LOG(WARNING) << "Decompression took " << duration << " milliseconds.";
     }
       
-#endif //HAS_NETWORK_COMPRESSION
+#endif //WITH_NETWORK_COMPRESSION
 
     if (sz == -1) {
         return Status::GENERIC_ERROR;

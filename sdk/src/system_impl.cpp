@@ -44,7 +44,7 @@
 
 #include "aditof/version.h"
 
-#ifdef HAS_NETWORK
+#ifdef WITH_NETWORK
 //#include <lws_config.h>
 #include <zmq.hpp>
 #endif
@@ -84,7 +84,7 @@ Status
 SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
                           const std::string &uri) const {
 
-#if HAS_NETWORK
+#ifdef WITH_NETWORK
     static bool logged = false;
     int major, minor, patch;
     zmq_version(&major, &minor, &patch);

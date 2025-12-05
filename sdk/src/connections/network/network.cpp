@@ -659,36 +659,48 @@ Network::~Network() {
     }
 }
 
-const int32_t LZ4_FRAME_HEADER_SIZE = 7;
+const int32_t COMPRESSION_FRAME_HEADER_SIZE = 7;
 int32_t Network::getFrame(uint16_t *buffer, uint32_t buf_size) {
     zmq::message_t message;
     if (frame_socket != nullptr) {
         frame_socket->recv(message, zmq::recv_flags::none);
     }
 
-#ifdef HAS_NETWORK_COMPRESSION
-	if (message.size() < LZ4_FRAME_HEADER_SIZE) {
+#ifdef WITH_NETWORK_COMPRESSION
+
+#ifdef WITH_NETWORK_COMPRESSION_LZ4
+    // LZ4 Decompression
+    char hdr[] = "LZ4\0";
+#else
+	// RVL Decompression
+	char hdr[] = "RVL\0";
+#endif
+	if (message.size() < COMPRESSION_FRAME_HEADER_SIZE) {
         LOG(ERROR) << "Received message size " << message.size()
-                   << " bytes is too small to contain LZ4 header, dropping the "
+                   << " bytes is too small to contain compression header, dropping the "
                       "frame.";
         return -1;
 	}
 
+    // Objectives: 
+    // - identify if the compression is correct based on the configuration
+	// - extract the compressed size from the header
+	// - Remove the header for further processing by downstream decompression code
+
     char *data = (char *)message.data();
 
-    if (data[0] != 'L' || data[1] != 'Z' || data[2] != '4') {
-        LOG(ERROR) << "Received message does not contain LZ4 header, dropping "
+    if (data[0] != hdr[0] || data[1] != hdr[1] || data[2] != hdr[2]) {
+        LOG(ERROR) << "Received message does not contain compression header, dropping "
                       "the frame.";
         return -1;
 	}
 
     int32_t *size = (int32_t *)&data[3];
 
-	LOG(INFO) << "LZ4 Compressed Frame Size: " << *size << " bytes.";
-
-    memcpy(buffer, data + LZ4_FRAME_HEADER_SIZE, *size);
+    memcpy(buffer, data + COMPRESSION_FRAME_HEADER_SIZE, *size);
     
     return *size;
+
 #else
     if (buf_size == message.size()) {
         memcpy(buffer, message.data(), message.size());
@@ -699,7 +711,7 @@ int32_t Network::getFrame(uint16_t *buffer, uint32_t buf_size) {
                    << " bytes , dropping the frame.";
 		return -1;
     }
-#endif // HAS_NETWORK_COMPRESSION
+#endif // WITH_NETWORK_COMPRESSION
 }
 
 void Network::closeConnectionFrameSocket() {
