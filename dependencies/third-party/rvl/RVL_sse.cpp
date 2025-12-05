@@ -1,24 +1,37 @@
-// ARM64-optimized implementation of RVL
-// Optimizations: branch hints, forced inlining, prefetching, streamlined loops
+// x86-64 SSE/AVX optimized implementation of RVL
+// Optimizations: SSE2 for bulk zero writes, AVX for larger blocks, unrolled loops
 #include "RVL_internal.h"
 
-#if defined(__aarch64__)
-#include <arm_neon.h>
-#define RVL_PREFETCH(addr) __builtin_prefetch(addr, 0, 3)
-#define RVL_LIKELY(x)      __builtin_expect(!!(x), 1)
-#define RVL_UNLIKELY(x)    __builtin_expect(!!(x), 0)
-#else
-#define RVL_PREFETCH(addr) ((void)0)
+#if defined(_MSC_VER)
+#include <intrin.h>
 #define RVL_LIKELY(x)      (x)
 #define RVL_UNLIKELY(x)    (x)
+#define RVL_FORCEINLINE    __forceinline
+#else
+#include <x86intrin.h>
+#define RVL_LIKELY(x)      __builtin_expect(!!(x), 1)
+#define RVL_UNLIKELY(x)    __builtin_expect(!!(x), 0)
+#define RVL_FORCEINLINE    __attribute__((always_inline)) inline
+#endif
+
+#include <emmintrin.h>  // SSE2
+#if defined(__AVX__) || defined(_MSC_VER)
+#include <immintrin.h>  // AVX
+#define RVL_HAS_AVX 1
+#else
+#define RVL_HAS_AVX 0
 #endif
 
 namespace RVL
 {
     //--------------------------------------------------------------------------
-    // Standard RVL (ARM64 optimized)
+    // Standard RVL (x86-64 SSE optimized)
     //--------------------------------------------------------------------------
+#if defined(_MSC_VER)
+    __declspec(noinline)
+#else
     __attribute__((hot, optimize("O3")))
+#endif
     int CompressRVL_Standard(short* input, char* output, int numPixels)
     {
         int* pBuffer = (int*)output;
@@ -48,13 +61,7 @@ namespace RVL
             // Encode nonzero values - reset input to start of nonzero run
             const short* p = nonzeroStart;
 
-            // Prefetch ahead for large runs
-            if (RVL_UNLIKELY(nonzeros > 32))
-            {
-                RVL_PREFETCH(p + 64);
-            }
-
-            // Process 4 at a time (unrolled, no fake SIMD)
+            // Process 4 at a time (unrolled)
             int count = nonzeros;
             while (count >= 4)
             {
@@ -94,7 +101,11 @@ namespace RVL
         return (int)((char*)pBuffer - (char*)bufferStart);
     }
 
+#if defined(_MSC_VER)
+    __declspec(noinline)
+#else
     __attribute__((hot, optimize("O3")))
+#endif
     void DecompressRVL_Standard(char* input, short* output, int numPixels)
     {
         int* pBuffer = (int*)input;
@@ -111,31 +122,23 @@ namespace RVL
             int zeros = DecodeVLE(pBuffer, word, nibblesWritten);
             remaining -= zeros;
 
-            // Write zeros - use NEON for large runs
-#if defined(__aarch64__)
+            // Write zeros - use SSE2 for large runs
             if (zeros >= 8)
             {
-                int16x8_t vzero = vdupq_n_s16(0);
+                __m128i vzero = _mm_setzero_si128();
                 while (zeros >= 8)
                 {
-                    vst1q_s16(output, vzero);
+                    _mm_storeu_si128((__m128i*)output, vzero);
                     output += 8;
                     zeros -= 8;
                 }
             }
-#endif
             while (zeros-- > 0)
                 *output++ = 0;
 
             // Decode nonzeros count
             int nonzeros = DecodeVLE(pBuffer, word, nibblesWritten);
             remaining -= nonzeros;
-
-            // Prefetch for large runs
-            if (RVL_UNLIKELY(nonzeros > 32))
-            {
-                RVL_PREFETCH(pBuffer + 16);
-            }
 
             // Process 4 at a time (unrolled)
             while (nonzeros >= 4)
@@ -178,10 +181,14 @@ namespace RVL
     }
 
     //--------------------------------------------------------------------------
-    // Fast RVL - trades compression ratio for speed (ARM64 optimized)
+    // Fast RVL - trades compression ratio for speed (x86-64 SSE optimized)
     // Format: [zeros:16][nonzeros:16][zigzag deltas:16 each]...
     //--------------------------------------------------------------------------
+#if defined(_MSC_VER)
+    __declspec(noinline)
+#else
     __attribute__((hot, optimize("O3")))
+#endif
     int CompressRVL_Fast(short* input, char* output, int numPixels)
     {
         unsigned short* out = (unsigned short*)output;
@@ -246,7 +253,11 @@ namespace RVL
         return (int)((char*)out - (char*)outStart);
     }
 
+#if defined(_MSC_VER)
+    __declspec(noinline)
+#else
     __attribute__((hot, optimize("O3")))
+#endif
     void DecompressRVL_Fast(char* input, short* output, int numPixels)
     {
         const unsigned short* in = (const unsigned short*)input;
@@ -258,20 +269,18 @@ namespace RVL
             unsigned short zeros = *in++;
             unsigned short nonzeros = *in++;
 
-            // Write zeros - use NEON for large runs
+            // Write zeros - use SSE2 for large runs
             remaining -= zeros;
-#if defined(__aarch64__)
             if (zeros >= 8)
             {
-                int16x8_t vzero = vdupq_n_s16(0);
+                __m128i vzero = _mm_setzero_si128();
                 while (zeros >= 8)
                 {
-                    vst1q_s16(output, vzero);
+                    _mm_storeu_si128((__m128i*)output, vzero);
                     output += 8;
                     zeros -= 8;
                 }
             }
-#endif
             while (zeros-- > 0)
                 *output++ = 0;
 
