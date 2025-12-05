@@ -43,6 +43,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <omp.h>
 #include <sstream>
@@ -427,12 +428,18 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_modeDetailsCache.isPCM = m_offline_parameters.modeDetailsCache.isPCM;
         m_modeDetailsCache.frameContent.clear();
 
+        LOG(INFO) << "[PLAYBACK] Reading frameContent from file header...";
         for (uint32_t idx = 0; idx < m_offline_parameters.MAX_FRAME_CONTENT;
              idx++) {
             std::string frameContent =
                 m_offline_parameters.modeDetailsCache.frameContent[idx];
-            m_modeDetailsCache.frameContent.emplace_back(frameContent);
+            if (!frameContent.empty()) {
+                LOG(INFO) << "[PLAYBACK] Found in header: " << frameContent;
+                m_modeDetailsCache.frameContent.emplace_back(frameContent);
+            }
         }
+        LOG(INFO) << "[PLAYBACK] Total frame types loaded: "
+                  << m_modeDetailsCache.frameContent.size();
 
         m_pcmFrame = m_modeDetailsCache.isPCM;
 
@@ -443,10 +450,15 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_details.frameType.totalCaptures =
             m_offline_parameters.details.totalCaptures;
         m_details.frameType.dataDetails.clear();
+        LOG(INFO) << "[PLAYBACK] Loading "
+                  << m_offline_parameters.fdatadetailsCount
+                  << " fDataDetails entries...";
         for (uint32_t idx = 0; idx < m_offline_parameters.fdatadetailsCount;
              idx++) {
             FrameDataDetails fDataDetails;
             fDataDetails.type = m_offline_parameters.fDataDetails[idx].type;
+            LOG(INFO) << "[PLAYBACK] fDataDetails[" << idx
+                      << "]: type=" << fDataDetails.type;
             fDataDetails.width = m_offline_parameters.fDataDetails[idx].width;
             fDataDetails.height = m_offline_parameters.fDataDetails[idx].height;
             fDataDetails.subelementSize =
@@ -790,12 +802,29 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         m_offline_parameters.modeDetailsCache.metadataSize =
             m_modeDetailsCache.metadataSize;
         m_offline_parameters.modeDetailsCache.isPCM = m_modeDetailsCache.isPCM;
+
+        // Zero out frameContent array to avoid garbage data
+        memset(m_offline_parameters.modeDetailsCache.frameContent, 0,
+               sizeof(m_offline_parameters.modeDetailsCache.frameContent));
+
         uint32_t idx = 0;
+        LOG(INFO) << "[RECORDING] Enable flags: depth=" << m_depthEnabled
+                  << " ab=" << m_abEnabled << " conf=" << m_confEnabled
+                  << " xyz=" << m_xyzEnabled;
+        LOG(INFO) << "[RECORDING] Original frameContent has "
+                  << m_modeDetailsCache.frameContent.size() << " items";
         for (std::string val : m_modeDetailsCache.frameContent) {
+            if (val == "raw") {
+                LOG(INFO) << "[RECORDING] Skipping raw (not supported)";
+                continue; // raw not supported
+            }
+
+            LOG(INFO) << "[RECORDING] Adding to header: " << val;
             memcpy((char *)m_offline_parameters.modeDetailsCache
                        .frameContent[idx++],
                    val.c_str(), val.length());
         }
+        LOG(INFO) << "[RECORDING] Total frame types in header: " << idx;
 
         // m_offline_parameters.details, m_offline_parameters.fdatadetailsCount & m_offline_parameters.fDataDetails
         m_offline_parameters.fdatadetailsCount = 0;
@@ -816,6 +845,7 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         m_offline_parameters.details.width = (*modeIt).baseResolutionWidth;
         m_offline_parameters.details.height = (*modeIt).baseResolutionHeight;
         m_offline_parameters.details.totalCaptures = 1;
+        LOG(INFO) << "[RECORDING] Building fDataDetails from frameContent...";
         for (const auto &item : (*modeIt).frameContent) {
 
             if (m_offline_parameters.fdatadetailsCount >
@@ -825,17 +855,21 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
                 break;
             }
 
-            if (item == "xyz" && !m_xyzEnabled) {
-                continue;
-            }
             if (item == "raw") { // "raw" is not supported right now
+                LOG(INFO) << "[RECORDING] Skipping raw from fDataDetails (not "
+                             "supported)";
                 continue;
             }
 
+            LOG(INFO) << "[RECORDING] Adding to fDataDetails: " << item;
             uint32_t idx = m_offline_parameters.fdatadetailsCount;
 
-            memcpy(&m_offline_parameters.fDataDetails[idx].type, item.c_str(),
-                   sizeof(item)); // TODO: Validate memory space before copying
+            // Copy frame type name safely
+            strncpy(m_offline_parameters.fDataDetails[idx].type, item.c_str(),
+                    sizeof(m_offline_parameters.fDataDetails[idx].type) - 1);
+            m_offline_parameters.fDataDetails[idx]
+                .type[sizeof(m_offline_parameters.fDataDetails[idx].type) - 1] =
+                '\0';
 
             m_offline_parameters.fDataDetails[idx].width =
                 m_modeDetailsCache.baseResolutionWidth;
@@ -866,6 +900,10 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
 
             m_offline_parameters.fdatadetailsCount++;
         }
+
+        LOG(INFO) << "[RECORDING] Final fDataDetails count: "
+                  << m_offline_parameters.fdatadetailsCount;
+        LOG(INFO) << "[RECORDING] Writing header to file: " << filePath;
 
         // Write m_offline_parameters to the recording file.
         status = m_depthSensor->startRecording(filePath,
@@ -974,7 +1012,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                                m_modeDetailsCache.baseResolutionWidth);
     }
 
-    if (!m_depthEnabled) {
+    if (!m_depthEnabled && frame->haveDataType("depth")) {
         uint16_t *depthFrame;
 
         frame->getData("depth", &depthFrame);
@@ -983,7 +1021,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                    m_modeDetailsCache.baseResolutionWidth * sizeof(uint16_t));
     }
 
-    if (!m_abEnabled) {
+    if (!m_abEnabled && frame->haveDataType("ab")) {
         uint16_t *abFrame;
 
         frame->getData("ab", &abFrame);
@@ -1551,9 +1589,28 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
 void CameraItof::configureSensorModeDetails() {
 
     if (m_isOffline) {
-        m_depthEnabled = true;
-        m_abEnabled = true;
-        m_confEnabled = true;
+        // Set enable flags based on what was actually recorded
+        // Check m_modeDetailsCache.frameContent to see what's available
+        LOG(INFO) << "[PLAYBACK] Setting enable flags based on frameContent...";
+        m_depthEnabled = false;
+        m_abEnabled = false;
+        m_confEnabled = false;
+        m_xyzEnabled = false;
+
+        for (const auto &content : m_modeDetailsCache.frameContent) {
+            if (content == "depth")
+                m_depthEnabled = true;
+            else if (content == "ab")
+                m_abEnabled = true;
+            else if (content == "conf")
+                m_confEnabled = true;
+            else if (content == "xyz")
+                m_xyzEnabled = true;
+        }
+
+        LOG(INFO) << "[PLAYBACK] Enable flags set: depth=" << m_depthEnabled
+                  << " ab=" << m_abEnabled << " conf=" << m_confEnabled
+                  << " xyz=" << m_xyzEnabled;
 
     } else {
         std::string value;
@@ -1668,6 +1725,25 @@ void CameraItof::configureSensorModeDetails() {
             }
         } else {
             LOG(WARNING) << "headerSize was not found in parameter list";
+        }
+
+        // Rebuild frameContent based on enabled frame types
+        // This ensures recording/playback respects config overrides
+        // Only rebuild if we have INI params (not during early initialization)
+        if (!m_iniKeyValPairs.empty()) {
+            m_modeDetailsCache.frameContent.clear();
+            if (m_depthEnabled) {
+                m_modeDetailsCache.frameContent.emplace_back("depth");
+            }
+            if (m_abEnabled) {
+                m_modeDetailsCache.frameContent.emplace_back("ab");
+            }
+            if (m_confEnabled) {
+                m_modeDetailsCache.frameContent.emplace_back("conf");
+            }
+            if (m_xyzEnabled) {
+                m_modeDetailsCache.frameContent.emplace_back("xyz");
+            }
         }
     }
 }
