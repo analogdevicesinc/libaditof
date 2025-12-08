@@ -121,8 +121,8 @@ struct Adsd3500Sensor::ImplData {
     std::string fw_ver;
 
     ImplData()
-        : numVideoDevs(1),
-          videoDevs(nullptr), modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
+        : numVideoDevs(1), videoDevs(nullptr),
+          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
         ccbVersion = CCBVersion::CCB_UNKNOWN;
         imagerType = SensorImagerType::IMAGER_UNKNOWN;
     }
@@ -2076,7 +2076,7 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
                 bitsInConf[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
-                if (bitsInConf[bitsInConf.size() - 1] != 0) {
+                if (bitsInConf[modeDetails.modeNumber] != 0) {
                     modeDetails.frameContent.push_back("conf");
                 }
             } else {
@@ -2108,7 +2108,7 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
                 bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
-                if (bitsInAB[bitsInAB.size() - 1] != 0) {
+                if (bitsInAB[modeDetails.modeNumber] != 0) {
                     modeDetails.frameContent.push_back("ab");
                 }
             } else {
