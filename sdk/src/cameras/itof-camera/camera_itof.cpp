@@ -999,17 +999,24 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     }
 
     // The incoming sensor frames are already processed. Need to just create XYZ data
-    if (m_xyzEnabled && m_depthEnabled) {
-        uint16_t *depthFrame;
-        uint16_t *xyzFrame;
+    if (m_xyzEnabled && m_depthEnabled && frame->haveDataType("xyz")) {
+        uint16_t *depthFrame = nullptr;
+        uint16_t *xyzFrame = nullptr;
 
-        frame->getData("depth", &depthFrame);
-        frame->getData("xyz", &xyzFrame);
+        Status getDepthStatus = frame->getData("depth", &depthFrame);
+        Status getXYZStatus = frame->getData("xyz", &xyzFrame);
 
-        Algorithms::ComputeXYZ((const uint16_t *)depthFrame, &m_xyzTable,
-                               (int16_t *)xyzFrame,
-                               m_modeDetailsCache.baseResolutionHeight,
-                               m_modeDetailsCache.baseResolutionWidth);
+        if (getDepthStatus == Status::OK && getXYZStatus == Status::OK &&
+            depthFrame != nullptr && xyzFrame != nullptr) {
+            Algorithms::ComputeXYZ((const uint16_t *)depthFrame, &m_xyzTable,
+                                   (int16_t *)xyzFrame,
+                                   m_modeDetailsCache.baseResolutionHeight,
+                                   m_modeDetailsCache.baseResolutionWidth);
+        } else {
+            LOG(WARNING) << "XYZ enabled but frame buffers not allocated. "
+                         << "Depth status: " << (int)getDepthStatus
+                         << ", XYZ status: " << (int)getXYZStatus;
+        }
     }
 
     if (!m_depthEnabled && frame->haveDataType("depth")) {
