@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.12)
 project(dependecies)
 
 add_subdirectory(third-party/c_json)
@@ -8,5 +8,6 @@ if (WITH_NETWORK_COMPRESSION)
 		add_subdirectory(third-party/lz4)
 	else()
 		add_subdirectory(third-party/rvl)
+		add_subdirectory(third-party/libjpeg-turbo)
 	endif()
 endif()
