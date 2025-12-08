@@ -4,8 +4,9 @@ project(libjpeg-turbo-wrapper)
 include(ExternalProject)
 
 set(JPEG_TURBO_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/libjpeg-turbo-src)
-set(JPEG_TURBO_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/libjpeg-turbo-install)
+set(JPEG_TURBO_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/inst)
 set(JPEG_TURBO_INCLUDE_DIR ${JPEG_TURBO_INSTALL_DIR}/include)
+set(JPEG_TURBO_PREFIX_DIR ${CMAKE_CURRENT_BINARY_DIR}/ep)
 
 # Set library path and name based on platform
 if(WIN32)
@@ -32,7 +33,8 @@ endif()
 
 # Use local source directory instead of downloading
 ExternalProject_Add(
-    libjpeg-turbo-external
+    jpegturbo
+    PREFIX ${JPEG_TURBO_PREFIX_DIR}
     SOURCE_DIR ${JPEG_TURBO_SOURCE_DIR}
     DOWNLOAD_COMMAND ""
     UPDATE_COMMAND ""
@@ -54,7 +56,7 @@ ExternalProject_Add(
 
 # Create an imported library target
 add_library(jpeg-turbo STATIC IMPORTED GLOBAL)
-add_dependencies(jpeg-turbo libjpeg-turbo-external)
+add_dependencies(jpeg-turbo jpegturbo)
 
 set_target_properties(jpeg-turbo PROPERTIES
     IMPORTED_LOCATION "${JPEG_TURBO_LIB_DIR}/${JPEG_TURBO_LIB_NAME}"
