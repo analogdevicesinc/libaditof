@@ -586,16 +586,25 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
         return status;
     }
 
-    status = frame->getData("conf", (uint16_t **)&confFrame);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to get confidence location";
-        return status;
+    // Only get confidence frame if it exists
+    if (frame->haveDataType("conf")) {
+        status = frame->getData("conf", (uint16_t **)&confFrame);
+        if (status != Status::OK) {
+            LOG(WARNING)
+                << "Confidence frame exists but failed to get location";
+        }
+    } else {
+        confFrame = nullptr;
     }
 
-    status = frame->getData("xyz", &xyzFrame);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to get XYZ location";
-        return status;
+    // Only get XYZ frame if it exists
+    if (frame->haveDataType("xyz")) {
+        status = frame->getData("xyz", &xyzFrame);
+        if (status != Status::OK) {
+            LOG(WARNING) << "XYZ frame exists but failed to get location";
+        }
+    } else {
+        xyzFrame = nullptr;
     }
 
     status = frame->getDetails(frameDetails);
@@ -627,8 +636,11 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
 
     status = SaveMetaAsTxt(metadataFileName.c_str(), &metadata);
 
-    status = SavePointCloudPLYBinary(xyzFileName.c_str(), xyzFrame,
-                                     frameDetails.width, frameDetails.height);
+    if (xyzFrame != nullptr) {
+        status =
+            SavePointCloudPLYBinary(xyzFileName.c_str(), xyzFrame,
+                                    frameDetails.width, frameDetails.height);
+    }
 
     status = SaveUint16AsJPEG(depthFileName.c_str(), depthFrame,
                               frameDetails.width, frameDetails.height);
@@ -644,12 +656,15 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
                                frameDetails.width, frameDetails.height);
     }
 
-    if (frameDetails.width == 1024 && frameDetails.height == 1024) {
-        status = SaveFloatAsJPEG(confFileName.c_str(), confFrame,
+    if (confFrame != nullptr) {
+        if (frameDetails.width == 1024 && frameDetails.height == 1024) {
+            status = SaveFloatAsJPEG(confFileName.c_str(), confFrame,
+                                     frameDetails.width, frameDetails.height);
+        } else {
+            status =
+                SaveUint16AsJPEG(confFileName.c_str(), (uint16_t *)confFrame,
                                  frameDetails.width, frameDetails.height);
-    } else {
-        status = SaveUint16AsJPEG(confFileName.c_str(), (uint16_t *)confFrame,
-                                  frameDetails.width, frameDetails.height);
+        }
     }
 
     return aditof::Status::OK;
