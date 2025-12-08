@@ -34,7 +34,6 @@
 
 #ifdef HAS_RGB_CAMERA
 #include "connections/target/adsd3500_sensor.h"  // For BufferProcessor access
-#include "connections/target/buffer_processor.h"
 #endif
 
 #include <algorithm>

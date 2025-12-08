@@ -12,6 +12,7 @@
 #include <sstream>
 #include <cstring>
 #include <chrono>
+#include <thread>
 
 #include <aditof/log.h>
 
@@ -184,12 +185,39 @@ Status GStreamerFrameGrabber::stopPipeline() {
         return Status::OK;
     }
 
+    LOG(INFO) << "Stopping GStreamer pipeline gracefully...";
+
     m_shouldExit = true;
     m_frameCondition.notify_all();
 
-    // Stop the pipeline
+    // Stop the pipeline gracefully: PLAYING → PAUSED → READY → NULL
     if (m_pipeline) {
-        gst_element_set_state(m_pipeline, GST_STATE_NULL);
+        // Set timeout for state changes (1 second)
+        GstClockTime timeout = 1 * GST_SECOND;
+
+        // PLAYING → PAUSED
+        GstStateChangeReturn ret = gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
+        if (ret == GST_STATE_CHANGE_FAILURE) {
+            LOG(WARNING) << "Failed to pause pipeline, forcing stop";
+        } else {
+            gst_element_get_state(m_pipeline, nullptr, nullptr, timeout);
+        }
+
+        // PAUSED → READY (releases resources)
+        ret = gst_element_set_state(m_pipeline, GST_STATE_READY);
+        if (ret == GST_STATE_CHANGE_FAILURE) {
+            LOG(WARNING) << "Failed to set pipeline to READY";
+        } else {
+            gst_element_get_state(m_pipeline, nullptr, nullptr, timeout);
+        }
+
+        // READY → NULL (cleanup)
+        ret = gst_element_set_state(m_pipeline, GST_STATE_NULL);
+        if (ret == GST_STATE_CHANGE_FAILURE) {
+            LOG(ERROR) << "Failed to set pipeline to NULL";
+        } else {
+            gst_element_get_state(m_pipeline, nullptr, nullptr, timeout);
+        }
     }
 
     // Wait for bus watch thread to exit
@@ -359,7 +387,7 @@ bool GStreamerFrameGrabber::initialize(const AR0234SensorConfig& config) {
     gstConfig.framerate = config.fps;
     gstConfig.sensorId = config.sensorId;
     gstConfig.mode = config.mode;
-    gstConfig.format = "BGRx"; // AR0234 uses BGRx format
+    gstConfig.format = "NV12"; // Use NV12 for efficient memory (1.5 bytes/pixel)
     
     Status status = createPipeline(gstConfig);
     return (status == Status::OK);
@@ -377,7 +405,8 @@ bool GStreamerFrameGrabber::stop() {
 
 bool GStreamerFrameGrabber::getFrame(AR0234Frame& frame, uint32_t timeoutMs) {
     // Allocate buffer for frame data
-    size_t expectedSize = m_config.width * m_config.height * 4; // BGRx = 4 bytes per pixel
+    // NV12 format: Y plane (width*height) + UV plane (width*height/2) = 1.5 bytes per pixel
+    size_t expectedSize = (m_config.width * m_config.height * 3) / 2;
     std::vector<uint8_t> buffer(expectedSize);
     size_t bufferSize = expectedSize;
     uint64_t timestamp = 0;
