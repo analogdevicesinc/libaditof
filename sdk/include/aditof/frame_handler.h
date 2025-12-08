@@ -134,6 +134,14 @@ class FrameHandler {
      */
     SDK_API aditof::Status setFrameContent(const std::string &frameContent);
 
+    /**
+     * @brief Take a snapshot of frame data and save to files
+     * @param[in] baseFileName - Base name for the output files (without extension)
+     * @param[in] frame - Pointer to the frame object containing frame data
+     * @param[in] ab - Pointer to the AB (active brightness) data buffer
+     * @param[in] depth - Pointer to the depth data buffer
+     * @return Status
+     */
     SDK_API aditof::Status SnapShotFrames(const char *baseFileName,
                                           aditof::Frame *frame,
                                           const uint8_t *ab,
