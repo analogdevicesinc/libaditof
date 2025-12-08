@@ -1751,6 +1751,8 @@ void CameraItof::configureSensorModeDetails() {
             if (m_xyzEnabled) {
                 m_modeDetailsCache.frameContent.emplace_back("xyz");
             }
+            // Always include metadata last (matches sensor frameContent order)
+            m_modeDetailsCache.frameContent.emplace_back("metadata");
         }
     }
 }
