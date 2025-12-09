@@ -31,8 +31,6 @@ GStreamerFrameGrabber::GStreamerFrameGrabber()
     , m_isRunning(false)
     , m_shouldExit(false)
     , m_frameCount(0)
-    , m_newFrameAvailable(false)
-    , m_lastFrameTimestamp(0)
 {
 }
 
@@ -96,11 +94,13 @@ Status GStreamerFrameGrabber::createPipeline(const GStreamerConfig& config) {
                  "sensor-mode", config.mode,
                  nullptr);
 
-    // Configure appsink
+    // Configure appsink for PULL model (not callback/signal model)
+    // This eliminates condition variable overhead and allows direct frame pulling
     g_object_set(G_OBJECT(m_appsink),
-                 "emit-signals", TRUE,
-                 "max-buffers", 1,
-                 "drop", TRUE,
+                 "emit-signals", FALSE,     // Disable callbacks - use pull model instead
+                 "max-buffers", 10,         // Increase buffer pool to prevent frame drops
+                 "drop", FALSE,             // Don't drop frames
+                 "sync", FALSE,              // Don't throttle to real-time (capture as fast as possible)
                  nullptr);
 
     // Set caps for source output (NVMM format from Argus)
@@ -138,8 +138,8 @@ Status GStreamerFrameGrabber::createPipeline(const GStreamerConfig& config) {
     gst_caps_unref(caps1);
     gst_caps_unref(caps2);
 
-    // Connect callback for new frames
-    g_signal_connect(m_appsink, "new-sample", G_CALLBACK(onNewSample), this);
+    // Note: Not using callbacks (emit-signals=FALSE) - using pull model instead
+    // This eliminates callback overhead and condition variable latency
 
     // Get bus for monitoring
     m_bus = gst_element_get_bus(m_pipeline);
@@ -168,6 +168,14 @@ Status GStreamerFrameGrabber::startPipeline() {
         return Status::GENERIC_ERROR;
     }
 
+    // Wait for pipeline to reach PLAYING state (important for pull model)
+    GstState state;
+    ret = gst_element_get_state(m_pipeline, &state, nullptr, 3 * GST_SECOND);
+    if (ret == GST_STATE_CHANGE_FAILURE || state != GST_STATE_PLAYING) {
+        LOG(ERROR) << "Pipeline failed to reach PLAYING state";
+        return Status::GENERIC_ERROR;
+    }
+
     m_isRunning = true;
     m_shouldExit = false;
     m_frameCount = 0;
@@ -175,7 +183,7 @@ Status GStreamerFrameGrabber::startPipeline() {
     // Start bus watch thread
     m_busWatchThread = std::thread(&GStreamerFrameGrabber::busWatchThreadFunc, this);
 
-    LOG(INFO) << "GStreamer pipeline started";
+    LOG(INFO) << "GStreamer pipeline started and PLAYING";
 
     return Status::OK;
 }
@@ -188,7 +196,6 @@ Status GStreamerFrameGrabber::stopPipeline() {
     LOG(INFO) << "Stopping GStreamer pipeline gracefully...";
 
     m_shouldExit = true;
-    m_frameCondition.notify_all();
 
     // Stop the pipeline gracefully: PLAYING → PAUSED → READY → NULL
     if (m_pipeline) {
@@ -228,48 +235,6 @@ Status GStreamerFrameGrabber::stopPipeline() {
     m_isRunning = false;
 
     LOG(INFO) << "GStreamer pipeline stopped. Total frames: " << m_frameCount.load();
-
-    return Status::OK;
-}
-
-Status GStreamerFrameGrabber::waitForFrame(uint8_t* buffer, size_t& bufferSize, 
-                                           int timeoutMs, uint64_t* timestamp) {
-    if (!buffer) {
-        return Status::INVALID_ARGUMENT;
-    }
-
-    std::unique_lock<std::mutex> lock(m_frameMutex);
-
-    // Wait for new frame with timeout
-    auto timeout = std::chrono::milliseconds(timeoutMs);
-    if (!m_frameCondition.wait_for(lock, timeout, [this] { 
-        return m_newFrameAvailable || m_shouldExit; 
-    })) {
-        return Status::UNREACHABLE; // Timeout
-    }
-
-    if (m_shouldExit) {
-        return Status::GENERIC_ERROR;
-    }
-
-    if (m_currentFrameBuffer.empty()) {
-        return Status::UNAVAILABLE;
-    }
-
-    size_t frameSize = m_currentFrameBuffer.size();
-    if (bufferSize < frameSize) {
-        bufferSize = frameSize;
-        return Status::INVALID_ARGUMENT;
-    }
-
-    std::memcpy(buffer, m_currentFrameBuffer.data(), frameSize);
-    bufferSize = frameSize;
-
-    if (timestamp) {
-        *timestamp = m_lastFrameTimestamp;
-    }
-
-    m_newFrameAvailable = false;
 
     return Status::OK;
 }
@@ -335,48 +300,6 @@ Status GStreamerFrameGrabber::destroyPipeline() {
     return Status::OK;
 }
 
-GstFlowReturn GStreamerFrameGrabber::onNewSample(GstElement* sink, gpointer userData) {
-    GStreamerFrameGrabber* grabber = static_cast<GStreamerFrameGrabber*>(userData);
-    
-    GstSample* sample = gst_app_sink_pull_sample(GST_APP_SINK(sink));
-    if (sample) {
-        GstFlowReturn ret = grabber->handleNewSample(sample);
-        gst_sample_unref(sample);
-        return ret;
-    }
-    
-    return GST_FLOW_ERROR;
-}
-
-GstFlowReturn GStreamerFrameGrabber::handleNewSample(GstSample* sample) {
-    GstBuffer* buffer = gst_sample_get_buffer(sample);
-    if (!buffer) {
-        return GST_FLOW_ERROR;
-    }
-
-    GstMapInfo map;
-    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
-        return GST_FLOW_ERROR;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(m_frameMutex);
-        
-        // Copy frame data to internal buffer
-        m_currentFrameBuffer.assign(map.data, map.data + map.size);
-        m_lastFrameTimestamp = GST_BUFFER_PTS(buffer);
-        m_newFrameAvailable = true;
-        m_frameCount++;
-    }
-
-    gst_buffer_unmap(buffer, &map);
-    
-    // Notify waiting threads
-    m_frameCondition.notify_all();
-
-    return GST_FLOW_OK;
-}
-
 // AR0234Backend_Internal interface implementation
 
 bool GStreamerFrameGrabber::initialize(const AR0234SensorConfig& config) {
@@ -404,26 +327,78 @@ bool GStreamerFrameGrabber::stop() {
 }
 
 bool GStreamerFrameGrabber::getFrame(AR0234Frame& frame, uint32_t timeoutMs) {
-    // Allocate buffer for frame data
-    // NV12 format: Y plane (width*height) + UV plane (width*height/2) = 1.5 bytes per pixel
-    size_t expectedSize = (m_config.width * m_config.height * 3) / 2;
-    std::vector<uint8_t> buffer(expectedSize);
-    size_t bufferSize = expectedSize;
-    uint64_t timestamp = 0;
-    
-    // Use existing waitForFrame method
-    Status status = waitForFrame(buffer.data(), bufferSize, timeoutMs, &timestamp);
-    
-    if (status != Status::OK) {
+    // OPTIMIZED: Direct pull from appsink (no callbacks, no condition variables)
+
+    if (!m_appsink || !m_isRunning) {
         return false;
     }
     
-    // Fill AR0234Frame structure
-    frame.data = std::move(buffer);
+    // Check pipeline state
+    GstState state;
+    gst_element_get_state(m_pipeline, &state, nullptr, 0);
+    if (state != GST_STATE_PLAYING) {
+        return false;
+    }
+
+    // Check for EOS (end of stream)
+    GstAppSink* appSink = GST_APP_SINK(m_appsink);
+    if (gst_app_sink_is_eos(appSink)) {
+        LOG(WARNING) << "Pipeline in EOS state - no more frames available";
+        return false;
+    }
+
+    // Check bus for errors before attempting to pull
+    GstMessage* msg = gst_bus_pop_filtered(m_bus, GST_MESSAGE_ERROR);
+    if (msg) {
+        GError* err;
+        gchar* debug_info;
+        gst_message_parse_error(msg, &err, &debug_info);
+        LOG(ERROR) << "GStreamer error before frame pull: " << err->message;
+        if (debug_info) {
+            LOG(ERROR) << "Debug info: " << debug_info;
+            g_free(debug_info);
+        }
+        g_error_free(err);
+        gst_message_unref(msg);
+        return false;
+    }
+
+    // Directly pull sample from appsink with timeout (non-blocking)
+    GstClockTime timeout = timeoutMs * GST_MSECOND;
+    GstSample* sample = gst_app_sink_try_pull_sample(appSink, timeout);
+
+    if (!sample) {
+        // Timeout or no sample available
+        return false;
+    }
+
+    // Get buffer from sample
+    GstBuffer* buffer = gst_sample_get_buffer(sample);
+    if (!buffer) {
+        gst_sample_unref(sample);
+        return false;
+    }
+
+    // Map buffer for reading (zero-copy access)
+    GstMapInfo map;
+    if (!gst_buffer_map(buffer, &map, GST_MAP_READ)) {
+        gst_sample_unref(sample);
+        return false;
+    }
+
+    // Copy frame data to AR0234Frame
+    frame.data.assign(map.data, map.data + map.size);
     frame.width = m_config.width;
     frame.height = m_config.height;
-    frame.timestamp = timestamp;
-    
+    frame.timestamp = GST_BUFFER_PTS(buffer);
+
+    // Cleanup
+    gst_buffer_unmap(buffer, &map);
+    gst_sample_unref(sample);
+
+    // Update frame counter
+    m_frameCount++;
+
     return true;
 }
 

@@ -368,28 +368,46 @@ aditof::Status BufferProcessor::setProcessorProperties(
  * with depth frames. This thread runs independently of the depth processing pipeline.
  */
 void BufferProcessor::captureRGBFrameThread() {
-    LOG(INFO) << "captureRGBFrameThread: RGB capture thread started";
+    auto threadStartTime = std::chrono::high_resolution_clock::now();
+    LOG(INFO) << "captureRGBFrameThread: RGB capture thread started at T+0ms";
 
     long long totalRGBCaptureTime = 0;
     int totalRGBFramesCaptured = 0;
+    bool firstFrameCaptured = false;
 
     while (!stopThreadsFlag) {
         // Check if RGB capture is enabled and sensor is available
         if (!m_rgbCaptureEnabled || m_rgbSensor == nullptr) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::high_resolution_clock::now() - threadStartTime).count();
+            if (elapsed % 500 < 100) {  // Log every 500ms to avoid spam
+                LOG(INFO) << "captureRGBFrameThread: T+" << elapsed << "ms - Waiting for RGB sensor to be enabled...";
+            }
+            // Reduced sleep time from 100ms to 10ms for faster response
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
 
         auto captureStart = std::chrono::high_resolution_clock::now();
 
-        // Capture RGB frame from sensor (GStreamer backend)
+        // Capture RGB frame from sensor (GStreamer backend with optimized pull model)
         aditof::AR0234Frame rgbFrame;
-        aditof::Status status = m_rgbSensor->getFrame(rgbFrame, 1000);  // 1 second timeout
+        // Reduced timeout from 1000ms to 200ms since optimized pull is much faster
+        aditof::Status status = m_rgbSensor->getFrame(rgbFrame, 200);  // 200ms timeout
 
         auto captureEnd = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> captureTime = captureEnd - captureStart;
 
         if (status == aditof::Status::OK && rgbFrame.isValid()) {
+            // Log first successful capture with timing
+            if (!firstFrameCaptured) {
+                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    captureEnd - threadStartTime).count();
+                LOG(INFO) << "captureRGBFrameThread: FIRST RGB FRAME captured at T+" << elapsed
+                          << "ms (capture took " << captureTime.count() << "ms)";
+                firstFrameCaptured = true;
+            }
+
             // Push RGB frame to queue
             if (m_rgb_frame_Q.push(std::move(rgbFrame))) {
                 totalRGBFramesCaptured++;

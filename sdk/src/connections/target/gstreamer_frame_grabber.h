@@ -96,16 +96,6 @@ public:
      */
     Status stopPipeline();
 
-    /**
-     * @brief Wait for and get the next frame (blocking with timeout)
-     * @param[out] buffer Buffer to copy frame data into
-     * @param[in,out] bufferSize Size of buffer (in), actual bytes copied (out)
-     * @param timeoutMs Timeout in milliseconds
-     * @param[out] timestamp Frame timestamp (optional)
-     * @return Status
-     */
-    Status waitForFrame(uint8_t* buffer, size_t& bufferSize, int timeoutMs = 2000, uint64_t* timestamp = nullptr);
-
 private:
     // GStreamer elements
     GstElement* m_pipeline;
@@ -122,30 +112,12 @@ private:
     std::atomic<bool> m_shouldExit;
     std::atomic<uint64_t> m_frameCount;
 
-    // Frame buffer management
-    std::vector<uint8_t> m_currentFrameBuffer;
-    std::mutex m_frameMutex;
-    std::condition_variable m_frameCondition;
-    bool m_newFrameAvailable;
-    uint64_t m_lastFrameTimestamp;
-
     // Bus monitoring thread
     std::thread m_busWatchThread;
 
     // Private methods
     void busWatchThreadFunc();
     Status destroyPipeline();
-    
-    /**
-     * @brief Callback for new frame from appsink
-     * Called by GStreamer when new frame is available
-     */
-    static GstFlowReturn onNewSample(GstElement* sink, gpointer userData);
-    
-    /**
-     * @brief Handle new sample from GStreamer
-     */
-    GstFlowReturn handleNewSample(GstSample* sample);
 };
 
 } // namespace aditof
