@@ -121,8 +121,8 @@ struct Adsd3500Sensor::ImplData {
     std::string fw_ver;
 
     ImplData()
-        : numVideoDevs(1), videoDevs(nullptr),
-          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
+        : numVideoDevs(1),
+          videoDevs(nullptr), modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
         ccbVersion = CCBVersion::CCB_UNKNOWN;
         imagerType = SensorImagerType::IMAGER_UNKNOWN;
     }

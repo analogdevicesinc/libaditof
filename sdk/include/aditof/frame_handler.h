@@ -56,7 +56,14 @@ namespace aditof {
  */
 class FrameHandler {
   public:
+    /**
+     * @brief Constructor for FrameHandler
+     */
     SDK_API FrameHandler();
+
+    /**
+     * @brief Destructor for FrameHandler
+     */
     SDK_API ~FrameHandler();
 
     /**
