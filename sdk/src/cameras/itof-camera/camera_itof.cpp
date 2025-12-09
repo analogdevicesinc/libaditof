@@ -743,18 +743,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 LOG(INFO) << "RGB sensor instance created";
             }
 
-            // Map ToF mode to RGB mode
             aditof::AR0234Mode rgbMode;
-            if (mode == 0 || mode == 1) {
-                rgbMode = aditof::AR0234Mode::MODE_0_1920x1200;  // High-res for short/long range
-                LOG(INFO) << "RGB mode selected: 1920x1200@60fps for ToF mode " << (int)mode;
-            } else if (mode == 2 || mode == 3) {
-                rgbMode = aditof::AR0234Mode::MODE_1_1920x1080;  // Full HD for Qnative
-                LOG(INFO) << "RGB mode selected: 1920x1080@60fps for ToF mode " << (int)mode;
-            } else {
-                rgbMode = aditof::AR0234Mode::MODE_2_1280x720;   // High FPS for mixed modes
-                LOG(INFO) << "RGB mode selected: 1280x720@120fps for ToF mode " << (int)mode;
-            }
+            rgbMode = aditof::AR0234Mode::MODE_0_1920x1200;  // High-res for short/long range
+            LOG(INFO) << "RGB mode selected: 1920x1200@60fps for ToF mode " << (int)mode;
+            // Map ToF mode to RGB mode
 
             aditof::AR0234SensorConfig rgbConfig =
                 aditof::AR0234SensorConfig::fromMode(rgbMode, 0);

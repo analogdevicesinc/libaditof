@@ -368,22 +368,17 @@ aditof::Status BufferProcessor::setProcessorProperties(
  * with depth frames. This thread runs independently of the depth processing pipeline.
  */
 void BufferProcessor::captureRGBFrameThread() {
-    auto threadStartTime = std::chrono::high_resolution_clock::now();
-    LOG(INFO) << "captureRGBFrameThread: RGB capture thread started at T+0ms";
-
     long long totalRGBCaptureTime = 0;
     int totalRGBFramesCaptured = 0;
-    bool firstFrameCaptured = false;
 
+    bool loggedWaiting = false;
     while (!stopThreadsFlag) {
         // Check if RGB capture is enabled and sensor is available
         if (!m_rgbCaptureEnabled || m_rgbSensor == nullptr) {
-            auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::high_resolution_clock::now() - threadStartTime).count();
-            if (elapsed % 500 < 100) {  // Log every 500ms to avoid spam
-                LOG(INFO) << "captureRGBFrameThread: T+" << elapsed << "ms - Waiting for RGB sensor to be enabled...";
+            if (!loggedWaiting) {
+                LOG(INFO) << "RGB capture thread waiting for sensor...";
+                loggedWaiting = true;
             }
-            // Reduced sleep time from 100ms to 10ms for faster response
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
@@ -392,57 +387,40 @@ void BufferProcessor::captureRGBFrameThread() {
 
         // Capture RGB frame from sensor (GStreamer backend with optimized pull model)
         aditof::AR0234Frame rgbFrame;
-        // Reduced timeout from 1000ms to 200ms since optimized pull is much faster
-        aditof::Status status = m_rgbSensor->getFrame(rgbFrame, 200);  // 200ms timeout
+        aditof::Status status = m_rgbSensor->getFrame(rgbFrame, 200);
 
         auto captureEnd = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> captureTime = captureEnd - captureStart;
 
         if (status == aditof::Status::OK && rgbFrame.isValid()) {
-            // Log first successful capture with timing
-            if (!firstFrameCaptured) {
-                auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    captureEnd - threadStartTime).count();
-                LOG(INFO) << "captureRGBFrameThread: FIRST RGB FRAME captured at T+" << elapsed
-                          << "ms (capture took " << captureTime.count() << "ms)";
-                firstFrameCaptured = true;
-            }
-
             // Push RGB frame to queue
             if (m_rgb_frame_Q.push(std::move(rgbFrame))) {
                 totalRGBFramesCaptured++;
                 totalRGBCaptureTime += captureTime.count();
                 m_totalRGBCaptured++;
-
-                if (totalRGBFramesCaptured % 100 == 0) {
-                    double avgCaptureTime = static_cast<double>(totalRGBCaptureTime) / totalRGBFramesCaptured;
-                    LOG(INFO) << "captureRGBFrameThread: Captured " << totalRGBFramesCaptured
-                              << " RGB frames, avg capture time: " << avgCaptureTime << " ms";
-                }
             } else {
-                LOG(WARNING) << "captureRGBFrameThread: Failed to push RGB frame to queue (queue full)";
+                LOG(WARNING) << "RGB frame queue full, dropping frame";
                 m_totalRGBFailures++;
             }
         } else {
-            LOG(WARNING) << "captureRGBFrameThread: Failed to capture RGB frame from sensor";
             m_totalRGBFailures++;
 
             // Auto-disable after too many consecutive failures
             if (m_totalRGBFailures > 10 && m_totalRGBCaptured == 0) {
-                LOG(ERROR) << "captureRGBFrameThread: Too many failures, disabling RGB capture";
+                LOG(ERROR) << "Too many RGB failures (" << m_totalRGBFailures << "), disabling RGB capture";
                 m_rgbCaptureEnabled = false;
             }
 
-            // Brief sleep on failure to avoid hammering the sensor
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
     }
-
+#ifdef DBG_MEASURE_TIME
     if (totalRGBFramesCaptured > 0) {
         double avgCaptureTime = static_cast<double>(totalRGBCaptureTime) / totalRGBFramesCaptured;
-        LOG(INFO) << "captureRGBFrameThread: Thread exiting. Total RGB frames: "
-                  << totalRGBFramesCaptured << ", avg capture time: " << avgCaptureTime << " ms";
+        LOG(INFO) << "RGB capture complete: " << totalRGBFramesCaptured
+                  << " frames, avg " << avgCaptureTime << " ms";
     }
+#endif //DBG_MEASURE_TIME
 }
 #endif // HAS_RGB_CAMERA
 
