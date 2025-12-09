@@ -69,9 +69,9 @@ BufferProcessor::BufferProcessor()
     : m_v4l2_input_buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_capture_to_process_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
-      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE),
+      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE)
 #ifdef HAS_RGB_CAMERA
-      m_rgb_frame_Q(BufferProcessor::MAX_QUEUE_SIZE),  // RGB frame queue
+      , m_rgb_frame_Q(BufferProcessor::MAX_QUEUE_SIZE),  // RGB frame queue
       m_rgbSensor(nullptr), m_rgbCaptureEnabled(false),
       m_totalRGBCaptured(0), m_totalRGBFailures(0)
 #endif
@@ -386,7 +386,7 @@ void BufferProcessor::captureRGBFrameThread() {
         auto captureStart = std::chrono::high_resolution_clock::now();
 
         // Capture RGB frame from sensor (GStreamer backend with optimized pull model)
-        aditof::AR0234Frame rgbFrame;
+        aditof::RGBFrame rgbFrame;
         aditof::Status status = m_rgbSensor->getFrame(rgbFrame, 200);
 
         auto captureEnd = std::chrono::high_resolution_clock::now();
@@ -730,7 +730,7 @@ void BufferProcessor::processThread() {
             }
 #ifdef HAS_RGB_CAMERA
             // Try to get and write RGB frame from the RGB capture queue
-            aditof::AR0234Frame rgbFrame;
+            aditof::RGBFrame rgbFrame;
             if (m_rgb_frame_Q.pop(rgbFrame, std::chrono::milliseconds(50))) {
                 if (rgbFrame.isValid()) {
                     aditof::Status rgbWriteStatus =
@@ -828,10 +828,10 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
  * the latest RGB frame from the RGB capture thread's queue.
  *
  * @param depthBuffer Buffer to receive depth + AB + confidence data
- * @param rgbFrame Pointer to AR0234Frame to receive RGB data (can be nullptr for depth-only)
+ * @param rgbFrame Pointer to RGBFrame to receive RGB data (can be nullptr for depth-only)
  * @return Status::OK on success, error otherwise
  */
-aditof::Status BufferProcessor::processBuffer(uint16_t *depthBuffer, aditof::AR0234Frame *rgbFrame) {
+aditof::Status BufferProcessor::processBuffer(uint16_t *depthBuffer, aditof::RGBFrame *rgbFrame) {
     Tofi_v4l2_buffer tof_processed_frame;
     const std::chrono::milliseconds m_retryDelay(10);
 
@@ -854,13 +854,13 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *depthBuffer, aditof::AR0
                     *rgbFrame = std::move(tof_processed_frame.rgbFrame);
                 } else {
                     // Try to get latest RGB frame from the RGB queue
-                    aditof::AR0234Frame latestRGBFrame;
+                    aditof::RGBFrame latestRGBFrame;
                     if (m_rgb_frame_Q.pop(latestRGBFrame, std::chrono::milliseconds(50))) {
                         *rgbFrame = std::move(latestRGBFrame);
                     } else {
                         LOG(WARNING) << "processBuffer: RGB requested but not available";
                         // Return empty frame rather than failing completely
-                        *rgbFrame = aditof::AR0234Frame();
+                        *rgbFrame = aditof::RGBFrame();
                     }
                 }
             }
@@ -1012,7 +1012,7 @@ aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled) const {
 }
 
 #ifdef HAS_RGB_CAMERA
-aditof::Status BufferProcessor::setRGBSensor(aditof::AR0234Sensor* sensor) {
+aditof::Status BufferProcessor::setRGBSensor(aditof::RGBSensor* sensor) {
     if (sensor == nullptr) {
         LOG(ERROR) << "setRGBSensor: RGB sensor is nullptr";
         return aditof::Status::INVALID_ARGUMENT;
@@ -1130,7 +1130,7 @@ void BufferProcessor::stopThreads() {
               << ", tofi_io: " << m_tofi_io_Buffer_Q.size()
               << ", process_done: " << m_process_done_Q.size();
 #ifdef HAS_RGB_CAMERA
-    aditof::AR0234Frame rgbFrame;
+    aditof::RGBFrame rgbFrame;
     while (m_rgb_frame_Q.pop(rgbFrame)) {
         ++rgbFreed;
     }

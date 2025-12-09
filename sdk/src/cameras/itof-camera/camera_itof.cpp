@@ -739,17 +739,17 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     if (!m_isOffline) {  // Only for online (real camera) mode
         try {
             if (!m_rgbSensor) {
-                m_rgbSensor = std::make_unique<aditof::AR0234Sensor>();
+                m_rgbSensor = std::make_unique<aditof::RGBSensor>();
                 LOG(INFO) << "RGB sensor instance created";
             }
 
-            aditof::AR0234Mode rgbMode;
-            rgbMode = aditof::AR0234Mode::MODE_0_1920x1200;  // High-res for short/long range
+            aditof::RGBMode rgbMode;
+            rgbMode = aditof::RGBMode::MODE_0_1920x1200;  // High-res for short/long range
             LOG(INFO) << "RGB mode selected: 1920x1200@60fps for ToF mode " << (int)mode;
             // Map ToF mode to RGB mode
 
-            aditof::AR0234SensorConfig rgbConfig =
-                aditof::AR0234SensorConfig::fromMode(rgbMode, 0);
+            aditof::RGBSensorConfig rgbConfig =
+                aditof::RGBSensorConfig::fromMode(rgbMode, 0);
 
             aditof::Status rgbStatus = m_rgbSensor->open(rgbConfig);
             if (rgbStatus != aditof::Status::OK) {

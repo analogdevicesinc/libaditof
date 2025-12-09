@@ -41,7 +41,7 @@
 
 #ifdef HAS_RGB_CAMERA
 // RGB camera integration
-#include "ar0234_sensor.h"  // For AR0234Sensor and AR0234Frame
+#include "aditof/ar0234_sensor.h"  // For RGBSensor and RGBFrame
 #endif
 
 #define OUTPUT_DEVICE "/dev/video1"
@@ -145,14 +145,14 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
                                           bool ispEnabled);
     aditof::Status processBuffer(uint16_t *buffer);
 #ifdef HAS_RGB_CAMERA
-    aditof::Status processBuffer(uint16_t *depthBuffer, aditof::AR0234Frame *rgbFrame);
+    aditof::Status processBuffer(uint16_t *depthBuffer, aditof::RGBFrame *rgbFrame);
 #endif
     TofiConfig *getTofiCongfig() const;
     aditof::Status getDepthComputeVersion(uint8_t &enabled) const;
 
 #ifdef HAS_RGB_CAMERA
     // RGB sensor management
-    aditof::Status setRGBSensor(aditof::AR0234Sensor* sensor);
+    aditof::Status setRGBSensor(aditof::RGBSensor* sensor);
     aditof::Status enableRGBCapture(bool enable);
     bool isRGBCaptureEnabled() const { return m_rgbCaptureEnabled; }
 #endif
@@ -211,13 +211,13 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
 #ifdef HAS_RGB_CAMERA
     // RGB sensor integration
-    aditof::AR0234Sensor* m_rgbSensor;
+    aditof::RGBSensor* m_rgbSensor;
     bool m_rgbCaptureEnabled;
     std::atomic<uint64_t> m_totalRGBCaptured;
     std::atomic<uint64_t> m_totalRGBFailures;
 
     // RGB frame queue - parallel to depth processing
-    ThreadSafeQueue<aditof::AR0234Frame> m_rgb_frame_Q;
+    ThreadSafeQueue<aditof::RGBFrame> m_rgb_frame_Q;
 #endif
 
     struct Tofi_v4l2_buffer {
@@ -225,7 +225,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
         size_t size = 0;
         std::shared_ptr<uint16_t> tofiBuffer;
 #ifdef HAS_RGB_CAMERA
-        aditof::AR0234Frame rgbFrame;  // RGB frame data (captured by separate thread)
+        aditof::RGBFrame rgbFrame;  // RGB frame data (captured by separate thread)
         bool hasRGB = false;           // Flag indicating if RGB data is valid
 #endif
     };

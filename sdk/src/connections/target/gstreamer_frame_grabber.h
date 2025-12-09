@@ -9,7 +9,7 @@
 
 #if defined(HAS_RGB_CAMERA) && defined(HAS_GSTREAMER_BACKEND)
 
-#include "ar0234_sensor.h"
+#include "aditof/ar0234_sensor.h"
 #include <aditof/status_definitions.h>
 #include <gst/gst.h>
 #include <gst/app/gstappsink.h>
@@ -47,27 +47,27 @@ struct GStreamerConfig {
 
 /**
  * @class GStreamerFrameGrabber
- * @brief GStreamer-based backend for AR0234 camera
+ * @brief GStreamer-based backend for RGB camera
  * 
- * This class implements the AR0234Backend_Internal interface using GStreamer
- * pipeline with nvarguscamerasrc for capturing frames from AR0234 sensor.
+ * This class implements the RGBBackend_Internal interface using GStreamer
+ * pipeline with nvarguscamerasrc for capturing frames from RGB sensor.
  * 
- * Applications should use AR0234Sensor class, not this directly.
- * To add V4L2 or nvargus backends, create new classes implementing AR0234Backend_Internal.
+ * Applications should use RGBSensor class, not this directly.
+ * To add V4L2 or nvargus backends, create new classes implementing RGBBackend_Internal.
  */
-class GStreamerFrameGrabber : public AR0234Backend_Internal {
+class GStreamerFrameGrabber : public RGBBackend_Internal {
 public:
     GStreamerFrameGrabber();
     ~GStreamerFrameGrabber() override;
 
-    // AR0234Backend_Internal interface implementation
-    AR0234Backend getBackendType() const override { return AR0234Backend::GSTREAMER; }
+    // RGBBackend_Internal interface implementation
+    RGBBackend getBackendType() const override { return RGBBackend::GSTREAMER; }
     std::string getBackendName() const override { return "GStreamer"; }
-    bool initialize(const AR0234SensorConfig& config) override;
+    bool initialize(const RGBSensorConfig& config) override;
     bool start() override;
     bool stop() override;
     bool isRunning() const override { return m_isRunning; }
-    bool getFrame(AR0234Frame& frame, uint32_t timeoutMs = 1000) override;
+    bool getFrame(RGBFrame& frame, uint32_t timeoutMs = 1000) override;
     std::string getStatistics() const override;
 
     // Internal implementation methods (used by public interface)

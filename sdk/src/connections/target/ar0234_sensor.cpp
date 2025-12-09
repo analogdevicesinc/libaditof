@@ -1,10 +1,10 @@
 /**
- * AR0234 RGB Camera Sensor Implementation
+ * RGB Camera Sensor Implementation
  * 
  * Copyright (c) 2025 Analog Devices, Inc.
  */
 
-#include "ar0234_sensor.h"
+#include "aditof/ar0234_sensor.h"
 
 #ifdef HAS_RGB_CAMERA
 
@@ -33,10 +33,10 @@
 namespace aditof {
 
 // ============================================================================
-// Internal Backend Factory Functions (used only by AR0234Sensor)
+// Internal Backend Factory Functions (used only by RGBSensor)
 // ============================================================================
 
-static std::unique_ptr<AR0234Backend_Internal> createBackend() {
+static std::unique_ptr<RGBBackend_Internal> createBackend() {
     // Priority order: GStreamer > V4L2 > nvargus
 #ifdef HAS_GSTREAMER_BACKEND
     return std::make_unique<GStreamerFrameGrabber>();
@@ -67,22 +67,22 @@ static std::string getDefaultBackendName() {
 // AR0234Sensor Implementation
 // ============================================================================
 
-AR0234Sensor::AR0234Sensor()
+RGBSensor::RGBSensor()
     : m_backend(nullptr)
     , m_isOpen(false)
     , m_frameCount(0)
 {
-    LOG(INFO) << "AR0234Sensor created";
+    LOG(INFO) << "RGBSensor created";
 }
 
-AR0234Sensor::~AR0234Sensor() {
+RGBSensor::~RGBSensor() {
     if (m_isOpen) {
         close();
     }
-    LOG(INFO) << "AR0234Sensor destroyed";
+    LOG(INFO) << "RGBSensor destroyed";
 }
 
-Status AR0234Sensor::open(const AR0234SensorConfig& config) {
+Status RGBSensor::open(const RGBSensorConfig& config) {
     if (m_isOpen) {
         LOG(WARNING) << "AR0234Sensor already open";
         return Status::BUSY;
@@ -115,7 +115,7 @@ Status AR0234Sensor::open(const AR0234SensorConfig& config) {
     return Status::OK;
 }
 
-Status AR0234Sensor::close() {
+Status RGBSensor::close() {
     if (!m_isOpen) {
         return Status::OK;
     }
@@ -134,7 +134,7 @@ Status AR0234Sensor::close() {
     return Status::OK;
 }
 
-Status AR0234Sensor::start() {
+Status RGBSensor::start() {
     if (!m_isOpen) {
         LOG(ERROR) << "AR0234Sensor not open";
         return Status::UNAVAILABLE;
@@ -155,7 +155,7 @@ Status AR0234Sensor::start() {
     return Status::OK;
 }
 
-Status AR0234Sensor::stop() {
+Status RGBSensor::stop() {
     if (!m_isOpen) {
         return Status::UNAVAILABLE;
     }
@@ -174,7 +174,7 @@ Status AR0234Sensor::stop() {
     return Status::OK;
 }
 
-Status AR0234Sensor::getFrame(AR0234Frame& frame, uint32_t timeoutMs) {
+Status RGBSensor::getFrame(RGBFrame& frame, uint32_t timeoutMs) {
     if (!m_isOpen) {
         LOG(ERROR) << "AR0234Sensor not open";
         return Status::UNAVAILABLE;
@@ -195,24 +195,24 @@ Status AR0234Sensor::getFrame(AR0234Frame& frame, uint32_t timeoutMs) {
     return Status::OK;
 }
 
-bool AR0234Sensor::isCapturing() const {
+bool RGBSensor::isCapturing() const {
     return m_isOpen && m_backend && m_backend->isRunning();
 }
 
-std::string AR0234Sensor::getBackendName() const {
+std::string RGBSensor::getBackendName() const {
     if (!m_backend) {
         return "None";
     }
     return m_backend->getBackendName();
 }
 
-std::string AR0234Sensor::getStatistics() const {
+std::string RGBSensor::getStatistics() const {
     if (!m_backend) {
-        return "AR0234Sensor: Not initialized";
+        return "RGBSensor: Not initialized";
     }
     
     std::ostringstream stats;
-    stats << "AR0234 RGB Camera Sensor\n";
+    stats << "RGB Camera Sensor\n";
     stats << "-------------------------\n";
     stats << "Status: " << (m_isOpen ? "Open" : "Closed") << "\n";
     stats << "Capturing: " << (isCapturing() ? "Yes" : "No") << "\n";

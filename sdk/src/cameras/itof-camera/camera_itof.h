@@ -258,7 +258,7 @@ class CameraItof : public aditof::Camera {
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
 
 #ifdef HAS_RGB_CAMERA
-    std::unique_ptr<aditof::AR0234Sensor> m_rgbSensor;
+    std::unique_ptr<aditof::RGBSensor> m_rgbSensor;
     bool m_rgbEnabled;
 #endif
 

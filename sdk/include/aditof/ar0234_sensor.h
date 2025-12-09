@@ -28,15 +28,15 @@ namespace aditof {
 // ============================================================================
 
 /**
- * @brief Frame captured from AR0234 sensor
+ * @brief Frame captured from RGB sensor
  */
-struct AR0234Frame {
+struct RGBFrame {
     std::vector<uint8_t> data;  ///< Raw pixel data (BGRx format, 4 bytes per pixel)
     uint32_t width;             ///< Frame width in pixels
     uint32_t height;            ///< Frame height in pixels
     uint64_t timestamp;         ///< Frame timestamp in microseconds
     
-    AR0234Frame() : width(0), height(0), timestamp(0) {}
+    RGBFrame() : width(0), height(0), timestamp(0) {}
     
     /// Get frame size in bytes
     size_t size() const { return data.size(); }
@@ -48,7 +48,7 @@ struct AR0234Frame {
 /**
  * @brief Camera mode index (maps to DTS modes)
  */
-enum class AR0234Mode {
+enum class RGBMode {
     MODE_0_1920x1200,    ///< Mode 0: 1920x1200 (DTS mode0)
     MODE_1_1920x1080,    ///< Mode 1: 1920x1080 (DTS mode1)
     MODE_2_1280x720,     ///< Mode 2: 1280x720 (DTS mode2)
@@ -58,7 +58,7 @@ enum class AR0234Mode {
 /**
  * @brief Sensor mode definition (matches DTS active_w/active_h)
  */
-struct AR0234ModeConfig {
+struct RGBModeConfig {
     int mode_index;         ///< Camera mode index (0, 1, 2)
     int width;              ///< active_w from DTS
     int height;             ///< active_h from DTS
@@ -74,35 +74,35 @@ struct AR0234ModeConfig {
  * mode1: 1920x1080@60fps  
  * mode2: 1280x720@120fps
  */
-static const AR0234ModeConfig AR0234_MODES[] = {
+static const RGBModeConfig RGB_MODES[] = {
     {0, 1920, 1200, 60, "Mode 0: 1920x1200@60fps"},   // DTS mode0
     {1, 1920, 1080, 60, "Mode 1: 1920x1080@60fps"},   // DTS mode1
     {2, 1280, 720,  120, "Mode 2: 1280x720@120fps"},  // DTS mode2
 };
 
 /**
- * @brief Configuration for AR0234 RGB camera sensor
+ * @brief Configuration for RGB camera sensor
  */
-struct AR0234SensorConfig {
+struct RGBSensorConfig {
     int sensorId;        ///< Camera sensor ID (0, 1, etc. for multi-camera)
     int mode;            ///< Camera mode index (0, 1, 2) - maps to DTS modes
     int width;           ///< Frame width in pixels (active_w from DTS)
     int height;          ///< Frame height in pixels (active_h from DTS)
     int fps;             ///< Target frames per second
     
-    AR0234SensorConfig() 
+    RGBSensorConfig() 
         : sensorId(0), mode(0), width(1920), height(1200), fps(60) {}
     
     /**
      * @brief Create config from predefined mode enum
      */
-    static AR0234SensorConfig fromMode(AR0234Mode modeEnum, int sensorId = 0) {
-        AR0234SensorConfig config;
+    static RGBSensorConfig fromMode(RGBMode modeEnum, int sensorId = 0) {
+        RGBSensorConfig config;
         config.sensorId = sensorId;
         
-        if (modeEnum != AR0234Mode::MODE_CUSTOM) {
+        if (modeEnum != RGBMode::MODE_CUSTOM) {
             int mode_idx = static_cast<int>(modeEnum);
-            const auto& modeConfig = AR0234_MODES[mode_idx];
+            const auto& modeConfig = RGB_MODES[mode_idx];
             config.mode = modeConfig.mode_index;
             config.width = modeConfig.width;
             config.height = modeConfig.height;
@@ -118,7 +118,7 @@ struct AR0234SensorConfig {
     std::string getModeDescription() const {
         // Check if mode index is valid
         if (mode >= 0 && mode < 3) {
-            return AR0234_MODES[mode].description;
+            return RGB_MODES[mode].description;
         }
         return "Custom: " + std::to_string(width) + "x" + std::to_string(height) + "@" + std::to_string(fps) + "fps";
     }
@@ -126,13 +126,13 @@ struct AR0234SensorConfig {
 
 // ============================================================================
 // SECTION 2: Internal Backend Interface
-// (Used internally by AR0234Sensor - applications don't use this directly)
+// (Used internally by RGBSensor - applications don't use this directly)
 // ============================================================================
 
 /**
  * @brief Backend type - which capture method is being used
  */
-enum class AR0234Backend {
+enum class RGBBackend {
     GSTREAMER,   ///< GStreamer-based capture (current)
     V4L2,        ///< Direct V4L2 capture (future)
     NVARGUS,     ///< NVIDIA Argus direct API (future)
@@ -140,22 +140,22 @@ enum class AR0234Backend {
 };
 
 /**
- * @brief Internal interface for AR0234 camera backends
+ * @brief Internal interface for RGB camera backends
  * 
- * This is used internally by AR0234Sensor to communicate with different
+ * This is used internally by RGBSensor to communicate with different
  * capture backends (GStreamer, V4L2, nvargus). Applications should use
- * AR0234Sensor class instead of using this interface directly.
+ * RGBSensor class instead of using this interface directly.
  * 
  * Each backend (GStreamer, V4L2, nvargus) implements these methods.
  */
-class AR0234Backend_Internal {
+class RGBBackend_Internal {
 public:
-    virtual ~AR0234Backend_Internal() = default;
+    virtual ~RGBBackend_Internal() = default;
     
     /**
      * @brief Get backend type
      */
-    virtual AR0234Backend getBackendType() const = 0;
+    virtual RGBBackend getBackendType() const = 0;
     
     /**
      * @brief Get backend name as string
@@ -165,7 +165,7 @@ public:
     /**
      * @brief Initialize the backend with configuration
      */
-    virtual bool initialize(const AR0234SensorConfig& config) = 0;
+    virtual bool initialize(const RGBSensorConfig& config) = 0;
     
     /**
      * @brief Start frame capture
@@ -185,7 +185,7 @@ public:
     /**
      * @brief Get next frame (blocking with timeout)
      */
-    virtual bool getFrame(AR0234Frame& frame, uint32_t timeoutMs = 1000) = 0;
+    virtual bool getFrame(RGBFrame& frame, uint32_t timeoutMs = 1000) = 0;
     
     /**
      * @brief Get statistics string
@@ -194,12 +194,12 @@ public:
 };
 
 // ============================================================================
-// SECTION 3: Main AR0234 Sensor Class (Application Interface)
+// SECTION 3: Main RGB Sensor Class (Application Interface)
 // ============================================================================
 
 /**
- * @class AR0234Sensor
- * @brief Main class for AR0234 RGB camera sensor
+ * @class RGBSensor
+ * @brief Main class for RGB camera sensor
  * 
  * This is the class applications should use. It provides a simple sensor-style
  * interface similar to other sensors in the SDK (like Adsd3500Sensor).
@@ -209,9 +209,9 @@ public:
  * 
  * Usage Example:
  * ```cpp
- * AR0234Sensor sensor;
+ * RGBSensor sensor;
  * 
- * AR0234SensorConfig config;
+ * RGBSensorConfig config;
  * config.sensorId = 0;
  * config.width = 1920;
  * config.height = 1200;
@@ -220,7 +220,7 @@ public:
  * if (sensor.open(config) == Status::OK) {
  *     sensor.start();
  *     
- *     AR0234Frame frame;
+ *     RGBFrame frame;
  *     while (capturing) {
  *         if (sensor.getFrame(frame) == Status::OK) {
  *             // Process frame.data (1920x1200 BGRx pixels)
@@ -232,17 +232,17 @@ public:
  * }
  * ```
  */
-class AR0234Sensor {
+class RGBSensor {
 public:
-    AR0234Sensor();
-    ~AR0234Sensor();
+    RGBSensor();
+    ~RGBSensor();
     
     /**
      * @brief Open and initialize the sensor
      * @param config Sensor configuration
      * @return Status::OK on success
      */
-    Status open(const AR0234SensorConfig& config = AR0234SensorConfig());
+    Status open(const RGBSensorConfig& config = RGBSensorConfig());
     
     /**
      * @brief Close the sensor
@@ -268,7 +268,7 @@ public:
      * @param timeoutMs Timeout in milliseconds (default: 1000ms)
      * @return Status::OK on success, Status::GENERIC_ERROR on timeout/error
      */
-    Status getFrame(AR0234Frame& frame, uint32_t timeoutMs = 1000);
+    Status getFrame(RGBFrame& frame, uint32_t timeoutMs = 1000);
     
     /**
      * @brief Check if sensor is currently capturing
@@ -286,7 +286,7 @@ public:
      * @brief Get current sensor configuration
      * @return Sensor configuration
      */
-    AR0234SensorConfig getConfig() const { return m_config; }
+    RGBSensorConfig getConfig() const { return m_config; }
     
     /**
      * @brief Get backend name being used
@@ -307,8 +307,8 @@ public:
     uint64_t getFrameCount() const { return m_frameCount; }
 
 private:
-    std::unique_ptr<AR0234Backend_Internal> m_backend;  ///< Internal backend implementation
-    AR0234SensorConfig m_config;                        ///< Current configuration
+    std::unique_ptr<RGBBackend_Internal> m_backend;  ///< Internal backend implementation
+    RGBSensorConfig m_config;                        ///< Current configuration
     bool m_isOpen;                                       ///< Open state flag
     uint64_t m_frameCount;                              ///< Total frames captured
 };

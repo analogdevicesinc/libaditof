@@ -302,7 +302,7 @@ Status GStreamerFrameGrabber::destroyPipeline() {
 
 // AR0234Backend_Internal interface implementation
 
-bool GStreamerFrameGrabber::initialize(const AR0234SensorConfig& config) {
+bool GStreamerFrameGrabber::initialize(const RGBSensorConfig& config) {
     // Convert AR0234SensorConfig to GStreamerConfig
     GStreamerConfig gstConfig;
     gstConfig.width = config.width;
@@ -326,7 +326,7 @@ bool GStreamerFrameGrabber::stop() {
     return (status == Status::OK);
 }
 
-bool GStreamerFrameGrabber::getFrame(AR0234Frame& frame, uint32_t timeoutMs) {
+bool GStreamerFrameGrabber::getFrame(RGBFrame& frame, uint32_t timeoutMs) {
     // OPTIMIZED: Direct pull from appsink (no callbacks, no condition variables)
 
     if (!m_appsink || !m_isRunning) {
