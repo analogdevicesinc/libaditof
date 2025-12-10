@@ -71,7 +71,7 @@ NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
 
     extern std::vector<std::string> m_connectionList;
     m_sensorIndex = -1;
-    for (int i = 0; i < m_connectionList.size(); i++) {
+    for (uint32_t i = 0; i < m_connectionList.size(); i++) {
         if (m_connectionList.at(i) == ip) {
             m_sensorIndex = i;
         }
@@ -614,7 +614,7 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
     net->send_buff[m_sensorIndex].mutable_mode_details()->set_metadata_size(
         type.metadataSize);
     auto content = net->send_buff[m_sensorIndex].mutable_mode_details();
-    for (int i = 0; i < type.frameContent.size(); i++) {
+    for (uint32_t i = 0; i < type.frameContent.size(); i++) {
         content->add_frame_content(type.frameContent.at(i));
     }
 
@@ -714,7 +714,6 @@ static inline std::vector<char> decompress_buffer(const void* compressedBuffer,
         return {};
     }
 
-    int cSize = static_cast<int>(compressedSize);
     int dSize = static_cast<int>(expectedDecompressedSize);
 
     // Allocate output buffer sized to expected decompressed size
@@ -1550,7 +1549,6 @@ aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
         return aditof::Status::GENERIC_ERROR;
     }
 
-    static uint32_t idx = 0;
     try {
         if (m_stream_file_out.is_open()) {
             // Write size of buffer
