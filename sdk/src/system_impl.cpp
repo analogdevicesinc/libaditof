@@ -36,6 +36,17 @@
 #include <aditof/camera.h>
 #include <algorithm>
 
+#include "discovery_client.h"
+#include "platform.h"
+#include <iostream>
+#include <cstring>
+#include <string>
+#include <sstream>
+
+#ifndef PLATFORM_WINDOWS
+#include <arpa/inet.h>
+#endif
+
 #ifdef USE_GLOG
 #include <glog/logging.h>
 #else
@@ -50,6 +61,30 @@
 #endif
 
 using namespace aditof;
+using namespace network_discovery;
+
+ServerInfo find_server_by_ip(const std::vector<ServerInfo>& servers, const std::string& ip) {
+    for (const auto& server : servers) {
+        if (server.ip_address == ip) {
+            return server;
+        }
+    }
+
+    // If not found, create a ServerInfo with the IP
+    ServerInfo info;
+    info.ip_address = ip;
+    info.port = DEFAULT_DISCOVERY_PORT;
+
+    // Parse IP address
+    struct sockaddr_in addr;
+    std::memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(DEFAULT_DISCOVERY_PORT);
+    inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
+    info.address = addr;
+
+    return info;
+}
 
 static std::vector<std::shared_ptr<Camera>>
 buildCameras(std::unique_ptr<SensorEnumeratorInterface> enumerator,
@@ -80,11 +115,32 @@ SystemImpl::SystemImpl() {}
 
 SystemImpl::~SystemImpl() = default;
 
+static std::vector<ServerInfo> discover(DiscoveryClient &client) {
+    LOG(INFO) << "Discovering servers on the network...";
+
+    uint32_t cnt = 0;
+    while (true) {
+        auto servers = client.discover_servers(3);
+
+        if (servers.empty()) {
+            LOG(INFO) << "Try " << cnt + 1 << ". No servers found.";
+
+            if (cnt++ > 10)
+                return {};
+        }
+        else {
+            return servers;
+        }
+    }
+    return {};
+}
+
 Status
 SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
                           const std::string &uri) const {
 
 #ifdef WITH_NETWORK
+    std::string _uri = uri;
     static bool logged = false;
     int major, minor, patch;
     zmq_version(&major, &minor, &patch);
@@ -93,14 +149,25 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
                   << "." << patch;
         logged = true;
     }
-#endif
+
+    if (Platform::initialize_networking()) {
+        uint16_t port = DEFAULT_DISCOVERY_PORT;
+        std::string interface;
+        LOG(INFO) << "Creating discovery client.";
+        DiscoveryClient client(port, interface);
+        auto servers = discover(client);
+        if (!servers.empty()) {
+            _uri = "ip:" + servers[0].ip_address;
+        }
+    }
 
     cameraList.clear();
 
-    if (uri.compare(0, 3, "ip:") == 0) {
-        std::string ip(uri, 3);
+    if (_uri.compare(0, 3, "ip:") == 0) {
+        std::string ip(_uri, 3);
         return getCameraListAtIp(cameraList, ip);
     }
+#endif
 
     std::unique_ptr<SensorEnumeratorInterface> sensorEnumerator;
 

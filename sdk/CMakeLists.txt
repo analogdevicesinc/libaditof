@@ -119,6 +119,10 @@ else()
     target_link_libraries(${PROJECT_NAME} PRIVATE jpeg-turbo)
 endif()
 
+if (NOT ON_TARGET)
+    target_link_libraries(${PROJECT_NAME} PRIVATE network_discovery)
+endif()
+
 if(WITH_GLOG_DEPENDENCY)
     # Prevent macro name collisions between custom log.h and glog
     add_definitions(-DGLOG_NO_ABBREVIATED_SEVERITIES)
