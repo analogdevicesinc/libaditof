@@ -336,7 +336,7 @@ aditof::Status CameraItof::start() {
     m_devStreaming = true;
 
 #ifdef HAS_RGB_CAMERA
-    // Start RGB sensor if initialized
+    // Start RGB sensor if initialized, otherwise ensure RGB capture is disabled
     if (m_rgbSensor && m_rgbEnabled) {
         try {
             Status rgbStatus = m_rgbSensor->start();
@@ -360,6 +360,14 @@ aditof::Status CameraItof::start() {
         } catch (const std::exception& e) {
             LOG(WARNING) << "Exception starting RGB sensor: " << e.what();
             m_rgbEnabled = false;
+        }
+    } else {
+        // RGB is disabled - ensure BufferProcessor knows
+        auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+        if (adsd3500Sensor && adsd3500Sensor->getBufferProcessor()) {
+            BufferProcessor* bufferProc = adsd3500Sensor->getBufferProcessor();
+            bufferProc->enableRGBCapture(false);
+            LOG(INFO) << "RGB capture disabled in BufferProcessor";
         }
     }
 #endif
@@ -580,6 +588,60 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             LOG(INFO) << param.first << " : " << param.second;
         }
 
+#ifdef HAS_RGB_CAMERA
+        // Check if RGB should be enabled from parameters (now that they're set)
+        bool rgbCameraEnabled = true;  // Default to enabled
+        if (!m_isOffline && m_iniKeyValPairs.count("rgbCameraEnable")) {
+            rgbCameraEnabled = (m_iniKeyValPairs["rgbCameraEnable"] == "1");
+            LOG(INFO) << "RGB camera enable parameter: " << (rgbCameraEnabled ? "enabled" : "disabled");
+        }
+
+        if (rgbCameraEnabled) {
+            // Initialize RGB sensor based on ToF mode
+            try {
+                if (!m_rgbSensor) {
+                    m_rgbSensor = std::make_unique<aditof::RGBSensor>();
+                    //LOG(INFO) << "RGB sensor instance created";
+                }
+
+                aditof::RGBMode rgbMode;
+                rgbMode = aditof::RGBMode::MODE_0_1920x1200;
+                LOG(INFO) << "RGB mode selected: 1920x1200@60fps for ToF mode " << (int)mode;
+
+                aditof::RGBSensorConfig rgbConfig =
+                    aditof::RGBSensorConfig::fromMode(rgbMode, 0);
+
+                aditof::Status rgbStatus = m_rgbSensor->open(rgbConfig);
+                if (rgbStatus != aditof::Status::OK) {
+                    LOG(WARNING) << "Failed to initialize RGB sensor (camera not connected?), continuing without RGB";
+                    m_rgbSensor.reset();
+                    m_rgbEnabled = false;
+                } else {
+                    m_rgbEnabled = true;
+                    LOG(INFO) << "RGB sensor initialized successfully";
+                }
+            } catch (const std::exception& e) {
+                LOG(ERROR) << "Exception during RGB sensor initialization: " << e.what();
+                m_rgbSensor.reset();
+                m_rgbEnabled = false;
+            }
+        } else {
+            LOG(INFO) << "RGB camera disabled by rgbCameraEnable parameter";
+            m_rgbEnabled = false;
+            if (m_rgbSensor) {
+                m_rgbSensor.reset();
+            }
+
+            // Disable RGB capture in BufferProcessor
+            auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+            if (adsd3500Sensor && adsd3500Sensor->getBufferProcessor()) {
+                BufferProcessor* bufferProc = adsd3500Sensor->getBufferProcessor();
+                bufferProc->enableRGBCapture(false);
+                LOG(INFO) << "RGB capture disabled in BufferProcessor";
+            }
+        }
+#endif
+
         if (m_enableMetaDatainAB > 0) {
             if (!m_pcmFrame) {
                 status = adsd3500SetEnableMetadatainAB(m_enableMetaDatainAB);
@@ -733,40 +795,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             }
         }
     }
-
-#ifdef HAS_RGB_CAMERA
-    // Initialize RGB sensor based on ToF mode
-    if (!m_isOffline) {  // Only for online (real camera) mode
-        try {
-            if (!m_rgbSensor) {
-                m_rgbSensor = std::make_unique<aditof::RGBSensor>();
-                LOG(INFO) << "RGB sensor instance created";
-            }
-
-            aditof::RGBMode rgbMode;
-            rgbMode = aditof::RGBMode::MODE_0_1920x1200;  // High-res for short/long range
-            LOG(INFO) << "RGB mode selected: 1920x1200@60fps for ToF mode " << (int)mode;
-            // Map ToF mode to RGB mode
-
-            aditof::RGBSensorConfig rgbConfig =
-                aditof::RGBSensorConfig::fromMode(rgbMode, 0);
-
-            aditof::Status rgbStatus = m_rgbSensor->open(rgbConfig);
-            if (rgbStatus != aditof::Status::OK) {
-                LOG(WARNING) << "Failed to initialize RGB sensor, continuing without RGB";
-                m_rgbSensor.reset();
-                m_rgbEnabled = false;
-            } else {
-                m_rgbEnabled = true;
-                LOG(INFO) << "RGB sensor initialized successfully";
-            }
-        } catch (const std::exception& e) {
-            LOG(ERROR) << "Exception during RGB sensor initialization: " << e.what();
-            m_rgbSensor.reset();
-            m_rgbEnabled = false;
-        }
-    }
-#endif
 
     return status;
 }

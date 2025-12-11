@@ -62,7 +62,8 @@ static map<string, string> adsd3100_partialDepth = {
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
     {"xyzEnable", "1"},
-    {"fps", "10"}};
+    {"fps", "10"},
+    {"rgbCameraEnable", "1"}};
 
 static map<string, string> adsd3100_dual_fullDepth = {
     {"abThreshMin", "3.0"},
@@ -85,7 +86,8 @@ static map<string, string> adsd3100_dual_fullDepth = {
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
     {"xyzEnable", "1"},
-    {"fps", "10"}};
+    {"fps", "10"},
+    {"rgbCameraEnable", "1"}};
 
 static map<string, string> adsd3100_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"confThresh", "25.0"},
@@ -107,7 +109,8 @@ static map<string, string> adsd3100_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"bitsInAB", "16"},
                                                  {"phaseInvalid", "0"},
                                                  {"xyzEnable", "1"},
-                                                 {"fps", "40"}};
+                                                 {"fps", "40"},
+                                                 {"rgbCameraEnable", "1"}};
 
 static map<string, string> adsd_PCM = {{"abThreshMin", "3.0"},
                                        {"confThresh", "25.0"},
@@ -129,7 +132,8 @@ static map<string, string> adsd_PCM = {{"abThreshMin", "3.0"},
                                        {"bitsInAB", "0"},
                                        {"phaseInvalid", "0"},
                                        {"xyzEnable", "0"},
-                                       {"fps", "15"}};
+                                       {"fps", "15"},
+                                       {"rgbCameraEnable", "1"}};
 
 static map<string, string> adsd3030_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"confThresh", "25.0"},
@@ -151,7 +155,8 @@ static map<string, string> adsd3030_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"bitsInAB", "16"},
                                                  {"phaseInvalid", "0"},
                                                  {"xyzEnable", "1"},
-                                                 {"fps", "40"}};
+                                                 {"fps", "40"},
+                                                 {"rgbCameraEnable", "1"}};
 
 static map<string, string> adtf3080_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"confThresh", "25.0"},
@@ -173,6 +178,7 @@ static map<string, string> adtf3080_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"bitsInAB", "16"},
                                                  {"phaseInvalid", "0"},
                                                  {"xyzEnable", "1"},
-                                                 {"fps", "40"}};
+                                                 {"fps", "40"},
+                                                 {"rgbCameraEnable", "1"}};
 
 #endif
