@@ -27,12 +27,13 @@ option(WITH_SUBMODULES "Use submodules to build the library" ON)
 option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
 if (WITH_NETWORK)
 	option(WITH_NETWORK_COMPRESSION "Build network interface to compress data?" ON)
-endif()
-
-if (WITH_NETWORK_COMPRESSION)
-        # ON for LZ4
-        # OFF for RVL + JPEGTURBO
-        option(WITH_NETWORK_COMPRESSION_LZ4 "Build network interface to compress data?" ON)
+        if (WITH_NETWORK_COMPRESSION)
+                # ON for LZ4
+                # OFF for RVL + JPEGTURBO
+                option(WITH_NETWORK_COMPRESSION_LZ4 "Build network interface to compress data?" ON)
+        endif()
+else()
+        option(WITH_NETWORK_COMPRESSION "Build network interface to compress data?" OFF)
 endif()
 
 ######################### Target based Options ################################
@@ -142,7 +143,7 @@ set(RESOURCES_DIR "${CMAKE_BINARY_DIR}/resources")
 make_directory(${RESOURCES_DIR})
 
 if (WITH_OFFLINE)
-        add_definitions(-DHAS_OFFLINE)
+        add_definitions(-DWITH_OFFLINE)
 endif()
 
 if(WITH_GLOG_DEPENDENCY)

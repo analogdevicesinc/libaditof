@@ -112,11 +112,13 @@ add_library(${PROJECT_NAME} SHARED
 
 target_link_libraries(${PROJECT_NAME} PRIVATE crc32)
 target_link_libraries(${PROJECT_NAME} PRIVATE cjson)
-if (WITH_NETWORK_COMPRESSION_LZ4)
-    target_link_libraries(${PROJECT_NAME} PRIVATE lz4)
-else()
-    target_link_libraries(${PROJECT_NAME} PRIVATE rvl)
-    target_link_libraries(${PROJECT_NAME} PRIVATE jpeg-turbo)
+if (WITH_NETWORK)
+    if (WITH_NETWORK_COMPRESSION_LZ4)
+        target_link_libraries(${PROJECT_NAME} PRIVATE lz4)
+    else()
+        target_link_libraries(${PROJECT_NAME} PRIVATE rvl)
+        target_link_libraries(${PROJECT_NAME} PRIVATE jpeg-turbo)
+    endif()
 endif()
 
 if (NOT ON_TARGET)

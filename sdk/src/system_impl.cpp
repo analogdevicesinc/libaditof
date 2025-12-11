@@ -36,17 +36,6 @@
 #include <aditof/camera.h>
 #include <algorithm>
 
-#include "discovery_client.h"
-#include "platform.h"
-#include <iostream>
-#include <cstring>
-#include <string>
-#include <sstream>
-
-#ifndef PLATFORM_WINDOWS
-#include <arpa/inet.h>
-#endif
-
 #ifdef USE_GLOG
 #include <glog/logging.h>
 #else
@@ -61,6 +50,18 @@
 #endif
 
 using namespace aditof;
+
+#ifndef TARGET
+#include "discovery_client.h"
+#include "platform.h"
+#include <iostream>
+#include <cstring>
+#include <string>
+#include <sstream>
+
+#ifndef PLATFORM_WINDOWS
+#include <arpa/inet.h>
+#endif
 using namespace network_discovery;
 
 ServerInfo find_server_by_ip(const std::vector<ServerInfo>& servers, const std::string& ip) {
@@ -85,6 +86,27 @@ ServerInfo find_server_by_ip(const std::vector<ServerInfo>& servers, const std::
 
     return info;
 }
+
+static std::vector<ServerInfo> discover(DiscoveryClient &client) {
+    LOG(INFO) << "Discovering servers on the network...";
+
+    uint32_t cnt = 0;
+    while (true) {
+        auto servers = client.discover_servers(3);
+
+        if (servers.empty()) {
+            LOG(INFO) << "Try " << cnt + 1 << ". No servers found.";
+
+            if (cnt++ > 10)
+                return {};
+        }
+        else {
+            return servers;
+        }
+    }
+    return {};
+}
+#endif //TARGET
 
 static std::vector<std::shared_ptr<Camera>>
 buildCameras(std::unique_ptr<SensorEnumeratorInterface> enumerator,
@@ -115,30 +137,11 @@ SystemImpl::SystemImpl() {}
 
 SystemImpl::~SystemImpl() = default;
 
-static std::vector<ServerInfo> discover(DiscoveryClient &client) {
-    LOG(INFO) << "Discovering servers on the network...";
-
-    uint32_t cnt = 0;
-    while (true) {
-        auto servers = client.discover_servers(3);
-
-        if (servers.empty()) {
-            LOG(INFO) << "Try " << cnt + 1 << ". No servers found.";
-
-            if (cnt++ > 10)
-                return {};
-        }
-        else {
-            return servers;
-        }
-    }
-    return {};
-}
-
 Status
 SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
                           const std::string &uri) const {
 
+    cameraList.clear();
 #ifdef WITH_NETWORK
     std::string _uri = uri;
     static bool logged = false;
@@ -149,7 +152,7 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
                   << "." << patch;
         logged = true;
     }
-
+#ifndef TARGET
     if (Platform::initialize_networking()) {
         uint16_t port = DEFAULT_DISCOVERY_PORT;
         std::string interface;
@@ -160,18 +163,17 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
             _uri = "ip:" + servers[0].ip_address;
         }
     }
-
-    cameraList.clear();
+#endif //TARGET
 
     if (_uri.compare(0, 3, "ip:") == 0) {
         std::string ip(_uri, 3);
         return getCameraListAtIp(cameraList, ip);
     }
-#endif
+#endif //WITH_NETWORK
 
     std::unique_ptr<SensorEnumeratorInterface> sensorEnumerator;
 
-#ifdef HAS_OFFLINE
+#ifdef WITH_OFFLINE
     if (uri.compare(0, 8, "offline:") == 0) {
         LOG(INFO) << "Creating offline sensor.";
         sensorEnumerator =
@@ -190,7 +192,7 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
         }
         return Status::GENERIC_ERROR;
     }
-#endif
+#endif //WITH_OFFLINE
 
 #if defined(NXP) || defined(NVIDIA)
     sensorEnumerator = SensorEnumeratorFactory::buildTargetSensorEnumerator();

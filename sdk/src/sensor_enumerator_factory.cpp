@@ -39,7 +39,7 @@
 #include "connections/network/network_sensor_enumerator.h"
 #endif
 
-#ifdef HAS_OFFLINE
+#ifdef WITH_OFFLINE
 #include "connections/offline/offline_sensor_enumerator.h"
 #endif
 
@@ -67,7 +67,7 @@ SensorEnumeratorFactory::buildNetworkSensorEnumerator(const std::string &ip) {
 
 std::unique_ptr<SensorEnumeratorInterface>
 SensorEnumeratorFactory::buildOfflineSensorEnumerator() {
-#ifdef HAS_OFFLINE
+#ifdef WITH_OFFLINE
     return std::unique_ptr<SensorEnumeratorInterface>(
         new OfflineSensorEnumerator());
 #endif
