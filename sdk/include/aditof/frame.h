@@ -81,9 +81,9 @@ class Frame {
   public:
     /**
      * @brief Configures the frame with the given details
-     * @param details
-     * @param Bits Per Pixel in Confidence
-     * @param Bits Per Pixel in AB
+     * @param[in] details Frame details structure
+     * @param[in] m_bitsInConf Bits per pixel in confidence data
+     * @param[in] m_bitsInAB Bits per pixel in AB data
      * @return Status
      */
     SDK_API Status setDetails(const FrameDetails &details,
@@ -121,11 +121,6 @@ class Frame {
      */
     SDK_API virtual Status getMetadataStruct(Metadata &metadata) const;
 
-    /**
-     * @brief Check if frame contains a specific data type
-     * @param[in] dataType The type of data to check for (e.g., "depth", "ab", "xyz", "conf")
-     * @return True if the frame contains the specified data type, false otherwise
-     */
     SDK_API virtual bool haveDataType(const std::string &dataType);
 
   private:

@@ -97,7 +97,8 @@ class SDK_API Camera {
 
     /**
      * @brief Set the Depth Compute Library ini parameters
-     * @param params - a dictionary of parameters
+     * @param[in] params - a dictionary of parameters
+     * @param[in] mode - camera mode for which to apply parameters
      * @return Status
     */
     virtual Status
@@ -114,7 +115,8 @@ class SDK_API Camera {
 
     /**
      * @brief Captures data from the camera and assigns it to the given frame.
-     * @param frame - The frame to which the camera data should be assign
+     * @param[in,out] frame - The frame to which the camera data should be assigned
+     * @param[in] index - Frame index for offline playback mode [default: 0]
      * @return Status
      */
     virtual Status requestFrame(Frame *frame, uint32_t index = 0) = 0;
@@ -623,6 +625,11 @@ class SDK_API Camera {
     virtual aditof::Status
     getDepthParamtersMap(uint16_t mode,
                          std::map<std::string, std::string> &params) = 0;
+
+    /**
+     * @brief Reset depth processing parameters to default values
+     * @return Status
+     */
     virtual aditof::Status resetDepthProcessParams() = 0;
 };
 
