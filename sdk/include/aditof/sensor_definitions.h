@@ -65,9 +65,9 @@ struct SensorDetails {
  * @brief describes the bits configuration for depth, AB and conf
  */
 struct BitsConfiguration {
-    int depth_bits;
-    int conf_bits;
-    int ab_bits;
+    int depth_bits; //!< Number of bits per pixel for depth data
+    int conf_bits;  //!< Number of bits per pixel for confidence data
+    int ab_bits; //!< Number of bits per pixel for active brightness (AB) data
 };
 
 /**

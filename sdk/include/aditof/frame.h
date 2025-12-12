@@ -121,6 +121,11 @@ class Frame {
      */
     SDK_API virtual Status getMetadataStruct(Metadata &metadata) const;
 
+    /**
+     * @brief Check if frame contains a specific data type
+     * @param[in] dataType - The type of data to check for (e.g., "depth", "ab", "xyz", "conf")
+     * @return True if the frame contains the specified data type, false otherwise
+     */
     SDK_API virtual bool haveDataType(const std::string &dataType);
 
   private:
