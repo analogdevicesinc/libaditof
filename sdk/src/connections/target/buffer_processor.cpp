@@ -66,15 +66,16 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 }
 
 BufferProcessor::BufferProcessor()
-    : m_v4l2_input_buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
+    :
+#ifdef HAS_RGB_CAMERA
+      m_rgbSensor(nullptr), m_rgbCaptureEnabled(false),
+      m_totalRGBCaptured(0), m_totalRGBFailures(0),
+      m_rgb_frame_Q(BufferProcessor::MAX_QUEUE_SIZE),
+#endif
+      m_v4l2_input_buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_capture_to_process_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE)
-#ifdef HAS_RGB_CAMERA
-      , m_rgb_frame_Q(BufferProcessor::MAX_QUEUE_SIZE),  // RGB frame queue
-      m_rgbSensor(nullptr), m_rgbCaptureEnabled(false),
-      m_totalRGBCaptured(0), m_totalRGBFailures(0)
-#endif
     {
     m_outputVideoDev = new VideoDev();
     m_outputFrameWidth = 0;
@@ -91,12 +92,6 @@ BufferProcessor::BufferProcessor()
     m_capture_to_process_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
     m_tofi_io_Buffer_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
     m_process_done_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
-
-#ifdef HAS_RGB_CAMERA
-      m_rgb_frame_Q(MAX_QUEUE_SIZE),  // RGB frame queue
-      m_rgbSensor(nullptr), m_rgbCaptureEnabled(false),
-      m_totalRGBCaptured(0), m_totalRGBFailures(0),
-#endif
 
     LOG(INFO) << "BufferProcessor initialized"
 #ifdef HAS_RGB_CAMERA
@@ -1118,6 +1113,7 @@ void BufferProcessor::stopThreads() {
             if (frame.tofiBuffer)
                 m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
         }
+    }
     size_t rawFreed = 0, tofiFreed = 0;
 #ifdef HAS_RGB_CAMERA
     size_t rgbFreed = 0;
