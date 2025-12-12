@@ -39,6 +39,11 @@
 #include "tofi/tofi_config.h"
 #include "tofi/tofi_util.h"
 
+#ifdef HAS_RGB_CAMERA
+// RGB camera integration
+#include "ar0234_sensor.h"  // For AR0234Sensor and AR0234Frame
+#endif
+
 #define OUTPUT_DEVICE "/dev/video1"
 #define CHIP_ID_SINGLE 0x5931
 #define DEFAULT_MODE 0
@@ -139,8 +144,18 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
                                           uint16_t calDataLength, uint16_t mode,
                                           bool ispEnabled);
     aditof::Status processBuffer(uint16_t *buffer);
+#ifdef HAS_RGB_CAMERA
+    aditof::Status processBuffer(uint16_t *depthBuffer, aditof::AR0234Frame *rgbFrame);
+#endif
     TofiConfig *getTofiCongfig() const;
     aditof::Status getDepthComputeVersion(uint8_t &enabled) const;
+
+#ifdef HAS_RGB_CAMERA
+    // RGB sensor management
+    aditof::Status setRGBSensor(aditof::AR0234Sensor* sensor);
+    aditof::Status enableRGBCapture(bool enable);
+    bool isRGBCaptureEnabled() const { return m_rgbCaptureEnabled; }
+#endif
 
     void startThreads();
     void stopThreads();
@@ -172,6 +187,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     void captureFrameThread();
     void processThread();
     void calculateFrameSize(uint8_t &bitsInAB, uint8_t &bitsInConf);
+#ifdef HAS_RGB_CAMERA
+    void captureRGBFrameThread();
+#endif
 
   private:
     bool m_vidPropSet;
@@ -191,10 +209,25 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     struct VideoDev *m_inputVideoDev;
     struct VideoDev *m_outputVideoDev;
 
+#ifdef HAS_RGB_CAMERA
+    // RGB sensor integration
+    aditof::AR0234Sensor* m_rgbSensor;
+    bool m_rgbCaptureEnabled;
+    std::atomic<uint64_t> m_totalRGBCaptured;
+    std::atomic<uint64_t> m_totalRGBFailures;
+
+    // RGB frame queue - parallel to depth processing
+    ThreadSafeQueue<aditof::AR0234Frame> m_rgb_frame_Q;
+#endif
+
     struct Tofi_v4l2_buffer {
         std::shared_ptr<uint8_t> data;
         size_t size = 0;
         std::shared_ptr<uint16_t> tofiBuffer;
+#ifdef HAS_RGB_CAMERA
+        aditof::AR0234Frame rgbFrame;  // RGB frame data (captured by separate thread)
+        bool hasRGB = false;           // Flag indicating if RGB data is valid
+#endif
     };
 
     // Thread-safe pool of empty raw frame buffers for use by capture thread
@@ -214,6 +247,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     std::thread m_captureThread;
     std::thread m_processingThread;
+#ifdef HAS_RGB_CAMERA
+    std::thread m_captureRGBThread;
+#endif
 
     std::atomic<bool> stopThreadsFlag;
     bool streamRunning = false;

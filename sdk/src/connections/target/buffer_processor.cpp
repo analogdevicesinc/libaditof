@@ -86,7 +86,19 @@ BufferProcessor::BufferProcessor()
     m_capture_to_process_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
     m_tofi_io_Buffer_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
     m_process_done_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
-    LOG(INFO) << "BufferProcessor initialized";
+
+#ifdef HAS_RGB_CAMERA
+      m_rgb_frame_Q(MAX_QUEUE_SIZE),  // RGB frame queue
+      m_rgbSensor(nullptr), m_rgbCaptureEnabled(false),
+      m_totalRGBCaptured(0), m_totalRGBFailures(0),
+#endif
+
+    m_outputVideoDev = new VideoDev();
+    LOG(INFO) << "BufferProcessor initialized"
+#ifdef HAS_RGB_CAMERA
+              << " with RGB support"
+#endif
+    ;
 }
 
 BufferProcessor::~BufferProcessor() {
@@ -342,6 +354,76 @@ aditof::Status BufferProcessor::setProcessorProperties(
 
     return aditof::Status::OK;
 }
+
+#ifdef HAS_RGB_CAMERA
+/**
+ * @function BufferProcessor::captureRGBFrameThread
+ *
+ * Thread function that captures RGB frames from AR0234 sensor using GStreamer backend.
+ * It continuously captures RGB frames and pushes them to m_rgb_frame_Q for synchronization
+ * with depth frames. This thread runs independently of the depth processing pipeline.
+ */
+void BufferProcessor::captureRGBFrameThread() {
+    LOG(INFO) << "captureRGBFrameThread: RGB capture thread started";
+
+    long long totalRGBCaptureTime = 0;
+    int totalRGBFramesCaptured = 0;
+
+    while (!stopThreadsFlag) {
+        // Check if RGB capture is enabled and sensor is available
+        if (!m_rgbCaptureEnabled || m_rgbSensor == nullptr) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
+
+        auto captureStart = std::chrono::high_resolution_clock::now();
+
+        // Capture RGB frame from sensor (GStreamer backend)
+        aditof::AR0234Frame rgbFrame;
+        aditof::Status status = m_rgbSensor->getFrame(rgbFrame, 1000);  // 1 second timeout
+
+        auto captureEnd = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double, std::milli> captureTime = captureEnd - captureStart;
+
+        if (status == aditof::Status::OK && rgbFrame.isValid()) {
+            // Push RGB frame to queue
+            if (m_rgb_frame_Q.push(std::move(rgbFrame))) {
+                totalRGBFramesCaptured++;
+                totalRGBCaptureTime += captureTime.count();
+                m_totalRGBCaptured++;
+
+                if (totalRGBFramesCaptured % 100 == 0) {
+                    double avgCaptureTime = static_cast<double>(totalRGBCaptureTime) / totalRGBFramesCaptured;
+                    LOG(INFO) << "captureRGBFrameThread: Captured " << totalRGBFramesCaptured
+                              << " RGB frames, avg capture time: " << avgCaptureTime << " ms";
+                }
+            } else {
+                LOG(WARNING) << "captureRGBFrameThread: Failed to push RGB frame to queue (queue full)";
+                m_totalRGBFailures++;
+            }
+        } else {
+            LOG(WARNING) << "captureRGBFrameThread: Failed to capture RGB frame from sensor";
+            m_totalRGBFailures++;
+
+            // Auto-disable after too many consecutive failures
+            if (m_totalRGBFailures > 10 && m_totalRGBCaptured == 0) {
+                LOG(ERROR) << "captureRGBFrameThread: Too many failures, disabling RGB capture";
+                m_rgbCaptureEnabled = false;
+            }
+
+            // Brief sleep on failure to avoid hammering the sensor
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+    }
+
+    if (totalRGBFramesCaptured > 0) {
+        double avgCaptureTime = static_cast<double>(totalRGBCaptureTime) / totalRGBFramesCaptured;
+        LOG(INFO) << "captureRGBFrameThread: Thread exiting. Total RGB frames: "
+                  << totalRGBFramesCaptured << ", avg capture time: " << avgCaptureTime << " ms";
+    }
+}
+#endif // HAS_RGB_CAMERA
+
 /**
  * @function BufferProcessor::captureFrameThread
  *
@@ -718,6 +800,73 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     return aditof::Status::GENERIC_ERROR;
 }
 
+#ifdef HAS_RGB_CAMERA
+/**
+ * @brief Extended processBuffer with RGB frame retrieval
+ *
+ * This version allows retrieving both depth and RGB frames in a synchronized manner.
+ * It first gets the depth frame from the processing queue, then attempts to get
+ * the latest RGB frame from the RGB capture thread's queue.
+ *
+ * @param depthBuffer Buffer to receive depth + AB + confidence data
+ * @param rgbFrame Pointer to AR0234Frame to receive RGB data (can be nullptr for depth-only)
+ * @return Status::OK on success, error otherwise
+ */
+aditof::Status BufferProcessor::processBuffer(uint16_t *depthBuffer, aditof::AR0234Frame *rgbFrame) {
+    Tofi_v4l2_buffer tof_processed_frame;
+    const std::chrono::milliseconds m_retryDelay(10);
+
+    // First, get the depth frame (same as original processBuffer)
+    for (int attempt = 0; attempt < m_maxTries; ++attempt) {
+        if (m_process_done_Q.pop(tof_processed_frame)) {
+            // Validate and copy depth data
+            if (depthBuffer && tof_processed_frame.tofiBuffer &&
+                tof_processed_frame.size > 0) {
+                memcpy(depthBuffer, tof_processed_frame.tofiBuffer.get(),
+                       tof_processed_frame.size);
+            } else {
+                LOG(ERROR) << "processBuffer: Invalid depth buffer data";
+                return aditof::Status::GENERIC_ERROR;
+            }
+
+            // If RGB is requested and available in the buffer, use it
+            if (rgbFrame != nullptr) {
+                if (tof_processed_frame.hasRGB && tof_processed_frame.rgbFrame.isValid()) {
+                    *rgbFrame = std::move(tof_processed_frame.rgbFrame);
+                } else {
+                    // Try to get latest RGB frame from the RGB queue
+                    aditof::AR0234Frame latestRGBFrame;
+                    if (m_rgb_frame_Q.pop(latestRGBFrame, std::chrono::milliseconds(50))) {
+                        *rgbFrame = std::move(latestRGBFrame);
+                    } else {
+                        LOG(WARNING) << "processBuffer: RGB requested but not available";
+                        // Return empty frame rather than failing completely
+                        *rgbFrame = aditof::AR0234Frame();
+                    }
+                }
+            }
+
+            // Return buffers to pools
+            m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
+            m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
+
+            return aditof::Status::OK;
+        } else {
+            if (attempt < m_maxTries - 1) {
+                LOG(INFO) << "processBuffer: Pop failed on attempt #"
+                          << (attempt + 1) << ". Retrying...";
+                std::this_thread::sleep_for(m_retryDelay);
+            } else {
+                LOG(WARNING) << "processBuffer: Failed after " << m_maxTries << " attempts";
+                return aditof::Status::GENERIC_ERROR;
+            }
+        }
+    }
+
+    return aditof::Status::GENERIC_ERROR;
+}
+#endif // HAS_RGB_CAMERA
+
 aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
     fd_set fds;
     struct timeval tv;
@@ -843,6 +992,33 @@ aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled) const {
     return aditof::Status::OK;
 }
 
+#ifdef HAS_RGB_CAMERA
+aditof::Status BufferProcessor::setRGBSensor(aditof::AR0234Sensor* sensor) {
+    if (sensor == nullptr) {
+        LOG(ERROR) << "setRGBSensor: RGB sensor is nullptr";
+        return aditof::Status::INVALID_ARGUMENT;
+    }
+    
+    m_rgbSensor = sensor;
+    LOG(INFO) << "setRGBSensor: RGB sensor registered with BufferProcessor";
+    return aditof::Status::OK;
+}
+
+aditof::Status BufferProcessor::enableRGBCapture(bool enable) {
+    if (enable && m_rgbSensor == nullptr) {
+        LOG(ERROR) << "enableRGBCapture: Cannot enable - no RGB sensor set";
+        return aditof::Status::UNAVAILABLE;
+    }
+    
+    m_rgbCaptureEnabled = enable;
+    m_totalRGBCaptured = 0;
+    m_totalRGBFailures = 0;
+    
+    LOG(INFO) << "enableRGBCapture: RGB capture " << (enable ? "enabled" : "disabled");
+    return aditof::Status::OK;
+}
+#endif // HAS_RGB_CAMERA
+
 void BufferProcessor::startThreads() {
     stopThreadsFlag.store(false, std::memory_order_release);
     streamRunning = true;
@@ -854,6 +1030,10 @@ void BufferProcessor::startThreads() {
     param.sched_priority = THREAD_PRIORITY;
     pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO,
                           &param);
+
+#ifdef HAS_RGB_CAMERA
+    m_captureRGBThread = std::thread(&BufferProcessor::captureRGBFrameThread, this);
+#endif
 }
 
 void BufferProcessor::stopThreads() {
@@ -883,10 +1063,18 @@ void BufferProcessor::stopThreads() {
     if (m_processingThread.joinable()) {
         m_processingThread.join();
     }
+#ifdef HAS_RGB_CAMERA
+    if (m_captureRGBThread.joinable()) {
+        m_captureRGBThread.join();
+    }
+#endif
 
     // Reset thread objects
     m_captureThread = std::thread();
     m_processingThread = std::thread();
+#ifdef HAS_RGB_CAMERA
+    m_captureRGBThread = std::thread();
+#endif
 
     // Now that threads are stopped, flush remaining frames from intermediate queues
     // Return buffers to their pools for potential reuse
@@ -898,6 +1086,13 @@ void BufferProcessor::stopThreads() {
             if (frame.tofiBuffer)
                 m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
         }
+    size_t rawFreed = 0, tofiFreed = 0;
+#ifdef HAS_RGB_CAMERA
+    size_t rgbFreed = 0;
+#endif
+    std::shared_ptr<uint8_t> inputBuf;
+    while (m_v4l2_input_buffer_Q.pop(inputBuf)) {
+        ++rawFreed;
     }
 
     {
@@ -915,6 +1110,20 @@ void BufferProcessor::stopThreads() {
               << ", capture_to_process: " << m_capture_to_process_Q.size()
               << ", tofi_io: " << m_tofi_io_Buffer_Q.size()
               << ", process_done: " << m_process_done_Q.size();
+#ifdef HAS_RGB_CAMERA
+    aditof::AR0234Frame rgbFrame;
+    while (m_rgb_frame_Q.pop(rgbFrame)) {
+        ++rgbFreed;
+    }
+#endif
+
+    LOG(INFO) << __func__
+              << ": Threads Stopped. Raw buffers freed: " << rawFreed
+              << ", ToFi buffers freed: " << tofiFreed
+#ifdef HAS_RGB_CAMERA
+              << ", RGB frames freed: " << rgbFreed
+#endif
+    ;
 }
 
 #pragma region Stream_Recording_and_Playback
