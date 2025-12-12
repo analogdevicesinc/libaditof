@@ -31,6 +31,12 @@
 #include "tofi/algorithms.h"
 #include "tofi/floatTolin.h"
 #include "tofi/tofi_config.h"
+
+#ifdef HAS_RGB_CAMERA
+#include "connections/target/adsd3500_sensor.h"  // For BufferProcessor access
+#include "connections/target/buffer_processor.h"
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -68,6 +74,11 @@ CameraItof::CameraItof(
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
       m_dropFrameOnce(true) {
+
+#ifdef HAS_RGB_CAMERA
+    m_rgbEnabled = false;
+    LOG(INFO) << "CameraItof: RGB camera support compiled in";
+#endif
 
     FloatToLinGenerateTable();
     memset(&m_xyzTable, 0, sizeof(m_xyzTable));
@@ -325,11 +336,57 @@ aditof::Status CameraItof::start() {
     }
     m_devStreaming = true;
 
+#ifdef HAS_RGB_CAMERA
+    // Start RGB sensor if initialized
+    if (m_rgbSensor && m_rgbEnabled) {
+        try {
+            Status rgbStatus = m_rgbSensor->start();
+            if (rgbStatus == Status::OK) {
+                LOG(INFO) << "RGB sensor started successfully";
+
+                // Connect RGB sensor to BufferProcessor for parallel capture
+                auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+                if (adsd3500Sensor && adsd3500Sensor->getBufferProcessor()) {
+                    BufferProcessor* bufferProc = adsd3500Sensor->getBufferProcessor();
+                    bufferProc->setRGBSensor(m_rgbSensor.get());
+                    bufferProc->enableRGBCapture(true);
+                    LOG(INFO) << "RGB sensor connected to BufferProcessor for parallel capture";
+                } else {
+                    LOG(WARNING) << "Could not connect RGB sensor to BufferProcessor";
+                }
+            } else {
+                LOG(WARNING) << "Failed to start RGB sensor, continuing with ToF only";
+                m_rgbEnabled = false;
+            }
+        } catch (const std::exception& e) {
+            LOG(WARNING) << "Exception starting RGB sensor: " << e.what();
+            m_rgbEnabled = false;
+        }
+    }
+#endif
+
     return aditof::Status::OK;
 }
 
 aditof::Status CameraItof::stop() {
     aditof::Status status = aditof::Status::OK;
+
+#ifdef HAS_RGB_CAMERA
+    // Stop RGB sensor first
+    if (m_rgbSensor && m_rgbEnabled) {
+        try {
+            Status rgbStatus = m_rgbSensor->stop();
+            if (rgbStatus == Status::OK) {
+                LOG(INFO) << "RGB sensor stopped successfully";
+            } else {
+                LOG(WARNING) << "Failed to stop RGB sensor gracefully";
+            }
+        } catch (const std::exception& e) {
+            LOG(WARNING) << "Exception stopping RGB sensor: " << e.what();
+        }
+        m_rgbEnabled = false;
+    }
+#endif
 
     if (m_isOffline) {
         status = m_depthSensor->stopPlayback();
@@ -677,6 +734,48 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             }
         }
     }
+
+#ifdef HAS_RGB_CAMERA
+    // Initialize RGB sensor based on ToF mode
+    if (!m_isOffline) {  // Only for online (real camera) mode
+        try {
+            if (!m_rgbSensor) {
+                m_rgbSensor = std::make_unique<aditof::AR0234Sensor>();
+                LOG(INFO) << "RGB sensor instance created";
+            }
+
+            // Map ToF mode to RGB mode
+            aditof::AR0234Mode rgbMode;
+            if (mode == 0 || mode == 1) {
+                rgbMode = aditof::AR0234Mode::MODE_0_1920x1200;  // High-res for short/long range
+                LOG(INFO) << "RGB mode selected: 1920x1200@60fps for ToF mode " << (int)mode;
+            } else if (mode == 2 || mode == 3) {
+                rgbMode = aditof::AR0234Mode::MODE_1_1920x1080;  // Full HD for Qnative
+                LOG(INFO) << "RGB mode selected: 1920x1080@60fps for ToF mode " << (int)mode;
+            } else {
+                rgbMode = aditof::AR0234Mode::MODE_2_1280x720;   // High FPS for mixed modes
+                LOG(INFO) << "RGB mode selected: 1280x720@120fps for ToF mode " << (int)mode;
+            }
+
+            aditof::AR0234SensorConfig rgbConfig =
+                aditof::AR0234SensorConfig::fromMode(rgbMode, 0);
+
+            aditof::Status rgbStatus = m_rgbSensor->open(rgbConfig);
+            if (rgbStatus != aditof::Status::OK) {
+                LOG(WARNING) << "Failed to initialize RGB sensor, continuing without RGB";
+                m_rgbSensor.reset();
+                m_rgbEnabled = false;
+            } else {
+                m_rgbEnabled = true;
+                LOG(INFO) << "RGB sensor initialized successfully";
+            }
+        } catch (const std::exception& e) {
+            LOG(ERROR) << "Exception during RGB sensor initialization: " << e.what();
+            m_rgbSensor.reset();
+            m_rgbEnabled = false;
+        }
+    }
+#endif
 
     return status;
 }

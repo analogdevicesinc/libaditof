@@ -165,6 +165,9 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     aditof::Status getIniParamsArrayForMode(int mode,
                                             std::string &iniStr) override;
 
+    // Get BufferProcessor for RGB integration
+    BufferProcessor* getBufferProcessor() { return m_bufferProcessor; }
+
   private:
     aditof::Status writeConfigBlock(const uint32_t offset);
     aditof::Status waitForBufferPrivate(struct VideoDev *dev = nullptr);

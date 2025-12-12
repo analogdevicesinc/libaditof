@@ -33,6 +33,11 @@
 #include <map>
 #include <unordered_map>
 
+#ifdef HAS_RGB_CAMERA
+#include <aditof/ar0234_sensor.h>
+#include <memory>
+#endif
+
 #define NR_READADSD3500CCB 3
 
 class CameraItof : public aditof::Camera {
@@ -251,6 +256,11 @@ class CameraItof : public aditof::Camera {
     bool m_dropFirstFrame;
     bool m_dropFrameOnce;
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
+
+#ifdef HAS_RGB_CAMERA
+    std::unique_ptr<aditof::AR0234Sensor> m_rgbSensor;
+    bool m_rgbEnabled;
+#endif
 
     struct offlineparameter_struct {
         static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;

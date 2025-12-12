@@ -732,6 +732,25 @@ void BufferProcessor::processThread() {
                 LOG(WARNING)
                     << "Failed to write processed frame during recording";
             }
+#ifdef HAS_RGB_CAMERA
+            // Try to get and write RGB frame from the RGB capture queue
+            aditof::AR0234Frame rgbFrame;
+            if (m_rgb_frame_Q.pop(rgbFrame, std::chrono::milliseconds(50))) {
+                if (rgbFrame.isValid()) {
+                    aditof::Status rgbWriteStatus =
+                        writeFrame(rgbFrame.data.data(), rgbFrame.data.size());
+                    if (rgbWriteStatus == aditof::Status::OK) {
+                        LOG(INFO) << "RGB frame written: " << rgbFrame.data.size()
+                                  << " bytes (" << rgbFrame.width << "x"
+                                  << rgbFrame.height << ")";
+                    } else {
+                        LOG(ERROR) << "Failed to write RGB frame during recording";
+                    }
+                }
+            } else {
+                LOG(WARNING) << "No RGB frame available in queue for this depth frame";
+            }
+#endif // HAS_RGB_CAMERA
         }
 
         process_frame.tofiBuffer = tofi_compute_io_buff;
