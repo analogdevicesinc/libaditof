@@ -113,9 +113,10 @@ class DepthSensorInterface {
 
     /**
      * @brief Request a frame from the sensor
-     * @param buffer - a valid location where the new frame should be stored.
+     * @param[out] buffer - a valid location where the new frame should be stored.
      * The size of the frame is known (cached) internally and gets updated each
      * time setMode() is called.
+     * @param[in] index - Frame index for offline playback mode [default: 0]
      * @return Status
      */
     virtual aditof::Status getFrame(uint16_t *buffer, uint32_t index = 0) = 0;
@@ -330,13 +331,49 @@ class DepthSensorInterface {
                                                     std::string &iniStr) = 0;
 
     // Stream record and playback support
+    /**
+     * @brief Start recording frames to a file
+     * @param[in] fileName - Name of the file to record to
+     * @param[in] parameters - Recording parameters buffer
+     * @param[in] paramSize - Size of parameters buffer in bytes
+     * @return Status
+     */
     virtual aditof::Status startRecording(std::string &fileName,
                                           uint8_t *parameters,
                                           uint32_t paramSize) = 0;
+
+    /**
+     * @brief Stop the current recording session
+     * @return Status
+     */
     virtual aditof::Status stopRecording() = 0;
+
+    /**
+     * @brief Set the file to use for frame playback
+     * @param[in] filePath - Path to the playback file
+     * @return Status
+     */
     virtual aditof::Status setPlaybackFile(const std::string filePath) = 0;
+
+    /**
+     * @brief Stop the current playback session
+     * @return Status
+     */
     virtual aditof::Status stopPlayback() = 0;
+
+    /**
+     * @brief Get header information from recorded file
+     * @param[out] buffer - Buffer to store header data
+     * @param[in] bufferSize - Size of the buffer in bytes
+     * @return Status
+     */
     virtual aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) = 0;
+
+    /**
+     * @brief Get the total number of frames in playback file
+     * @param[out] frameCount - Variable to store the frame count
+     * @return Status
+     */
     virtual aditof::Status getFrameCount(uint32_t &frameCount) = 0;
 };
 
