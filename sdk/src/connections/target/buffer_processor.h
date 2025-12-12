@@ -155,6 +155,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status setRGBSensor(aditof::RGBSensor* sensor);
     aditof::Status enableRGBCapture(bool enable);
     bool isRGBCaptureEnabled() const { return m_rgbCaptureEnabled; }
+    aditof::Status getLatestRGBFrame(aditof::RGBFrame &frame);
 #endif
 
     void startThreads();

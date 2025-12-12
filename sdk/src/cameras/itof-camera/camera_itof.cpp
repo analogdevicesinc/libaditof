@@ -33,6 +33,7 @@
 #include "tofi/tofi_config.h"
 
 #ifdef HAS_RGB_CAMERA
+#include <aditof/ar0234_sensor.h>                // For RGBFrame definition
 #include "connections/target/adsd3500_sensor.h"  // For BufferProcessor access
 #endif
 
@@ -702,6 +703,21 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             m_details.frameType.dataDetails.emplace_back(fDataDetails);
         }
 
+#ifdef HAS_RGB_CAMERA
+        // Add RGB frame details if RGB sensor is enabled
+        if (m_rgbStatus.enabled && m_rgbSensor) {
+            FrameDataDetails rgbDetails;
+            rgbDetails.type = "rgb";
+            rgbDetails.width = 1920;    // AR0234 mode 0
+            rgbDetails.height = 1200;
+            rgbDetails.subelementSize = sizeof(uint8_t);
+            rgbDetails.subelementsPerElement = 1;
+            rgbDetails.bytesCount = 1920 * 1200 * 1.5;  // NV12 format: 1.5 bytes per pixel
+
+            m_details.frameType.dataDetails.emplace_back(rgbDetails);
+        }
+#endif
+
         // We want computed frames (Depth & AB). Tell target to initialize depth compute
         if (!m_pcmFrame) {
             size_t dataSize = 0;
@@ -1130,6 +1146,36 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                m_modeDetailsCache.baseResolutionHeight *
                    m_modeDetailsCache.baseResolutionWidth * sizeof(uint16_t));
     }
+
+#ifdef HAS_RGB_CAMERA
+    // Get RGB frame if enabled
+    if (m_rgbStatus.enabled && m_rgbSensor) {
+        uint16_t *rgbFramePtr;
+        Status rgbStatus = frame->getData("rgb", &rgbFramePtr);
+
+        if (rgbStatus == Status::OK && rgbFramePtr != nullptr) {
+            // Get expected RGB buffer size from frame details
+            FrameDataDetails rgbDetails;
+            frame->getDataDetails("rgb", rgbDetails);
+
+            auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+            if (adsd3500Sensor && adsd3500Sensor->getBufferProcessor()) {
+                BufferProcessor* bufferProc = adsd3500Sensor->getBufferProcessor();
+                aditof::RGBFrame rgbFrame;
+
+                Status getRGBStatus = bufferProc->getLatestRGBFrame(rgbFrame);
+                if (getRGBStatus == Status::OK && rgbFrame.isValid()) {
+                    // Copy NV12 data to frame (cast uint16_t* to uint8_t*)
+                    uint8_t* rgbData = reinterpret_cast<uint8_t*>(rgbFramePtr);
+                    memcpy(rgbData, rgbFrame.data.data(), rgbFrame.data.size());
+                } else {
+                    // No RGB frame available, zero out the buffer using frame details
+                    memset(rgbFramePtr, 0, rgbDetails.bytesCount);
+                }
+            }
+        }
+    }
+#endif
 
     Metadata metadata;
 

@@ -1036,6 +1036,19 @@ aditof::Status BufferProcessor::enableRGBCapture(bool enable) {
     LOG(INFO) << "enableRGBCapture: RGB capture " << (enable ? "enabled" : "disabled");
     return aditof::Status::OK;
 }
+
+aditof::Status BufferProcessor::getLatestRGBFrame(aditof::RGBFrame &frame) {
+    if (!m_rgbCaptureEnabled) {
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    // Try to get frame from queue (non-blocking with short timeout)
+    if (m_rgb_frame_Q.pop(frame, std::chrono::milliseconds(100))) {
+        return aditof::Status::OK;
+    }
+
+    return aditof::Status::BUSY;
+}
 #endif // HAS_RGB_CAMERA
 
 void BufferProcessor::startThreads() {
