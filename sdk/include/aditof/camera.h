@@ -619,9 +619,32 @@ class SDK_API Camera {
      */
     virtual void dropFirstFrame(bool dropFrame) = 0;
 
+    /**
+     * @brief Start recording frames to a file
+     * @param[in] filePath - Path to the file where frames will be recorded
+     * @return Status
+     */
     virtual aditof::Status startRecording(std::string &filePath) = 0;
+
+    /**
+     * @brief Stop the current recording session
+     * @return Status
+     */
     virtual aditof::Status stopRecording() = 0;
+
+    /**
+     * @brief Set the file to use for frame playback
+     * @param[in] filePath - Path to the playback file
+     * @return Status
+     */
     virtual aditof::Status setPlaybackFile(std::string &filePath) = 0;
+
+    /**
+     * @brief Get depth processing parameters for a specific mode
+     * @param[in] mode - Camera mode number
+     * @param[out] params - Map to store the depth parameters
+     * @return Status
+     */
     virtual aditof::Status
     getDepthParamtersMap(uint16_t mode,
                          std::map<std::string, std::string> &params) = 0;
