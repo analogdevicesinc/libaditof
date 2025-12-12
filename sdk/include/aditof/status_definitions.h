@@ -46,13 +46,13 @@ namespace aditof {
  * @brief Status of any operation that the TOF sdk performs.
  */
 enum class Status {
-    OK,               //!< Success
-    BUSY,             //!< Device or resource is busy
-    UNREACHABLE,      //!< Device or resource is unreachable
-    INVALID_ARGUMENT, //!< Invalid arguments provided
-    UNAVAILABLE,      //!< The requested action or resource is unavailable
+    OK,                  //!< Success
+    BUSY,                //!< Device or resource is busy
+    UNREACHABLE,         //!< Device or resource is unreachable
+    INVALID_ARGUMENT,    //!< Invalid arguments provided
+    UNAVAILABLE,         //!< The requested action or resource is unavailable
     INSUFFICIENT_MEMORY, //!< Insufficient memory or buffer size
-    GENERIC_ERROR     //!< An error occured but there are no details available.
+    GENERIC_ERROR //!< An error occured but there are no details available.
 };
 
 /**
