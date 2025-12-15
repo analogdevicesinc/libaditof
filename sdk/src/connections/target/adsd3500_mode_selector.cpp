@@ -30,6 +30,9 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "adsd3500_mode_selector.h"
+#ifdef USE_GLOG
+#include <glog/logging.h>
+#endif
 #include <algorithm>
 
 Adsd3500ModeSelector::Adsd3500ModeSelector() : m_configuration("standard") {
