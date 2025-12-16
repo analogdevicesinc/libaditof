@@ -35,11 +35,7 @@
 #include "sensor-tables/driver_configuration_table.h"
 
 #include <aditof/camera_definitions.h>
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 #include <aditof/status_definitions.h>
 
 #include <map>

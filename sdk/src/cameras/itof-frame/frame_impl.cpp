@@ -37,11 +37,7 @@
 #include <cmath>
 #include <cstring>
 #include <fstream>
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 #include <memory>
 #include <unordered_map>
 

@@ -35,12 +35,7 @@
 #include "camera_itof.h"
 #include <aditof/camera.h>
 #include <algorithm>
-
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 
 #include "aditof/version.h"
 

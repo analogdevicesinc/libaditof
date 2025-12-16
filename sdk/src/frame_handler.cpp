@@ -33,11 +33,7 @@
 #include "frame_handler_impl.h"
 #include <aditof/frame_handler.h>
 #include <memory>
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 using namespace aditof;
 
 FrameHandler::FrameHandler() : m_impl(std::make_unique<FrameHandlerImpl>()) {}

@@ -31,12 +31,7 @@
  */
 #include "network_depth_sensor.h"
 #include "connections/network/network.h"
-
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 #include <chrono>
 #include <unordered_map>
 

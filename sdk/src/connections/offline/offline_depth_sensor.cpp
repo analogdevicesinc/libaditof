@@ -31,11 +31,7 @@
  */
 #include "offline_depth_sensor.h"
 
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 #include <chrono>
 #include <unordered_map>
 

@@ -17,13 +17,9 @@
 #include <cmath>
 #include <fcntl.h>
 #include <fstream>
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
 #include <cstring>
 #include <unistd.h>
-#endif
 #include "tofi/tofi_config.h"
 #include <dirent.h>
 #include <linux/videodev2.h>

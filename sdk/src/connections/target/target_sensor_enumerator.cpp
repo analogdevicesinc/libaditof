@@ -35,11 +35,7 @@
 #include <algorithm>
 #include <fstream>
 
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 
 using namespace aditof;
 

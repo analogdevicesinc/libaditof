@@ -31,11 +31,7 @@
  */
 
 #include "utils_ini.h"
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 #include <cstring>
 #include <fstream>
 #include <sstream>

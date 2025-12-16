@@ -32,12 +32,7 @@
 #include "network_sensor_enumerator.h"
 #include "connections/network/network.h"
 #include "connections/network/network_depth_sensor.h"
-
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 
 using namespace aditof;
 

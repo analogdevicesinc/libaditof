@@ -30,6 +30,12 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef USE_GLOG
+
+#include <glog/logging.h>
+
+#else
+
 #ifndef LOG_H
 #define LOG_H
 
@@ -138,3 +144,5 @@ class Log {
 #define LOG(x) Log(x, __FILE__, __LINE__)
 
 #endif // LOG_COUT_H
+
+#endif // USE_GLOG
