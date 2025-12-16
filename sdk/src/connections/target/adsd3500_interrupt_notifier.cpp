@@ -6,13 +6,9 @@
 /********************************************************************************/
 #include "adsd3500_interrupt_notifier.h"
 #include "adsd3500_sensor.h"
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
 #include <cstring>
 #include <unistd.h>
-#endif
 #include <fcntl.h>
 #include <sys/ioctl.h>
 

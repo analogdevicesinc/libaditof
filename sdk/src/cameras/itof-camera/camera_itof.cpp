@@ -48,11 +48,7 @@
 #include <omp.h>
 #include <sstream>
 
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 #include <chrono>
 #include <iomanip>
 #include <iostream>

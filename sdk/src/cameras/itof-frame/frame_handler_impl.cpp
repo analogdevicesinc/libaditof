@@ -31,11 +31,7 @@
  */
 
 #include "frame_handler_impl.h"
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 #include <algorithm>
 #include <cstring>
 #include <memory>
