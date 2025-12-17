@@ -111,7 +111,20 @@ add_library(${PROJECT_NAME} SHARED
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE crc32)
-target_link_libraries(${PROJECT_NAME} PRIVATE cjson)
+target_link_libraries(${PROJECT_NAME} PRIVATE json-c)
+# json-c may need libbsd on Linux/Unix systems
+if(UNIX AND NOT APPLE)
+    find_library(BSD_LIBRARY bsd)
+    if(BSD_LIBRARY)
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${BSD_LIBRARY})
+    endif()
+endif()
+
+# Add json-c include directories (both source and build for generated headers)
+target_include_directories(${PROJECT_NAME} PRIVATE 
+    ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/json-c
+    ${CMAKE_BINARY_DIR}/libaditof/dependencies/third-party/json-c
+)
 
 if(WITH_GLOG_DEPENDENCY)
     # Prevent macro name collisions between custom log.h and glog
