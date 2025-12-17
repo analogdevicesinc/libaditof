@@ -33,11 +33,11 @@
 #include "frame_impl.h"
 #include "aditof/frame_operations.h"
 
+#include <aditof/log.h>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <fstream>
-#include <aditof/log.h>
 #include <memory>
 #include <unordered_map>
 

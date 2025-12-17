@@ -12,16 +12,15 @@
 #include "sensor-tables/device_parameters.h"
 #include "utils_ini.h"
 
+#include "tofi/tofi_config.h"
+#include <aditof/log.h>
 #include <algorithm>
 #include <arm_neon.h>
 #include <cmath>
+#include <cstring>
+#include <dirent.h>
 #include <fcntl.h>
 #include <fstream>
-#include <aditof/log.h>
-#include <cstring>
-#include <unistd.h>
-#include "tofi/tofi_config.h"
-#include <dirent.h>
 #include <linux/videodev2.h>
 #include <signal.h>
 #include <sstream>
@@ -29,6 +28,7 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <thread>
+#include <unistd.h>
 #include <unordered_map>
 
 #define MAX_SUBFRAMES_COUNT                                                    \

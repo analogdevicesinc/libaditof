@@ -33,8 +33,8 @@
 #include "connections/target/target_sensor_enumerator.h"
 #include "target_definitions.h"
 
-#include <dirent.h>
 #include <aditof/log.h>
+#include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

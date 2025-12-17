@@ -32,8 +32,8 @@
 
 #include "frame_handler_impl.h"
 #include <aditof/frame_handler.h>
-#include <memory>
 #include <aditof/log.h>
+#include <memory>
 using namespace aditof;
 
 FrameHandler::FrameHandler() : m_impl(std::make_unique<FrameHandlerImpl>()) {}
