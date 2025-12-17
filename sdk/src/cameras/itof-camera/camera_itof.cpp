@@ -35,7 +35,6 @@
 #include "utils_ini.h"
 
 #include "aditof/utils.h"
-#include <json.h>
 #include "crc.h"
 #include "tofi/algorithms.h"
 #include "tofi/floatTolin.h"
@@ -45,6 +44,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <json.h>
 #include <omp.h>
 #include <sstream>
 
@@ -1817,15 +1817,19 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
 
     json_object *rootjson = json_object_new_object();
 
-    json_object_object_add(rootjson, "errata1", json_object_new_int(m_dropFirstFrame ? 1 : 0));
+    json_object_object_add(rootjson, "errata1",
+                           json_object_new_int(m_dropFirstFrame ? 1 : 0));
 
-    json_object_object_add(rootjson, "fsyncMode", json_object_new_int(m_fsyncMode));
-    json_object_object_add(rootjson, "mipiOutputSpeed", json_object_new_int(m_mipiOutputSpeed));
-    json_object_object_add(rootjson, "isdeskewEnabled", json_object_new_int(m_isdeskewEnabled));
+    json_object_object_add(rootjson, "fsyncMode",
+                           json_object_new_int(m_fsyncMode));
+    json_object_object_add(rootjson, "mipiOutputSpeed",
+                           json_object_new_int(m_mipiOutputSpeed));
+    json_object_object_add(rootjson, "isdeskewEnabled",
+                           json_object_new_int(m_isdeskewEnabled));
     json_object_object_add(rootjson, "enableTempCompensation",
-                            json_object_new_int(m_enableTempCompenstation));
+                           json_object_new_int(m_enableTempCompenstation));
     json_object_object_add(rootjson, "enableEdgeConfidence",
-                            json_object_new_int(m_enableEdgeConfidence));
+                           json_object_new_int(m_enableEdgeConfidence));
 
     std::list<std::string> depth_compute_keys_list = {
         "abThreshMin",         "radialThreshMax",
@@ -1859,33 +1863,36 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
                 if (depth_compute_keys_list.end() != it) {
                     if (isConvertibleToDouble(item->second)) {
                         json_object_object_add(dept_compute_group_keys,
-                                                item->first.c_str(), json_object_new_double(valued));
+                                               item->first.c_str(),
+                                               json_object_new_double(valued));
                     } else {
-                        json_object_object_add(dept_compute_group_keys,
-                                                item->first.c_str(),
-                                                json_object_new_string(item->second.c_str()));
+                        json_object_object_add(
+                            dept_compute_group_keys, item->first.c_str(),
+                            json_object_new_string(item->second.c_str()));
                     }
                 } else {
                     if (isConvertibleToDouble(item->second)) {
                         json_object_object_add(configuration_param_keys,
-                                                item->first.c_str(), json_object_new_double(valued));
+                                               item->first.c_str(),
+                                               json_object_new_double(valued));
                     } else {
-                        json_object_object_add(configuration_param_keys,
-                                                item->first.c_str(),
-                                                json_object_new_string(item->second.c_str()));
+                        json_object_object_add(
+                            configuration_param_keys, item->first.c_str(),
+                            json_object_new_string(item->second.c_str()));
                     }
                 }
             }
             json_object_object_add(json, "depth-compute",
-                                  dept_compute_group_keys);
+                                   dept_compute_group_keys);
             json_object_object_add(json, "configuration-parameters",
-                                  configuration_param_keys);
+                                   configuration_param_keys);
             json_object_object_add(rootjson,
-                                  std::to_string(pfile->first).c_str(), json);
+                                   std::to_string(pfile->first).c_str(), json);
         }
     }
 
-    const char *json_str = json_object_to_json_string_ext(rootjson, JSON_C_TO_STRING_PRETTY);
+    const char *json_str =
+        json_object_to_json_string_ext(rootjson, JSON_C_TO_STRING_PRETTY);
 
     FILE *fp = fopen(savePathFile.c_str(), "w");
     if (fp == NULL) {
@@ -1923,7 +1930,7 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
         json_object *errata1 = NULL;
         double errata1val = 1;
         if (json_object_object_get_ex(config_json, "errata1", &errata1)) {
-            if (json_object_is_type(errata1, json_type_int) || 
+            if (json_object_is_type(errata1, json_type_int) ||
                 json_object_is_type(errata1, json_type_double)) {
                 errata1val = json_object_get_double(errata1);
             }
@@ -1943,7 +1950,8 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
         }
 
         json_object *mipiOutputSpeed = NULL;
-        if (json_object_object_get_ex(config_json, "mipiOutputSpeed", &mipiOutputSpeed)) {
+        if (json_object_object_get_ex(config_json, "mipiOutputSpeed",
+                                      &mipiOutputSpeed)) {
             if (json_object_is_type(mipiOutputSpeed, json_type_int) ||
                 json_object_is_type(mipiOutputSpeed, json_type_double)) {
                 m_mipiOutputSpeed = json_object_get_int(mipiOutputSpeed);
@@ -1951,7 +1959,8 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
         }
 
         json_object *isdeskewEnabled = NULL;
-        if (json_object_object_get_ex(config_json, "isdeskewEnabled", &isdeskewEnabled)) {
+        if (json_object_object_get_ex(config_json, "isdeskewEnabled",
+                                      &isdeskewEnabled)) {
             if (json_object_is_type(isdeskewEnabled, json_type_int) ||
                 json_object_is_type(isdeskewEnabled, json_type_double)) {
                 m_isdeskewEnabled = json_object_get_int(isdeskewEnabled);
@@ -1959,39 +1968,50 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
         }
 
         json_object *enableTempCompensation = NULL;
-        if (json_object_object_get_ex(config_json, "enableTempCompensation", &enableTempCompensation)) {
+        if (json_object_object_get_ex(config_json, "enableTempCompensation",
+                                      &enableTempCompensation)) {
             if (json_object_is_type(enableTempCompensation, json_type_int) ||
                 json_object_is_type(enableTempCompensation, json_type_double)) {
-                m_enableTempCompenstation = json_object_get_int(enableTempCompensation);
+                m_enableTempCompenstation =
+                    json_object_get_int(enableTempCompensation);
             }
         }
 
         json_object *enableEdgeConfidence = NULL;
-        if (json_object_object_get_ex(config_json, "enableEdgeConfidence", &enableEdgeConfidence)) {
+        if (json_object_object_get_ex(config_json, "enableEdgeConfidence",
+                                      &enableEdgeConfidence)) {
             if (json_object_is_type(enableEdgeConfidence, json_type_int) ||
                 json_object_is_type(enableEdgeConfidence, json_type_double)) {
-                m_enableEdgeConfidence = json_object_get_int(enableEdgeConfidence);
+                m_enableEdgeConfidence =
+                    json_object_get_int(enableEdgeConfidence);
             }
         }
 
         json_object *dmsSequence = NULL;
-        if (json_object_object_get_ex(config_json, "dynamicModeSwitching", &dmsSequence)) {
+        if (json_object_object_get_ex(config_json, "dynamicModeSwitching",
+                                      &dmsSequence)) {
             if (json_object_is_type(dmsSequence, json_type_array)) {
 
                 m_configDmsSequence.clear();
 
                 int arraylen = json_object_array_length(dmsSequence);
                 for (int i = 0; i < arraylen; i++) {
-                    json_object *dmsPair = json_object_array_get_idx(dmsSequence, i);
+                    json_object *dmsPair =
+                        json_object_array_get_idx(dmsSequence, i);
                     json_object *dmsMode = NULL;
                     json_object *dmsRepeat = NULL;
-                    
+
                     if (json_object_object_get_ex(dmsPair, "mode", &dmsMode) &&
-                        json_object_object_get_ex(dmsPair, "repeat", &dmsRepeat)) {
-                        if ((json_object_is_type(dmsMode, json_type_int) || json_object_is_type(dmsMode, json_type_double)) &&
-                            (json_object_is_type(dmsRepeat, json_type_int) || json_object_is_type(dmsRepeat, json_type_double))) {
+                        json_object_object_get_ex(dmsPair, "repeat",
+                                                  &dmsRepeat)) {
+                        if ((json_object_is_type(dmsMode, json_type_int) ||
+                             json_object_is_type(dmsMode, json_type_double)) &&
+                            (json_object_is_type(dmsRepeat, json_type_int) ||
+                             json_object_is_type(dmsRepeat,
+                                                 json_type_double))) {
                             m_configDmsSequence.emplace_back(
-                                std::make_pair(json_object_get_int(dmsMode), json_object_get_int(dmsRepeat)));
+                                std::make_pair(json_object_get_int(dmsMode),
+                                               json_object_get_int(dmsRepeat)));
                         }
                     }
                 }
@@ -2007,12 +2027,14 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
             std::string modeStr = std::to_string(mode);
 
             json_object *depthframeType = NULL;
-            if (!json_object_object_get_ex(config_json, modeStr.c_str(), &depthframeType)) {
+            if (!json_object_object_get_ex(config_json, modeStr.c_str(),
+                                           &depthframeType)) {
                 continue;
             }
 
             json_object *dept_compute_group_keys = NULL;
-            json_object_object_get_ex(depthframeType, "depth-compute", &dept_compute_group_keys);
+            json_object_object_get_ex(depthframeType, "depth-compute",
+                                      &dept_compute_group_keys);
 
             std::map<std::string, std::string> iniKeyValPairs;
 
@@ -2039,7 +2061,9 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
             }
 
             json_object *configuration_param_keys = NULL;
-            json_object_object_get_ex(depthframeType, "configuration-parameters", &configuration_param_keys);
+            json_object_object_get_ex(depthframeType,
+                                      "configuration-parameters",
+                                      &configuration_param_keys);
 
             if (configuration_param_keys) {
                 json_object_object_foreach(configuration_param_keys, key, val) {
