@@ -31,9 +31,9 @@
  */
 #include "network.h"
 
-#include <functional>
 #include <aditof/log.h>
 #include <atomic>
+#include <functional>
 #include <google/protobuf/io/coded_stream.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <iostream>

@@ -33,20 +33,20 @@
 // TO DO: This exists in linux_utils.h which is not included on Dragoboard.
 // Should not have duplicated code if possible.
 
+#include <aditof/log.h>
 #include <algorithm>
 #include <arm_neon.h>
 #include <cmath>
 #include <exception>
 #include <fcntl.h>
 #include <fstream>
-#include <unistd.h>
-#include <aditof/log.h>
 #include <linux/videodev2.h>
 #include <memory>
 #include <sstream>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <unordered_map>
 
 #include "buffer_processor.h"

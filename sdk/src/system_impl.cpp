@@ -34,8 +34,8 @@
 #include "aditof/sensor_enumerator_interface.h"
 #include "camera_itof.h"
 #include <aditof/camera.h>
-#include <algorithm>
 #include <aditof/log.h>
+#include <algorithm>
 
 #include "aditof/version.h"
 

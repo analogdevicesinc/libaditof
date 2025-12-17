@@ -8,9 +8,9 @@
 #include "adsd3500_sensor.h"
 #include <aditof/log.h>
 #include <cstring>
-#include <unistd.h>
 #include <fcntl.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 
 #define SIGETX 44
 #define USER_TASK _IOW('A', 1, int32_t *)
