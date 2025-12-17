@@ -35,7 +35,7 @@
 #include "utils_ini.h"
 
 #include "aditof/utils.h"
-#include "cJSON.h"
+#include <json.h>
 #include "crc.h"
 #include "tofi/algorithms.h"
 #include "tofi/floatTolin.h"
@@ -1754,12 +1754,16 @@ void CameraItof::configureSensorModeDetails() {
 }
 
 /* // Not currently used, but leaving in case it is needed later.
-static int16_t getValueFromJSON(cJSON *config_json, std::string key) {
+static int16_t getValueFromJSON(json_object *config_json, std::string key) {
     int16_t value = -1;
-    const cJSON *json_value =
-        cJSON_GetObjectItemCaseSensitive(config_json, key.c_str());
-    if (cJSON_IsString(json_value) && (json_value->valuestring != NULL)) {
-        value = atoi(json_value->valuestring);
+    json_object *json_value = NULL;
+    if (json_object_object_get_ex(config_json, key.c_str(), &json_value)) {
+        if (json_object_is_type(json_value, json_type_string)) {
+            const char *valuestring = json_object_get_string(json_value);
+            if (valuestring != NULL) {
+                value = atoi(valuestring);
+            }
+        }
     }
     return value;
 }
@@ -1811,17 +1815,17 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
 
     assert(!m_isOffline);
 
-    cJSON *rootjson = cJSON_CreateObject();
+    json_object *rootjson = json_object_new_object();
 
-    cJSON_AddNumberToObject(rootjson, "errata1", m_dropFirstFrame ? 1 : 0);
+    json_object_object_add(rootjson, "errata1", json_object_new_int(m_dropFirstFrame ? 1 : 0));
 
-    cJSON_AddNumberToObject(rootjson, "fsyncMode", m_fsyncMode);
-    cJSON_AddNumberToObject(rootjson, "mipiOutputSpeed", m_mipiOutputSpeed);
-    cJSON_AddNumberToObject(rootjson, "isdeskewEnabled", m_isdeskewEnabled);
-    cJSON_AddNumberToObject(rootjson, "enableTempCompensation",
-                            m_enableTempCompenstation);
-    cJSON_AddNumberToObject(rootjson, "enableEdgeConfidence",
-                            m_enableEdgeConfidence);
+    json_object_object_add(rootjson, "fsyncMode", json_object_new_int(m_fsyncMode));
+    json_object_object_add(rootjson, "mipiOutputSpeed", json_object_new_int(m_mipiOutputSpeed));
+    json_object_object_add(rootjson, "isdeskewEnabled", json_object_new_int(m_isdeskewEnabled));
+    json_object_object_add(rootjson, "enableTempCompensation",
+                            json_object_new_int(m_enableTempCompenstation));
+    json_object_object_add(rootjson, "enableEdgeConfidence",
+                            json_object_new_int(m_enableEdgeConfidence));
 
     std::list<std::string> depth_compute_keys_list = {
         "abThreshMin",         "radialThreshMax",
@@ -1840,9 +1844,9 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
         std::map<std::string, std::string> iniKeyValPairs = pfile->second;
 
         if (status == Status::OK) {
-            cJSON *json = cJSON_CreateObject();
-            cJSON *dept_compute_group_keys = cJSON_CreateObject();
-            cJSON *configuration_param_keys = cJSON_CreateObject();
+            json_object *json = json_object_new_object();
+            json_object *dept_compute_group_keys = json_object_new_object();
+            json_object *configuration_param_keys = json_object_new_object();
 
             for (auto item = iniKeyValPairs.begin();
                  item != iniKeyValPairs.end(); item++) {
@@ -1854,45 +1858,45 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
                     [&](const std::string key) { return item->first == key; });
                 if (depth_compute_keys_list.end() != it) {
                     if (isConvertibleToDouble(item->second)) {
-                        cJSON_AddNumberToObject(dept_compute_group_keys,
-                                                item->first.c_str(), valued);
+                        json_object_object_add(dept_compute_group_keys,
+                                                item->first.c_str(), json_object_new_double(valued));
                     } else {
-                        cJSON_AddStringToObject(dept_compute_group_keys,
+                        json_object_object_add(dept_compute_group_keys,
                                                 item->first.c_str(),
-                                                item->second.c_str());
+                                                json_object_new_string(item->second.c_str()));
                     }
                 } else {
                     if (isConvertibleToDouble(item->second)) {
-                        cJSON_AddNumberToObject(configuration_param_keys,
-                                                item->first.c_str(), valued);
+                        json_object_object_add(configuration_param_keys,
+                                                item->first.c_str(), json_object_new_double(valued));
                     } else {
-                        cJSON_AddStringToObject(configuration_param_keys,
+                        json_object_object_add(configuration_param_keys,
                                                 item->first.c_str(),
-                                                item->second.c_str());
+                                                json_object_new_string(item->second.c_str()));
                     }
                 }
             }
-            cJSON_AddItemToObject(json, "depth-compute",
+            json_object_object_add(json, "depth-compute",
                                   dept_compute_group_keys);
-            cJSON_AddItemToObject(json, "configuration-parameters",
+            json_object_object_add(json, "configuration-parameters",
                                   configuration_param_keys);
-            cJSON_AddItemToObject(rootjson,
+            json_object_object_add(rootjson,
                                   std::to_string(pfile->first).c_str(), json);
         }
     }
 
-    char *json_str = cJSON_Print(rootjson);
+    const char *json_str = json_object_to_json_string_ext(rootjson, JSON_C_TO_STRING_PRETTY);
 
     FILE *fp = fopen(savePathFile.c_str(), "w");
     if (fp == NULL) {
         LOG(WARNING) << " Unable to open the file. " << savePathFile.c_str();
+        json_object_put(rootjson);
         return Status::GENERIC_ERROR;
     }
     fputs(json_str, fp);
     fclose(fp);
 
-    cJSON_free(json_str);
-    cJSON_Delete(rootjson);
+    json_object_put(rootjson);
 
     return status;
 }
@@ -1913,14 +1917,16 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
     std::string content((std::istreambuf_iterator<char>(ifs)),
                         (std::istreambuf_iterator<char>()));
 
-    cJSON *config_json = cJSON_Parse(content.c_str());
+    json_object *config_json = json_tokener_parse(content.c_str());
     if (config_json != NULL) {
 
-        cJSON *errata1 =
-            cJSON_GetObjectItemCaseSensitive(config_json, "errata1");
+        json_object *errata1 = NULL;
         double errata1val = 1;
-        if (cJSON_IsNumber(errata1)) {
-            errata1val = errata1->valuedouble;
+        if (json_object_object_get_ex(config_json, "errata1", &errata1)) {
+            if (json_object_is_type(errata1, json_type_int) || 
+                json_object_is_type(errata1, json_type_double)) {
+                errata1val = json_object_get_double(errata1);
+            }
         }
         if (errata1val == 1) {
             m_dropFirstFrame = true;
@@ -1928,52 +1934,66 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
             m_dropFirstFrame = false;
         }
 
-        cJSON *fsyncMode =
-            cJSON_GetObjectItemCaseSensitive(config_json, "fsyncMode");
-        if (cJSON_IsNumber(fsyncMode)) {
-            m_fsyncMode = fsyncMode->valueint;
+        json_object *fsyncMode = NULL;
+        if (json_object_object_get_ex(config_json, "fsyncMode", &fsyncMode)) {
+            if (json_object_is_type(fsyncMode, json_type_int) ||
+                json_object_is_type(fsyncMode, json_type_double)) {
+                m_fsyncMode = json_object_get_int(fsyncMode);
+            }
         }
 
-        cJSON *mipiOutputSpeed =
-            cJSON_GetObjectItemCaseSensitive(config_json, "mipiOutputSpeed");
-        if (cJSON_IsNumber(mipiOutputSpeed)) {
-            m_mipiOutputSpeed = mipiOutputSpeed->valueint;
+        json_object *mipiOutputSpeed = NULL;
+        if (json_object_object_get_ex(config_json, "mipiOutputSpeed", &mipiOutputSpeed)) {
+            if (json_object_is_type(mipiOutputSpeed, json_type_int) ||
+                json_object_is_type(mipiOutputSpeed, json_type_double)) {
+                m_mipiOutputSpeed = json_object_get_int(mipiOutputSpeed);
+            }
         }
 
-        cJSON *isdeskewEnabled =
-            cJSON_GetObjectItemCaseSensitive(config_json, "isdeskewEnabled");
-        if (cJSON_IsNumber(isdeskewEnabled)) {
-            m_isdeskewEnabled = isdeskewEnabled->valueint;
+        json_object *isdeskewEnabled = NULL;
+        if (json_object_object_get_ex(config_json, "isdeskewEnabled", &isdeskewEnabled)) {
+            if (json_object_is_type(isdeskewEnabled, json_type_int) ||
+                json_object_is_type(isdeskewEnabled, json_type_double)) {
+                m_isdeskewEnabled = json_object_get_int(isdeskewEnabled);
+            }
         }
 
-        cJSON *enableTempCompensation = cJSON_GetObjectItemCaseSensitive(
-            config_json, "enableTempCompensation");
-        if (cJSON_IsNumber(enableTempCompensation)) {
-            m_enableTempCompenstation = enableTempCompensation->valueint;
+        json_object *enableTempCompensation = NULL;
+        if (json_object_object_get_ex(config_json, "enableTempCompensation", &enableTempCompensation)) {
+            if (json_object_is_type(enableTempCompensation, json_type_int) ||
+                json_object_is_type(enableTempCompensation, json_type_double)) {
+                m_enableTempCompenstation = json_object_get_int(enableTempCompensation);
+            }
         }
 
-        cJSON *enableEdgeConfidence = cJSON_GetObjectItemCaseSensitive(
-            config_json, "enableEdgeConfidence");
-        if (cJSON_IsNumber(enableEdgeConfidence)) {
-            m_enableEdgeConfidence = enableEdgeConfidence->valueint;
+        json_object *enableEdgeConfidence = NULL;
+        if (json_object_object_get_ex(config_json, "enableEdgeConfidence", &enableEdgeConfidence)) {
+            if (json_object_is_type(enableEdgeConfidence, json_type_int) ||
+                json_object_is_type(enableEdgeConfidence, json_type_double)) {
+                m_enableEdgeConfidence = json_object_get_int(enableEdgeConfidence);
+            }
         }
 
-        cJSON *dmsSequence = cJSON_GetObjectItemCaseSensitive(
-            config_json, "dynamicModeSwitching");
-        if (cJSON_IsArray(dmsSequence)) {
+        json_object *dmsSequence = NULL;
+        if (json_object_object_get_ex(config_json, "dynamicModeSwitching", &dmsSequence)) {
+            if (json_object_is_type(dmsSequence, json_type_array)) {
 
-            m_configDmsSequence.clear();
+                m_configDmsSequence.clear();
 
-            cJSON *dmsPair;
-            cJSON_ArrayForEach(dmsPair, dmsSequence) {
-                cJSON *dmsMode =
-                    cJSON_GetObjectItemCaseSensitive(dmsPair, "mode");
-                cJSON *dmsRepeat =
-                    cJSON_GetObjectItemCaseSensitive(dmsPair, "repeat");
-
-                if (cJSON_IsNumber(dmsMode) && cJSON_IsNumber(dmsRepeat)) {
-                    m_configDmsSequence.emplace_back(
-                        std::make_pair(dmsMode->valueint, dmsRepeat->valueint));
+                int arraylen = json_object_array_length(dmsSequence);
+                for (int i = 0; i < arraylen; i++) {
+                    json_object *dmsPair = json_object_array_get_idx(dmsSequence, i);
+                    json_object *dmsMode = NULL;
+                    json_object *dmsRepeat = NULL;
+                    
+                    if (json_object_object_get_ex(dmsPair, "mode", &dmsMode) &&
+                        json_object_object_get_ex(dmsPair, "repeat", &dmsRepeat)) {
+                        if ((json_object_is_type(dmsMode, json_type_int) || json_object_is_type(dmsMode, json_type_double)) &&
+                            (json_object_is_type(dmsRepeat, json_type_int) || json_object_is_type(dmsRepeat, json_type_double))) {
+                            m_configDmsSequence.emplace_back(
+                                std::make_pair(json_object_get_int(dmsMode), json_object_get_int(dmsRepeat)));
+                        }
+                    }
                 }
             }
         }
@@ -1986,63 +2006,64 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
 
             std::string modeStr = std::to_string(mode);
 
-            cJSON *depthframeType =
-                cJSON_GetObjectItemCaseSensitive(config_json, modeStr.c_str());
+            json_object *depthframeType = NULL;
+            if (!json_object_object_get_ex(config_json, modeStr.c_str(), &depthframeType)) {
+                continue;
+            }
 
-            cJSON *dept_compute_group_keys = cJSON_GetObjectItemCaseSensitive(
-                depthframeType, "depth-compute");
+            json_object *dept_compute_group_keys = NULL;
+            json_object_object_get_ex(depthframeType, "depth-compute", &dept_compute_group_keys);
 
             std::map<std::string, std::string> iniKeyValPairs;
 
             if (dept_compute_group_keys) {
 
-                cJSON *elem;
-                cJSON_ArrayForEach(elem, dept_compute_group_keys) {
+                json_object_object_foreach(dept_compute_group_keys, key, val) {
 
                     std::string value = "";
 
-                    if (elem->valuestring != nullptr) {
-                        value = std::string(elem->valuestring);
+                    if (json_object_is_type(val, json_type_string)) {
+                        value = std::string(json_object_get_string(val));
                     } else {
                         std::ostringstream stream;
                         stream << std::fixed << std::setprecision(1)
-                               << elem->valuedouble;
+                               << json_object_get_double(val);
                         value = stream.str();
                         std::size_t found = value.find(".0");
                         if (found != std::string::npos) {
-                            value = std::to_string(elem->valueint);
+                            value = std::to_string(json_object_get_int(val));
                         }
                     }
-                    iniKeyValPairs.emplace(std::string(elem->string), value);
+                    iniKeyValPairs.emplace(std::string(key), value);
                 }
             }
 
-            cJSON *configuration_param_keys = cJSON_GetObjectItemCaseSensitive(
-                depthframeType, "configuration-parameters");
+            json_object *configuration_param_keys = NULL;
+            json_object_object_get_ex(depthframeType, "configuration-parameters", &configuration_param_keys);
 
             if (configuration_param_keys) {
-                cJSON *elem;
-                cJSON_ArrayForEach(elem, configuration_param_keys) {
+                json_object_object_foreach(configuration_param_keys, key, val) {
 
                     std::string value = "";
 
-                    if (elem->valuestring != nullptr) {
-                        value = std::string(elem->valuestring);
+                    if (json_object_is_type(val, json_type_string)) {
+                        value = std::string(json_object_get_string(val));
                     } else {
                         std::ostringstream stream;
                         stream << std::fixed << std::setprecision(1)
-                               << elem->valuedouble;
+                               << json_object_get_double(val);
                         value = stream.str();
                         std::size_t found = value.find(".0");
                         if (found != std::string::npos) {
-                            value = std::to_string(elem->valueint);
+                            value = std::to_string(json_object_get_int(val));
                         }
                     }
-                    iniKeyValPairs.emplace(std::string(elem->string), value);
+                    iniKeyValPairs.emplace(std::string(key), value);
                 }
             }
             m_depth_params_map.emplace(mode, iniKeyValPairs);
         }
+        json_object_put(config_json);
     }
 
     return status;
