@@ -37,10 +37,11 @@ Status NetworkSensorEnumerator::searchSensors() {
     Status status = Status::OK;
 
     extern std::vector<std::string> m_connectionList;
-    int sensorIndex = -1, i = 0;
+    int sensorIndex = -1;
+    size_t i = 0;
     for (i = 0; i < m_connectionList.size(); i++) {
         if (m_connectionList.at(i) == m_ip) {
-            sensorIndex = i;
+            sensorIndex = static_cast<int>(i);
             break;
         }
     }

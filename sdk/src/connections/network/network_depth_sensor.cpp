@@ -51,9 +51,9 @@ NetworkDepthSensor::NetworkDepthSensor(const std::string &name,
 
     extern std::vector<std::string> m_connectionList;
     m_sensorIndex = -1;
-    for (int i = 0; i < m_connectionList.size(); i++) {
+    for (size_t i = 0; i < m_connectionList.size(); i++) {
         if (m_connectionList.at(i) == ip) {
-            m_sensorIndex = i;
+            m_sensorIndex = static_cast<int>(i);
         }
     }
 
@@ -617,7 +617,7 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
     net->send_buff[m_sensorIndex].mutable_mode_details()->set_metadata_size(
         type.metadataSize);
     auto content = net->send_buff[m_sensorIndex].mutable_mode_details();
-    for (int i = 0; i < type.frameContent.size(); i++) {
+    for (size_t i = 0; i < type.frameContent.size(); i++) {
         content->add_frame_content(type.frameContent.at(i));
     }
 
@@ -1492,7 +1492,6 @@ aditof::Status NetworkDepthSensor::writeFrame(uint8_t *buffer,
         return aditof::Status::GENERIC_ERROR;
     }
 
-    static uint32_t idx = 0;
     try {
         if (m_stream_file_out.is_open()) {
             // Write size of buffer

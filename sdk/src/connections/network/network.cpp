@@ -205,16 +205,15 @@ int Network::ServerConnect(const std::string &ip) {
             LOG(INFO) << "Attempting to connect server... ";
             try {
 
-                command_socket[m_connectionId]->setsockopt(
-                    ZMQ_SNDTIMEO, 100); // set command timeout
-                command_socket[m_connectionId]->setsockopt(ZMQ_HEARTBEAT_IVL,
-                                                           1000); // 1 sec
-                command_socket[m_connectionId]->setsockopt(
-                    ZMQ_HEARTBEAT_TIMEOUT,
+                command_socket[m_connectionId]->set(zmq::sockopt::sndtimeo,
+                                                    100); // set command timeout
+                command_socket[m_connectionId]->set(zmq::sockopt::heartbeat_ivl,
+                                                    1000); // 1 sec
+                command_socket[m_connectionId]->set(
+                    zmq::sockopt::heartbeat_timeout,
                     3000); // 3 sec
-                command_socket[m_connectionId]->setsockopt(
-                    ZMQ_HEARTBEAT_TTL,
-                    5000); // TTL for heartbeat
+                command_socket[m_connectionId]->set(zmq::sockopt::heartbeat_ttl,
+                                                    5000); // TTL for heartbeat
                 command_socket[m_connectionId]->connect("tcp://" + ip +
                                                         ":5556");
             } catch (const zmq::error_t &e) {
@@ -491,7 +490,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
             running[connectionId] = false;
 
             if (monitor_sockets.at(connectionId)) {
-                monitor_sockets.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
+                monitor_sockets.at(connectionId)->set(zmq::sockopt::linger, 0);
                 monitor_sockets.at(connectionId)->close();
             }
 
@@ -503,7 +502,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
                     break;
                 }
             }
-            command_socket.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
+            command_socket.at(connectionId)->set(zmq::sockopt::linger, 0);
             command_socket.at(connectionId)->close();
             contexts.at(connectionId)->close();
             command_socket.at(connectionId) = NULL;
@@ -525,7 +524,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
             running[connectionId] = false;
 
             if (monitor_sockets.at(connectionId)) {
-                monitor_sockets.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
+                monitor_sockets.at(connectionId)->set(zmq::sockopt::linger, 0);
                 monitor_sockets.at(connectionId)->close();
             }
 
@@ -537,7 +536,7 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
                     break;
                 }
             }
-            command_socket.at(connectionId)->setsockopt(ZMQ_LINGER, 0);
+            command_socket.at(connectionId)->set(zmq::sockopt::linger, 0);
             command_socket.at(connectionId)->close();
             contexts.at(connectionId)->close();
             command_socket.at(connectionId) = NULL;
@@ -589,7 +588,7 @@ Network::Network(int connectionId)
     running[connectionId] = true;
 
     m_connectionId = connectionId;
-    while (contexts.size() <= m_connectionId)
+    while (contexts.size() <= static_cast<size_t>(m_connectionId))
         contexts.emplace_back(nullptr);
 }
 
@@ -611,7 +610,7 @@ Network::~Network() {
             Server_Connected[m_connectionId] = false;
             running[m_connectionId] = false;
 
-            monitor_sockets.at(m_connectionId)->setsockopt(ZMQ_LINGER, 200);
+            monitor_sockets.at(m_connectionId)->set(zmq::sockopt::linger, 200);
             monitor_sockets.at(m_connectionId)->close();
 
             uint32_t cntr = 0;
@@ -624,7 +623,7 @@ Network::~Network() {
             }
             const std::string wake_ep = "inproc://wakeup";
             command_socket.at(m_connectionId)->bind(wake_ep);
-            command_socket.at(m_connectionId)->setsockopt(ZMQ_LINGER, 200);
+            command_socket.at(m_connectionId)->set(zmq::sockopt::linger, 200);
             contexts.at(m_connectionId)->shutdown();
             command_socket.at(m_connectionId)->close();
 
@@ -684,10 +683,9 @@ void Network::FrameSocketConnection(std::string &ip) {
     frame_context = std::make_unique<zmq::context_t>(1);
     frame_socket =
         std::make_unique<zmq::socket_t>(*frame_context, zmq::socket_type::pull);
-    frame_socket->setsockopt(ZMQ_RCVTIMEO,
-                             1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
-    frame_socket->setsockopt(ZMQ_RCVHWM, (int *)&max_buffer_size,
-                             sizeof(max_buffer_size));
+    frame_socket->set(zmq::sockopt::rcvtimeo,
+                      1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
+    frame_socket->set(zmq::sockopt::rcvhwm, static_cast<int>(max_buffer_size));
     std::string zmq_address = "tcp://" + ip + ":5555";
     frame_socket->connect(zmq_address);
     LOG(INFO) << "Frame Client Connection established.";
