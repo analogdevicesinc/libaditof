@@ -9,8 +9,8 @@
 [submodule "libzmq"]
 	path = libzmq
 	url = https://github.com/zeromq/libzmq.git
-		branch = v4.3.4
+		branch = v4.3.5
 [submodule "cppzmq"]
 	path = cppzmq
 	url = https://github.com/zeromq/cppzmq.git
-		branch = v4.9.0
+		branch = v4.11.0
