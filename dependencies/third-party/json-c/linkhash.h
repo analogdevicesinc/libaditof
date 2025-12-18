@@ -339,14 +339,14 @@ int lh_table_resize(struct lh_table *t, int new_size);
    note: this also applies to -std=c89 in GCC! */
 #define _LH_INLINE
 #else
-#define _LH_INLINE inline
+#define _LH_INLINE __attribute__((unused)) inline
 #endif
 
 /**
  * Return the first entry in the lh_table.
  * @see lh_entry_next()
  */
-static _LH_INLINE struct lh_entry *lh_table_head(const lh_table *t)
+_LH_INLINE struct lh_entry *lh_table_head(const lh_table *t)
 {
 	return t->head;
 }
@@ -362,7 +362,7 @@ static _LH_INLINE struct lh_entry *lh_table_head(const lh_table *t)
  * @param k a pointer to the key to lookup
  * @return the key's hash
  */
-static _LH_INLINE unsigned long lh_get_hash(const struct lh_table *t, const void *k)
+_LH_INLINE unsigned long lh_get_hash(const struct lh_table *t, const void *k)
 {
 	return t->hash_fn(k);
 }
@@ -384,7 +384,7 @@ static _LH_INLINE unsigned long lh_get_hash(const struct lh_table *t, const void
  * it, but callers are allowed to do what they want with it.
  * @see lh_entry_k_is_constant()
  */
-static _LH_INLINE void *lh_entry_k(const struct lh_entry *e)
+_LH_INLINE void *lh_entry_k(const struct lh_entry *e)
 {
 	return _LH_UNCONST(e->k);
 }
@@ -394,7 +394,7 @@ static _LH_INLINE void *lh_entry_k(const struct lh_entry *e)
  *  does not need to be freed when the lh_entry is freed.
  * @see lh_table_insert_w_hash()
  */
-static _LH_INLINE int lh_entry_k_is_constant(const struct lh_entry *e)
+_LH_INLINE int lh_entry_k_is_constant(const struct lh_entry *e)
 {
 	return e->k_is_constant;
 }
@@ -405,7 +405,7 @@ static _LH_INLINE int lh_entry_k_is_constant(const struct lh_entry *e)
  * v is const to indicate and help ensure that linkhash itself doesn't modify
  * it, but callers are allowed to do what they want with it.
  */
-static _LH_INLINE void *lh_entry_v(const struct lh_entry *e)
+_LH_INLINE void *lh_entry_v(const struct lh_entry *e)
 {
 	return _LH_UNCONST(e->v);
 }
@@ -414,7 +414,7 @@ static _LH_INLINE void *lh_entry_v(const struct lh_entry *e)
  * Change the value for an entry.  The caller is responsible for freeing
  *  the previous value.
  */
-static _LH_INLINE void lh_entry_set_val(struct lh_entry *e, void *newval)
+_LH_INLINE void lh_entry_set_val(struct lh_entry *e, void *newval)
 {
 	e->v = newval;
 }
@@ -424,7 +424,7 @@ static _LH_INLINE void lh_entry_set_val(struct lh_entry *e, void *newval)
  * @see lh_table_head()
  * @see lh_entry_prev()
  */
-static _LH_INLINE struct lh_entry *lh_entry_next(const struct lh_entry *e)
+_LH_INLINE struct lh_entry *lh_entry_next(const struct lh_entry *e)
 {
 	return e->next;
 }
@@ -434,7 +434,7 @@ static _LH_INLINE struct lh_entry *lh_entry_next(const struct lh_entry *e)
  * @see lh_table_head()
  * @see lh_entry_next()
  */
-static _LH_INLINE struct lh_entry *lh_entry_prev(const struct lh_entry *e)
+_LH_INLINE struct lh_entry *lh_entry_prev(const struct lh_entry *e)
 {
 	return e->prev;
 }
