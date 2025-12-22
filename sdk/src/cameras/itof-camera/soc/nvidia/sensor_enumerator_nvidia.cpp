@@ -26,6 +26,7 @@
 
 #include <aditof/log.h>
 #include <dirent.h>
+#include <memory>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,12 +45,12 @@ aditof::Status findDevicePathsAtVideo(const std::string &video,
     using namespace aditof;
     using namespace std;
 
-    char *buf;
     int size = 0;
+    constexpr size_t BUFFER_SIZE = 128 * 1024;
 
     /* Run media-ctl to get the video processing pipes */
     char cmd[64];
-    sprintf(cmd, "media-ctl -d %s --print-dot", video.c_str());
+    snprintf(cmd, sizeof(cmd), "media-ctl -d %s --print-dot", video.c_str());
     FILE *fp = popen(cmd, "r");
     if (!fp) {
         LOG(WARNING) << "Error running media-ctl";
@@ -57,7 +58,7 @@ aditof::Status findDevicePathsAtVideo(const std::string &video,
     }
 
     /* Read the media-ctl output stream */
-    buf = (char *)malloc(128 * 1024);
+    auto buf = std::unique_ptr<char[]>(new char[BUFFER_SIZE]());
     while (!feof(fp)) {
         auto sz = fread(&buf[size], 1, 1, fp);
         size += sz;
@@ -66,8 +67,7 @@ aditof::Status findDevicePathsAtVideo(const std::string &video,
     buf[size] = '\0';
 
     /* Search command media-ctl for device/subdevice name */
-    string str(buf);
-    free(buf);
+    string str(buf.get());
 
     size_t pos = str.find("vi-output, adsd3500");
     if (pos != string::npos) {
