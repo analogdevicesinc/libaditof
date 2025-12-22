@@ -160,6 +160,8 @@ uint32_t Algorithms::GenerateXYZTables(
 
     // Original tables are automatically freed when unique_ptrs go out of scope
     // Transfer ownership to caller via release()
+    // NOTE: Caller MUST call free() on these pointers to avoid memory leak.
+    // These are malloc-allocated for C API compatibility.
     *pp_x_table = p_xp_cropped.release();
     *pp_y_table = p_yp_cropped.release();
     *pp_z_table = p_z_cropped.release();

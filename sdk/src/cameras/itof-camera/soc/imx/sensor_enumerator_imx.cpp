@@ -44,8 +44,9 @@ aditof::Status findDevicePathsAtVideo(const std::string &video,
     using namespace aditof;
     using namespace std;
 
-    char *buf;
-    int size = 0;
+    constexpr size_t MAX_BUFFER_SIZE = 128 * 1024;
+    std::vector<char> buf(MAX_BUFFER_SIZE);
+    size_t size = 0;
 
     /* Run media-ctl to get the video processing pipes */
     char cmd[64];
@@ -57,17 +58,17 @@ aditof::Status findDevicePathsAtVideo(const std::string &video,
     }
 
     /* Read the media-ctl output stream */
-    buf = (char *)malloc(128 * 1024);
-    while (!feof(fp)) {
-        fread(&buf[size], 1, 1, fp);
-        size++;
+    while (!feof(fp) && size < buf.size() - 1) {
+        size_t bytes_read = fread(&buf[size], 1, 1, fp);
+        if (bytes_read > 0) {
+            size++;
+        }
     }
     pclose(fp);
     buf[size] = '\0';
 
     /* Search command media-ctl for device/subdevice name */
-    string str(buf);
-    free(buf);
+    string str(buf.data());
 
     size_t pos = str.find("mxc_isi.0.capture");
     if (pos != string::npos) {
