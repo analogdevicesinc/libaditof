@@ -71,7 +71,7 @@ BufferProcessor::BufferProcessor()
       m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE) {
 
-    m_outputVideoDev = new VideoDev();
+    m_outputVideoDev = std::make_unique<VideoDev>();
     m_outputFrameWidth = 0;
     m_outputFrameHeight = 0;
     m_processorPropSet = false;
@@ -120,8 +120,7 @@ BufferProcessor::~BufferProcessor() {
                            << " error: " << strerror(errno);
             }
         }
-        delete m_outputVideoDev;
-        m_outputVideoDev = nullptr;
+        // unique_ptr automatically deletes VideoDev
     }
 }
 
@@ -206,9 +205,8 @@ aditof::Status BufferProcessor::setVideoProperties(
                          (1024.0 * 1024.0)
                   << " MB)";
         for (int i = 0; i < (int)BufferProcessor::MAX_QUEUE_SIZE; ++i) {
-            auto buffer =
-                std::shared_ptr<uint8_t>(new uint8_t[m_rawFrameBufferSize],
-                                         std::default_delete<uint8_t[]>());
+            auto buffer = std::shared_ptr<uint8_t[]>(
+                new uint8_t[m_rawFrameBufferSize]());
             if (!buffer) {
                 LOG(ERROR) << __func__ << ": Failed to allocate raw buffer!";
                 status = Status::GENERIC_ERROR;
@@ -227,8 +225,8 @@ aditof::Status BufferProcessor::setVideoProperties(
                      (1024.0 * 1024.0)
               << " MB)";
     for (int i = 0; i < (int)BufferProcessor::MAX_QUEUE_SIZE; ++i) {
-        auto buffer = std::shared_ptr<uint16_t>(
-            new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
+        auto buffer = std::shared_ptr<uint16_t[]>(
+            new uint16_t[m_tofiBufferSize]());
         if (!buffer) {
             LOG(ERROR) << "setVideoProperties: Failed to allocate ToFi buffer!";
             return aditof::Status::GENERIC_ERROR;
@@ -359,7 +357,7 @@ void BufferProcessor::captureFrameThread() {
         struct VideoDev *dev = m_inputVideoDev;
         uint8_t *pdata = nullptr;
         unsigned int buf_data_len = 0;
-        std::shared_ptr<uint8_t> v4l2_frame_holder;
+        std::shared_ptr<uint8_t[]> v4l2_frame_holder;
 
         if (!m_v4l2_input_buffer_Q.pop(v4l2_frame_holder) ||
             !v4l2_frame_holder) {
@@ -487,7 +485,7 @@ void BufferProcessor::processThread() {
                 std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
             continue;
         }
-        std::shared_ptr<uint16_t> tofi_compute_io_buff;
+        std::shared_ptr<uint16_t[]> tofi_compute_io_buff;
         if (!m_tofi_io_Buffer_Q.pop(tofi_compute_io_buff)) {
             if (stopThreadsFlag.load(std::memory_order_acquire))
                 break;

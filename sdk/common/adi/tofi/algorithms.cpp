@@ -31,6 +31,7 @@
 
 #include <cstring>
 #include <math.h>
+#include <memory>
 
 uint32_t Algorithms::GenerateXYZTables(
     const float **pp_x_table, const float **pp_y_table,
@@ -41,19 +42,21 @@ uint32_t Algorithms::GenerateXYZTables(
     uint32_t n_cols = n_sensor_cols / col_bin_factor;
     uint32_t n_rows = n_sensor_rows / row_bin_factor;
 
-    float *p_xp = (float *)malloc(n_rows * n_cols * sizeof(float));
-    float *p_yp = (float *)malloc(n_rows * n_cols * sizeof(float));
-    float *p_z = (float *)malloc(n_rows * n_cols * sizeof(float));
+    // Use unique_ptr with custom deleter for C-style arrays (malloc compatibility)
+    std::unique_ptr<float[], decltype(&free)> p_xp_unique(
+        static_cast<float*>(malloc(n_rows * n_cols * sizeof(float))), free);
+    std::unique_ptr<float[], decltype(&free)> p_yp_unique(
+        static_cast<float*>(malloc(n_rows * n_cols * sizeof(float))), free);
+    std::unique_ptr<float[], decltype(&free)> p_z_unique(
+        static_cast<float*>(malloc(n_rows * n_cols * sizeof(float))), free);
 
-    if ((p_xp == NULL) || (p_yp == NULL) || ((p_z == NULL))) {
-        if (p_xp)
-            free(p_xp);
-        if (p_yp)
-            free(p_yp);
-        if (p_z)
-            free(p_z);
+    if (!p_xp_unique || !p_yp_unique || !p_z_unique) {
         return -1;
     }
+
+    float *p_xp = p_xp_unique.get();
+    float *p_yp = p_yp_unique.get();
+    float *p_z = p_z_unique.get();
 
     // Adjust values based on optical center and focal length
     float cx = p_intr_data->cx / row_bin_factor;
@@ -128,37 +131,38 @@ uint32_t Algorithms::GenerateXYZTables(
     // Add a 2 pixel buffer
     r_min -= 2;
 
-    float *p_xfull = p_xp;
-    float *p_yfull = p_yp;
-    float *p_zfull = p_z;
+    // Allocate cropped tables (these will be transferred to caller via release())
+    std::unique_ptr<float[], decltype(&free)> p_xp_cropped(
+        static_cast<float*>(malloc(n_out_rows * n_out_cols * sizeof(float))), free);
+    std::unique_ptr<float[], decltype(&free)> p_yp_cropped(
+        static_cast<float*>(malloc(n_out_rows * n_out_cols * sizeof(float))), free);
+    std::unique_ptr<float[], decltype(&free)> p_z_cropped(
+        static_cast<float*>(malloc(n_out_rows * n_out_cols * sizeof(float))), free);
 
-    p_xp = (float *)malloc(n_out_rows * n_out_cols * sizeof(float));
-    p_yp = (float *)malloc(n_out_rows * n_out_cols * sizeof(float));
-    p_z = (float *)malloc(n_out_rows * n_out_cols * sizeof(float));
+    if (!p_xp_cropped || !p_yp_cropped || !p_z_cropped) {
+        return -1;
+    }
 
     for (uint32_t j = 0; j < n_out_rows; j++) {
         for (uint32_t i = 0; i < n_out_cols; i++) {
             int idx = (j + n_offset_rows) * n_cols + i + n_offset_cols;
             int crop_idx = j * n_out_cols + i;
-            float x = p_xfull[idx];
-            float y = p_yfull[idx];
-            float z = p_zfull[idx];
+            float x = p_xp[idx];
+            float y = p_yp[idx];
+            float z = p_z[idx];
             if (z != 0) {
-                p_xp[crop_idx] = x / z;
-                p_yp[crop_idx] = y / z;
-                p_z[crop_idx] = 1 / z;
+                p_xp_cropped[crop_idx] = x / z;
+                p_yp_cropped[crop_idx] = y / z;
+                p_z_cropped[crop_idx] = 1 / z;
             }
         }
     }
 
-    free(p_xfull);
-    free(p_yfull);
-    free(p_zfull);
-
-    // Set the config pointers to the new buffers
-    *pp_x_table = p_xp;
-    *pp_y_table = p_yp;
-    *pp_z_table = p_z;
+    // Original tables are automatically freed when unique_ptrs go out of scope
+    // Transfer ownership to caller via release()
+    *pp_x_table = p_xp_cropped.release();
+    *pp_y_table = p_yp_cropped.release();
+    *pp_z_table = p_z_cropped.release();
 
     return 0;
 }
