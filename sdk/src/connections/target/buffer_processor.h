@@ -86,7 +86,8 @@ class ThreadSafeQueue {
         }
         queue_.push(std::move(item));
         lock.unlock();
-        not_empty_.notify_all();
+        // Use notify_one() for single-consumer pattern - more efficient than notify_all()
+        not_empty_.notify_one();
         return true;
     }
 
@@ -102,7 +103,8 @@ class ThreadSafeQueue {
         item = std::move(queue_.front());
         queue_.pop();
         lock.unlock();
-        not_full_.notify_all();
+        // Use notify_one() for single-producer pattern - more efficient than notify_all()
+        not_full_.notify_one();
         return true;
     }
 
