@@ -399,7 +399,7 @@ void BufferProcessor::captureFrameThread() {
             LOG(ERROR)
                 << __func__
                 << ": dequeueInternalBufferPrivate() Failed. Buffer index: "
-                << buf.index << ", pdata: " << (void *)pdata
+                << buf.index << ", pdata: " << static_cast<void *>(pdata)
                 << ", len: " << buf_data_len;
             // Always requeue the buffer to avoid memory leak
             enqueueInternalBufferPrivate(buf, dev);
@@ -409,8 +409,15 @@ void BufferProcessor::captureFrameThread() {
             continue;
         }
 
-        if (v4l2_frame_holder != nullptr) {
+        if (v4l2_frame_holder != nullptr && buf_data_len <= m_rawFrameBufferSize) {
             memcpy(v4l2_frame_holder.get(), pdata, buf_data_len);
+        } else if (buf_data_len > m_rawFrameBufferSize) {
+            LOG(ERROR) << __func__ << ": Buffer overflow prevented! buf_data_len="
+                       << buf_data_len << " exceeds m_rawFrameBufferSize="
+                       << m_rawFrameBufferSize;
+            enqueueInternalBufferPrivate(buf, dev);
+            m_v4l2_input_buffer_Q.push(v4l2_frame_holder);
+            continue;
         } else {
             LOG(WARNING)
                 << __func__
@@ -548,9 +555,17 @@ void BufferProcessor::processThread() {
             // Buffer layout: [depth: numPixels uint16_t | AB: varies | conf: varies]
             if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
 
-                // Always copy depth frame
-                memcpy(m_tofiComputeContext->p_depth_frame,
-                       process_frame.data.get(), numPixels * 2);
+                // Always copy depth frame with bounds check
+                const size_t depthBytes = numPixels * 2;
+                if (process_frame.size >= depthBytes) {
+                    memcpy(m_tofiComputeContext->p_depth_frame,
+                           process_frame.data.get(), depthBytes);
+                } else {
+                    LOG(ERROR) << "processThread: Depth frame size check failed";
+                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                    m_v4l2_input_buffer_Q.push(process_frame.data);
+                    continue;
+                }
 
                 // Calculate actual sizes based on m_tofiBufferSize
                 // m_tofiBufferSize is in uint16_t units: depth + AB + conf
@@ -674,7 +689,8 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
         if (m_process_done_Q.pop(tof_processed_frame)) {
             if (buffer && tof_processed_frame.tofiBuffer &&
-                tof_processed_frame.size > 0) {
+                tof_processed_frame.size > 0 &&
+                tof_processed_frame.size <= m_tofiBufferSize) {
 
                 memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
                        tof_processed_frame.size * sizeof(uint16_t));

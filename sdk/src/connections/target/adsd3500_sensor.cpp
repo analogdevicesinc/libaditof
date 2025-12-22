@@ -780,7 +780,7 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         }
 
         dev->videoBuffers =
-            (buffer *)calloc(req.count, sizeof(*dev->videoBuffers));
+            static_cast<buffer *>(calloc(req.count, sizeof(*dev->videoBuffers)));
         if (!dev->videoBuffers) {
             LOG(WARNING) << "Failed to allocate video m_implData->videoBuffers";
             return Status::GENERIC_ERROR;
@@ -878,7 +878,16 @@ aditof::Status Adsd3500Sensor::getFrame(uint16_t *buffer, uint32_t index) {
             return status;
         }
 
-        memcpy(buffer, pdata, buf_data_len);
+        // Bounds check: Ensure buffer can hold the data
+        // Assuming buffer is large enough for the frame based on mode settings
+        if (pdata && buf_data_len > 0) {
+            memcpy(buffer, pdata, buf_data_len);
+        } else {
+            LOG(ERROR) << "getFrame: Invalid buffer data, pdata=" 
+                       << static_cast<void*>(pdata) << ", len=" << buf_data_len;
+            enqueueInternalBufferPrivate(buf[idx], dev);
+            return Status::GENERIC_ERROR;
+        }
 
         status = enqueueInternalBufferPrivate(buf[idx], dev);
         if (status != Status::OK) {

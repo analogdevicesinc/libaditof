@@ -608,7 +608,9 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
             aditof::Status localStatus;
             localStatus = m_depthSensor->initTargetDepthCompute(
-                (uint8_t *)s.c_str(), dataSize, (uint8_t *)m_xyz_dealias_data,
+                const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(s.c_str())), 
+                dataSize, 
+                reinterpret_cast<uint8_t *>(m_xyz_dealias_data),
                 sizeof(TofiXYZDealiasData) * 10);
             if (localStatus != aditof::Status::OK) {
                 LOG(ERROR) << "Failed to initialize depth compute on target!";
@@ -3105,16 +3107,18 @@ aditof::Status CameraItof::setDepthIniParams(
 }
 
 void CameraItof::cleanupXYZtables() {
+    // Note: These are allocated by C library (TofiCompute/algorithms.cpp) with malloc
+    // and must be freed with free(). The pointers are const float* but free needs void*.
     if (m_xyzTable.p_x_table) {
-        free((void *)m_xyzTable.p_x_table);
+        free(const_cast<float*>(m_xyzTable.p_x_table));
         m_xyzTable.p_x_table = nullptr;
     }
     if (m_xyzTable.p_y_table) {
-        free((void *)m_xyzTable.p_y_table);
+        free(const_cast<float*>(m_xyzTable.p_y_table));
         m_xyzTable.p_y_table = nullptr;
     }
     if (m_xyzTable.p_z_table) {
-        free((void *)m_xyzTable.p_z_table);
+        free(const_cast<float*>(m_xyzTable.p_z_table));
         m_xyzTable.p_z_table = nullptr;
     }
 }
