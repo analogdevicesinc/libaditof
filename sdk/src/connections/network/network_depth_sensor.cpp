@@ -136,9 +136,10 @@ NetworkDepthSensor::~NetworkDepthSensor() {
     }
 
     delete m_implData->handle.net;
+    m_implData->handle.net = nullptr;
 
     for (auto it = m_implData->calibration_cache.begin();
-         it != m_implData->calibration_cache.begin(); ++it) {
+         it != m_implData->calibration_cache.end(); ++it) {
         delete[] it->second.cache;
         it->second.cache = nullptr;
     }

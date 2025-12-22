@@ -287,16 +287,21 @@ int Network::SendCommand(void *rawPayload, uint32_t *rawPayloadSize) {
     int status = -1;
     uint8_t numRetry = 0;
     int siz = send_buff[m_connectionId].ByteSize();
+    
+    // Allocate buffer - ownership will be transferred to zmq::message_t which will free it
     unsigned char *pkt = new unsigned char[siz];
+    std::unique_ptr<unsigned char[]> pkt_guard(pkt); // Guard until zmq takes ownership
 
     google::protobuf::io::ArrayOutputStream aos(pkt, siz);
-    CodedOutputStream *coded_output = new CodedOutputStream(&aos);
-    send_buff[m_connectionId].SerializeToCodedStream(coded_output);
+    auto coded_output = std::make_unique<CodedOutputStream>(&aos);
+    send_buff[m_connectionId].SerializeToCodedStream(coded_output.get());
 
     recv_buff[m_connectionId].Clear();
 
     while (numRetry++ < MAX_RETRY_CNT && Server_Connected[m_connectionId]) {
 
+        // zmq::message_t takes ownership and will free the pointer
+        pkt_guard.release(); // Release guard - zmq now owns the memory
         zmq::message_t request(pkt, siz);
         if (command_socket[m_connectionId]->send(request,
                                                  zmq::send_flags::none)) {

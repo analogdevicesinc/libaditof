@@ -1545,11 +1545,11 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     memcpy(&crcOfCCB, ccbHeader + 12, 4);
 
     numOfChunks = ccbFileSize / chunkSize;
-    uint8_t *ccbContent = new uint8_t[ccbFileSize];
+    auto ccbContent = std::make_unique<uint8_t[]>(ccbFileSize);
 
     for (int i = 0; i < numOfChunks; i++) {
         status = m_depthSensor->adsd3500_read_payload(
-            ccbContent + i * chunkSize, chunkSize);
+            ccbContent.get() + i * chunkSize, chunkSize);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to read chunk number " << i << " out of "
                        << numOfChunks + 1 << " chunks for adsd3500!";
@@ -1565,7 +1565,7 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     //read last chunk. smaller size than the rest
     if (ccbFileSize % chunkSize != 0) {
         status = m_depthSensor->adsd3500_read_payload(
-            ccbContent + numOfChunks * chunkSize, ccbFileSize % chunkSize);
+            ccbContent.get() + numOfChunks * chunkSize, ccbFileSize % chunkSize);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to read chunk number " << numOfChunks + 1
                        << " out of " << numOfChunks + 1
@@ -1587,7 +1587,7 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     LOG(INFO) << "Succesfully read ccb from adsd3500. Checking crc...";
 
     uint32_t computedCrc =
-        crcFast(ccbContent, ccbFileSize - 4, true) ^ 0xFFFFFFFF;
+        crcFast(ccbContent.get(), ccbFileSize - 4, true) ^ 0xFFFFFFFF;
 
     if (crcOfCCB != ~computedCrc) {
         LOG(ERROR) << "Invalid crc for ccb read from memory!";
@@ -1600,9 +1600,7 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     std::string fileName = "temp_ccb.ccb";
 
     //remove the trailling 4 bytes containing the crc
-    ccb = std::string((char *)ccbContent, ccbFileSize - 4);
-
-    delete[] ccbContent;
+    ccb = std::string(reinterpret_cast<char*>(ccbContent.get()), ccbFileSize - 4);
 
     return status;
 }
