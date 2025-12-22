@@ -126,7 +126,7 @@ enum class CCBVersion {
 
 struct Adsd3500Sensor::ImplData {
     uint8_t numVideoDevs;
-    struct VideoDev *videoDevs;
+    std::unique_ptr<VideoDev[]> videoDevs;
     aditof::DepthSensorModeDetails modeDetails;
     std::unordered_map<std::string, __u32> controlsCommands;
     SensorImagerType imagerType;
@@ -214,7 +214,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_implData->controlsCommands["abBits"] = CTRL_AB_BITS;
     m_implData->controlsCommands["confidenceBits"] = CTRL_CONFIDENCE_BITS;
 
-    m_bufferProcessor = new BufferProcessor();
+    m_bufferProcessor = std::make_unique<BufferProcessor>();
 }
 
 Adsd3500Sensor::~Adsd3500Sensor() {
@@ -269,14 +269,9 @@ Adsd3500Sensor::~Adsd3500Sensor() {
     if (isOpen) {
         if (m_implData == nullptr) {
             LOG(WARNING) << "ImplData is not initialized.";
-        } else {
-            if (m_implData->videoDevs) {
-                delete[] m_implData->videoDevs;
-                m_implData->videoDevs = nullptr;
-            }
         }
+        // videoDevs and m_bufferProcessor unique_ptrs will be automatically cleaned up
     }
-    delete m_bufferProcessor;
 }
 
 aditof::Status Adsd3500Sensor::open() {
@@ -315,7 +310,7 @@ aditof::Status Adsd3500Sensor::open() {
     }
 
     m_implData->numVideoDevs = driverSubPaths.size();
-    m_implData->videoDevs = new VideoDev[m_implData->numVideoDevs];
+    m_implData->videoDevs = std::make_unique<VideoDev[]>(m_implData->numVideoDevs);
 
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         devName = driverPaths.at(i).c_str();
@@ -468,7 +463,7 @@ aditof::Status Adsd3500Sensor::open() {
         m_adsd3500Queried = true;
     }
 
-    status = m_bufferProcessor->setInputDevice(m_implData->videoDevs);
+    status = m_bufferProcessor->setInputDevice(m_implData->videoDevs.get());
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to set input video device!";
         return status;
@@ -683,11 +678,8 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     if (isOpen) { // open the device if it's been closed
         isOpen = false;
-        // free the allocated new buffer
-        if (m_implData->videoDevs) {
-            delete[] m_implData->videoDevs;
-            m_implData->videoDevs = nullptr;
-        }
+        // Reset the videoDevs buffer (will be reallocated in open())
+        m_implData->videoDevs = nullptr;
         status = open();
         if (status != aditof::Status::OK) {
             LOG(INFO) << "Failed to open sensor!";
