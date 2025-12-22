@@ -179,11 +179,9 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
     }
 
     //store pointers to the contents described by FrameDetails
+    // shared_ptr<T[]> automatically uses delete[], no custom deleter needed
     m_implData->m_allData = std::shared_ptr<uint16_t[]>(
-        new uint16_t[totalSize], // Allocate the array
-        [](uint16_t *p) {
-            delete[] p;
-        } // Custom deleter to ensure correct deallocation
+        new uint16_t[totalSize]() // Zero-initialize the array
     );
 
     m_implData->m_dataLocations.emplace(
