@@ -25,6 +25,7 @@
 
 #include <aditof/log.h>
 #include <chrono>
+#include <cstring>
 #include <unordered_map>
 
 struct OfflineDepthSensor::ImplData {};
@@ -457,11 +458,11 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t *buffer,
                 return aditof::Status::GENERIC_ERROR;
             }
 
+            // Build frame index - each buffer is one frame (ToF data with RGB appended if present)
             m_frameIndex.clear();
 
             std::streampos pos = m_stream_file_in.tellg();
 
-            LOG(INFO) << "Building Index";
             while (true) {
 
                 uint32_t _bufferSize = 0;
@@ -482,6 +483,7 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t *buffer,
                     break;
                 }
 
+                // Each buffer is one complete frame
                 m_frameIndex.emplace_back(pos);
 
                 m_stream_file_in.seekg(_bufferSize, std::ios::cur);
@@ -544,7 +546,7 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
                 return aditof::Status::GENERIC_ERROR;
             }
 
-            // Read size of buffer
+            // Read size of buffer (this includes ToF + RGB concatenated during recording)
             uint32_t _bufferSize = 0;
             m_stream_file_in.read(reinterpret_cast<char *>(&_bufferSize),
                                   sizeof(_bufferSize));
@@ -556,15 +558,20 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
 
             // Validate buffer size is sufficient
             if (bufferSize > 0 && _bufferSize > bufferSize) {
-                LOG(ERROR) << "Buffer too small: need " << _bufferSize
-                           << " bytes, have " << bufferSize;
-                return aditof::Status::INSUFFICIENT_MEMORY;
+                LOG(WARNING) << "File buffer (" << _bufferSize
+                             << " bytes) larger than provided buffer ("
+                             << bufferSize << " bytes). Reading what fits.";
+                // Read what fits in the provided buffer
+                m_stream_file_in.read(reinterpret_cast<char *>(buffer),
+                                      bufferSize);
+                // Skip the rest
+                m_stream_file_in.seekg(_bufferSize - bufferSize, std::ios::cur);
+            } else {
+                // Read entire buffer
+                bufferSize = _bufferSize;
+                m_stream_file_in.read(reinterpret_cast<char *>(buffer),
+                                      bufferSize);
             }
-
-            bufferSize = _bufferSize;
-
-            // Read buffer data
-            m_stream_file_in.read(reinterpret_cast<char *>(buffer), bufferSize);
 
             if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
                 LOG(ERROR) << "EOF or read error while reading frame data";

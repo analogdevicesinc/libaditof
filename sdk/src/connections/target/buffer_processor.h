@@ -41,7 +41,7 @@
 
 #ifdef HAS_RGB_CAMERA
 // RGB camera integration
-#include "aditof/ar0234_sensor.h"  // For RGBSensor and RGBFrame
+#include "aditof/ar0234_sensor.h" // For RGBSensor and RGBFrame
 #endif
 
 #define OUTPUT_DEVICE "/dev/video1"
@@ -145,14 +145,15 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
                                           bool ispEnabled);
     aditof::Status processBuffer(uint16_t *buffer);
 #ifdef HAS_RGB_CAMERA
-    aditof::Status processBuffer(uint16_t *depthBuffer, aditof::RGBFrame *rgbFrame);
+    aditof::Status processBuffer(uint16_t *depthBuffer,
+                                 aditof::RGBFrame *rgbFrame);
 #endif
     TofiConfig *getTofiCongfig() const;
     aditof::Status getDepthComputeVersion(uint8_t &enabled) const;
 
 #ifdef HAS_RGB_CAMERA
     // RGB sensor management
-    aditof::Status setRGBSensor(aditof::RGBSensor* sensor);
+    aditof::Status setRGBSensor(aditof::RGBSensor *sensor);
     aditof::Status enableRGBCapture(bool enable);
     bool isRGBCaptureEnabled() const { return m_rgbCaptureEnabled; }
     aditof::Status getLatestRGBFrame(aditof::RGBFrame &frame);
@@ -212,7 +213,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
 #ifdef HAS_RGB_CAMERA
     // RGB sensor integration
-    aditof::RGBSensor* m_rgbSensor;
+    aditof::RGBSensor *m_rgbSensor;
     bool m_rgbCaptureEnabled;
     std::atomic<uint64_t> m_totalRGBCaptured;
     std::atomic<uint64_t> m_totalRGBFailures;
@@ -226,8 +227,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
         size_t size = 0;
         std::shared_ptr<uint16_t> tofiBuffer;
 #ifdef HAS_RGB_CAMERA
-        aditof::RGBFrame rgbFrame;  // RGB frame data (captured by separate thread)
-        bool hasRGB = false;           // Flag indicating if RGB data is valid
+        aditof::RGBFrame
+            rgbFrame;        // RGB frame data (captured by separate thread)
+        bool hasRGB = false; // Flag indicating if RGB data is valid
 #endif
     };
 
@@ -270,7 +272,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
   private:
     aditof::Status automaticStop();
-    aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize);
+    aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize,
+                              bool incrementCount = true);
     enum StreamType { ST_STOP, ST_RECORD, ST_PLAYBACK } m_state;
     const std::string m_folder_path_folder = "./media";
     std::string m_folder_path;
@@ -280,8 +283,6 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     uint32_t m_frame_count;
     std::atomic<uint32_t> m_frames_written{0};
 
-public:
-    uint32_t getRecordedFrameCount() const {
-        return m_frames_written.load();
-    }
+  public:
+    uint32_t getRecordedFrameCount() const { return m_frames_written.load(); }
 };

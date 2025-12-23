@@ -2098,6 +2098,10 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                        "discarding it";
             }
 
+#ifdef HAS_RGB_CAMERA
+            modeDetails.frameContent.push_back("rgb");
+#endif
+
             // check for xyz frame
             it = iniFile.iniKeyValPairs.find("xyzEnable");
             if (it != iniFile.iniKeyValPairs.end()) {
@@ -2130,6 +2134,9 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             }
 
             bitsInConf[modeDetails.modeNumber] = 0;
+#ifdef HAS_RGB_CAMERA
+            modeDetails.frameContent.push_back("rgb");
+#endif
             modeDetails.frameContent.push_back("metadata");
         }
     }

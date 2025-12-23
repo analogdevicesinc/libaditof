@@ -40,7 +40,7 @@ struct FrameImpl::ImplData {
     size_t allDataNbBytes;
 };
 
-FrameImpl::FrameImpl() : m_implData(std::make_unique<FrameImpl::ImplData>()){};
+FrameImpl::FrameImpl() : m_implData(std::make_unique<FrameImpl::ImplData>()) {};
 FrameImpl::~FrameImpl() = default;
 
 FrameImpl::FrameImpl(const FrameImpl &op) {
@@ -166,6 +166,10 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
         } else if (frameDetail.type == "ab") {
             unsigned long int sz =
                 (unsigned long int)(frameDetail.height * frameDetail.width);
+            return sz;
+        } else if (frameDetail.type == "rgb") {
+            unsigned long int sz =
+                (unsigned long int)(frameDetail.height * frameDetail.width * 1.5);
             return sz;
         } else {
             unsigned long int sz =

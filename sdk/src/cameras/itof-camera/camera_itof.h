@@ -237,6 +237,7 @@ class CameraItof : public aditof::Camera {
     bool m_abEnabled;
     bool m_confEnabled;
     bool m_xyzEnabled;
+    bool m_rgbEnabled;
     bool m_xyzSetViaApi;
     bool m_pcmFrame;
     std::vector<aditof::DepthSensorModeDetails> m_availableSensorModeDetails;
@@ -268,9 +269,9 @@ class CameraItof : public aditof::Camera {
 #ifdef HAS_RGB_CAMERA
     std::unique_ptr<aditof::RGBSensor> m_rgbSensor;
     struct {
-        bool detected;      // Hardware detection result from enumeration
-        bool enabled;       // Runtime operational state after successful open()
-        std::string path;   // Device path (e.g., "/dev/video0")
+        bool detected;    // Hardware detection result from enumeration
+        bool enabled;     // Runtime operational state after successful open()
+        std::string path; // Device path (e.g., "/dev/video0")
     } m_rgbStatus;
 #endif
 

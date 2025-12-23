@@ -33,8 +33,8 @@
 #include "tofi/tofi_config.h"
 
 #ifdef HAS_RGB_CAMERA
-#include <aditof/ar0234_sensor.h>                // For RGBFrame definition
-#include "connections/target/adsd3500_sensor.h"  // For BufferProcessor access
+#include "connections/target/adsd3500_sensor.h" // For BufferProcessor access
+#include <aditof/ar0234_sensor.h>               // For RGBFrame definition
 #endif
 
 #include <algorithm>
@@ -68,9 +68,10 @@ CameraItof::CameraItof(
     const std::string &sdCardImageVersion, const std::string &netLinkTest)
     : m_depthSensor(depthSensor), m_devStarted(false), m_devStreaming(false),
       m_adsd3500Enabled(false), m_isOffline(false), m_xyzEnabled(true),
-      m_xyzSetViaApi(false), m_cameraFps(0), m_fsyncMode(-1),
-      m_mipiOutputSpeed(1), m_isdeskewEnabled(1), m_enableTempCompenstation(-1),
-      m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
+      m_rgbEnabled(false), m_xyzSetViaApi(false), m_cameraFps(0),
+      m_fsyncMode(-1), m_mipiOutputSpeed(1), m_isdeskewEnabled(1),
+      m_enableTempCompenstation(-1), m_enableMetaDatainAB(-1),
+      m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
       m_dropFrameOnce(true) {
@@ -326,8 +327,9 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         if (m_rgbStatus.detected) {
             try {
                 m_rgbSensor = std::make_unique<aditof::RGBSensor>();
-                LOG(INFO) << "RGB sensor instance created for hardware at " << m_rgbStatus.path;
-            } catch (const std::exception& e) {
+                LOG(INFO) << "RGB sensor instance created for hardware at "
+                          << m_rgbStatus.path;
+            } catch (const std::exception &e) {
                 LOG(ERROR) << "Failed to create RGB sensor: " << e.what();
                 m_rgbStatus.detected = false;
             }
@@ -359,28 +361,33 @@ aditof::Status CameraItof::start() {
                 LOG(INFO) << "RGB sensor started successfully";
 
                 // Connect RGB sensor to BufferProcessor for parallel capture
-                auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+                auto adsd3500Sensor =
+                    std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
                 if (adsd3500Sensor && adsd3500Sensor->getBufferProcessor()) {
-                    BufferProcessor* bufferProc = adsd3500Sensor->getBufferProcessor();
+                    BufferProcessor *bufferProc =
+                        adsd3500Sensor->getBufferProcessor();
                     bufferProc->setRGBSensor(m_rgbSensor.get());
                     bufferProc->enableRGBCapture(true);
-                    LOG(INFO) << "RGB sensor connected to BufferProcessor for parallel capture";
+                    LOG(INFO) << "RGB sensor connected to BufferProcessor for "
+                                 "parallel capture";
                 } else {
-                    LOG(WARNING) << "Could not connect RGB sensor to BufferProcessor";
+                    LOG(WARNING)
+                        << "Could not connect RGB sensor to BufferProcessor";
                 }
             } else {
                 LOG(WARNING) << "Failed to start RGB sensor";
                 m_rgbStatus.enabled = false;
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             LOG(WARNING) << "Exception starting RGB: " << e.what();
             m_rgbStatus.enabled = false;
         }
     } else {
         // RGB is disabled - ensure BufferProcessor knows
-        auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+        auto adsd3500Sensor =
+            std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
         if (adsd3500Sensor && adsd3500Sensor->getBufferProcessor()) {
-            BufferProcessor* bufferProc = adsd3500Sensor->getBufferProcessor();
+            BufferProcessor *bufferProc = adsd3500Sensor->getBufferProcessor();
             bufferProc->enableRGBCapture(false);
             LOG(INFO) << "RGB capture disabled in BufferProcessor";
         }
@@ -400,7 +407,7 @@ aditof::Status CameraItof::stop() {
             if (m_rgbSensor->stop() != Status::OK) {
                 LOG(WARNING) << "Failed to stop RGB sensor";
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             LOG(WARNING) << "Exception stopping RGB: " << e.what();
         }
         m_rgbStatus.enabled = false;
@@ -602,9 +609,9 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
 #ifdef HAS_RGB_CAMERA
         // Determine if RGB should be enabled (default: true)
-        bool rgbCameraEnable = !m_isOffline &&
-            (!m_iniKeyValPairs.count("rgbCameraEnable") ||
-             m_iniKeyValPairs["rgbCameraEnable"] == "1");
+        bool rgbCameraEnable =
+            !m_isOffline && (!m_iniKeyValPairs.count("rgbCameraEnable") ||
+                             m_iniKeyValPairs["rgbCameraEnable"] == "1");
 
         // Open RGB sensor if hardware detected, instance exists, and user enabled
         if (m_rgbStatus.detected && m_rgbSensor && rgbCameraEnable) {
@@ -614,12 +621,13 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
                 if (m_rgbSensor->open(rgbConfig) == aditof::Status::OK) {
                     m_rgbStatus.enabled = true;
-                    LOG(INFO) << "RGB sensor opened: 1920x1200@60fps at " << m_rgbStatus.path;
+                    LOG(INFO) << "RGB sensor opened: 1920x1200@60fps at "
+                              << m_rgbStatus.path;
                 } else {
                     LOG(WARNING) << "Failed to open RGB sensor";
                     m_rgbStatus.enabled = false;
                 }
-            } catch (const std::exception& e) {
+            } catch (const std::exception &e) {
                 LOG(ERROR) << "Exception opening RGB: " << e.what();
                 m_rgbStatus.enabled = false;
             }
@@ -668,6 +676,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_details.frameType.totalCaptures = 1;
         m_details.frameType.dataDetails.clear();
         for (const auto &item : (*modeIt).frameContent) {
+            LOG(INFO) << "Configuring frame data details for type: " << item;
             if (item == "xyz" && !m_xyzEnabled) {
                 continue;
             }
@@ -695,6 +704,11 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 fDataDetails.height = 1;
             } else if (item == "conf") {
                 fDataDetails.subelementSize = sizeof(float);
+            } else if (item == "rgb") {
+                fDataDetails.width = 1920; // AR0234 mode 0
+                fDataDetails.height = 1200;
+                fDataDetails.subelementSize = sizeof(uint8_t);
+                fDataDetails.subelementsPerElement = 1.5;
             }
             fDataDetails.bytesCount = fDataDetails.width * fDataDetails.height *
                                       fDataDetails.subelementSize *
@@ -702,21 +716,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
             m_details.frameType.dataDetails.emplace_back(fDataDetails);
         }
-
-#ifdef HAS_RGB_CAMERA
-        // Add RGB frame details if RGB sensor is enabled
-        if (m_rgbStatus.enabled && m_rgbSensor) {
-            FrameDataDetails rgbDetails;
-            rgbDetails.type = "rgb";
-            rgbDetails.width = 1920;    // AR0234 mode 0
-            rgbDetails.height = 1200;
-            rgbDetails.subelementSize = sizeof(uint8_t);
-            rgbDetails.subelementsPerElement = 1;
-            rgbDetails.bytesCount = 1920 * 1200 * 1.5;  // NV12 format: 1.5 bytes per pixel
-
-            m_details.frameType.dataDetails.emplace_back(rgbDetails);
-        }
-#endif
 
         // We want computed frames (Depth & AB). Tell target to initialize depth compute
         if (!m_pcmFrame) {
@@ -999,6 +998,14 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
             } else if (item == "conf") {
                 m_offline_parameters.fDataDetails[idx].subelementSize =
                     sizeof(float);
+            } else if (item == "rgb") {
+                m_offline_parameters.fDataDetails[idx].width =
+                    1920; // AR0234 mode 0
+                m_offline_parameters.fDataDetails[idx].height = 1200;
+                m_offline_parameters.fDataDetails[idx].subelementSize =
+                    sizeof(uint8_t);
+                m_offline_parameters.fDataDetails[idx].subelementsPerElement =
+                    1.5;
             }
             m_offline_parameters.fDataDetails[idx].bytesCount =
                 m_offline_parameters.fDataDetails[idx].width *
@@ -1041,7 +1048,8 @@ uint32_t CameraItof::getRecordedFrameCount() const {
         return 0;
     }
 
-    auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+    auto adsd3500Sensor =
+        std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
     if (adsd3500Sensor) {
         return adsd3500Sensor->getRecordedFrameCount();
     }
@@ -1171,15 +1179,17 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
             FrameDataDetails rgbDetails;
             frame->getDataDetails("rgb", rgbDetails);
 
-            auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+            auto adsd3500Sensor =
+                std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
             if (adsd3500Sensor && adsd3500Sensor->getBufferProcessor()) {
-                BufferProcessor* bufferProc = adsd3500Sensor->getBufferProcessor();
+                BufferProcessor *bufferProc =
+                    adsd3500Sensor->getBufferProcessor();
                 aditof::RGBFrame rgbFrame;
 
                 Status getRGBStatus = bufferProc->getLatestRGBFrame(rgbFrame);
                 if (getRGBStatus == Status::OK && rgbFrame.isValid()) {
                     // Copy NV12 data to frame (cast uint16_t* to uint8_t*)
-                    uint8_t* rgbData = reinterpret_cast<uint8_t*>(rgbFramePtr);
+                    uint8_t *rgbData = reinterpret_cast<uint8_t *>(rgbFramePtr);
                     memcpy(rgbData, rgbFrame.data.data(), rgbFrame.data.size());
                 } else {
                     // No RGB frame available, zero out the buffer using frame details
@@ -1756,6 +1766,7 @@ void CameraItof::configureSensorModeDetails() {
         m_abEnabled = false;
         m_confEnabled = false;
         m_xyzEnabled = false;
+        m_rgbEnabled = false;
 
         for (const auto &content : m_modeDetailsCache.frameContent) {
             if (content == "depth")
@@ -1766,11 +1777,13 @@ void CameraItof::configureSensorModeDetails() {
                 m_confEnabled = true;
             else if (content == "xyz")
                 m_xyzEnabled = true;
+            else if (content == "rgb")
+                m_rgbEnabled = true;
         }
 
         LOG(INFO) << "[PLAYBACK] Enable flags set: depth=" << m_depthEnabled
                   << " ab=" << m_abEnabled << " conf=" << m_confEnabled
-                  << " xyz=" << m_xyzEnabled;
+                  << " xyz=" << m_xyzEnabled << " rgb=" << m_rgbEnabled;
 
     } else {
         std::string value;
@@ -1778,6 +1791,7 @@ void CameraItof::configureSensorModeDetails() {
         m_depthEnabled = true;
         m_abEnabled = true;
         m_confEnabled = true;
+        m_rgbEnabled = true;
         //m_xyzEnabled = false;
         //m_xyzSetViaApi = true;
 
@@ -1901,6 +1915,11 @@ void CameraItof::configureSensorModeDetails() {
             if (m_confEnabled) {
                 m_modeDetailsCache.frameContent.emplace_back("conf");
             }
+#ifdef HAS_RGB_CAMERA
+            if (m_rgbEnabled) {
+                m_modeDetailsCache.frameContent.emplace_back("rgb");
+            }
+#endif
             if (m_xyzEnabled) {
                 m_modeDetailsCache.frameContent.emplace_back("xyz");
             }
@@ -2278,7 +2297,8 @@ void CameraItof::setRGBSensorInfo(const std::string &devicePath,
     (void)devicePath;
     (void)isDetected;
 #endif
-}aditof::Status
+}
+aditof::Status
 CameraItof::setSensorConfiguration(const std::string &sensorConf) {
     aditof::Status status = aditof::Status::OK;
 

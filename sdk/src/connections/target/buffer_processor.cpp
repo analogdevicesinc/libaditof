@@ -68,15 +68,13 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 BufferProcessor::BufferProcessor()
     :
 #ifdef HAS_RGB_CAMERA
-      m_rgbSensor(nullptr), m_rgbCaptureEnabled(false),
-      m_totalRGBCaptured(0), m_totalRGBFailures(0),
-      m_rgb_frame_Q(BufferProcessor::MAX_QUEUE_SIZE),
+      m_rgbSensor(nullptr), m_rgbCaptureEnabled(false), m_totalRGBCaptured(0),
+      m_totalRGBFailures(0), m_rgb_frame_Q(BufferProcessor::MAX_QUEUE_SIZE),
 #endif
       m_v4l2_input_buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_capture_to_process_Q(BufferProcessor::MAX_QUEUE_SIZE),
       m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
-      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE)
-    {
+      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE) {
     m_outputVideoDev = new VideoDev();
     m_outputFrameWidth = 0;
     m_outputFrameHeight = 0;
@@ -97,7 +95,7 @@ BufferProcessor::BufferProcessor()
 #ifdef HAS_RGB_CAMERA
               << " with RGB support"
 #endif
-    ;
+        ;
 }
 
 BufferProcessor::~BufferProcessor() {
@@ -385,7 +383,8 @@ void BufferProcessor::captureRGBFrameThread() {
         aditof::Status status = m_rgbSensor->getFrame(rgbFrame, 200);
 
         auto captureEnd = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double, std::milli> captureTime = captureEnd - captureStart;
+        std::chrono::duration<double, std::milli> captureTime =
+            captureEnd - captureStart;
 
         if (status == aditof::Status::OK && rgbFrame.isValid()) {
             // Push RGB frame to queue
@@ -402,7 +401,8 @@ void BufferProcessor::captureRGBFrameThread() {
 
             // Auto-disable after too many consecutive failures
             if (m_totalRGBFailures > 10 && m_totalRGBCaptured == 0) {
-                LOG(ERROR) << "Too many RGB failures (" << m_totalRGBFailures << "), disabling RGB capture";
+                LOG(ERROR) << "Too many RGB failures (" << m_totalRGBFailures
+                           << "), disabling RGB capture";
                 m_rgbCaptureEnabled = false;
             }
 
@@ -411,7 +411,8 @@ void BufferProcessor::captureRGBFrameThread() {
     }
 #ifdef DBG_MEASURE_TIME
     if (totalRGBFramesCaptured > 0) {
-        double avgCaptureTime = static_cast<double>(totalRGBCaptureTime) / totalRGBFramesCaptured;
+        double avgCaptureTime =
+            static_cast<double>(totalRGBCaptureTime) / totalRGBFramesCaptured;
         LOG(INFO) << "RGB capture complete: " << totalRGBFramesCaptured
                   << " frames, avg " << avgCaptureTime << " ms";
     }
@@ -716,26 +717,73 @@ void BufferProcessor::processThread() {
 
         // Only attempt to write if recording is still active and stream is open
         if (m_state == ST_RECORD && m_stream_file_out.is_open()) {
+#ifdef HAS_RGB_CAMERA
+            // Concatenate RGB data into ToF buffer if enabled
+            if (m_rgbCaptureEnabled) {
+                aditof::RGBFrame rgbFrame;
+                if (m_rgb_frame_Q.pop(rgbFrame,
+                                      std::chrono::milliseconds(50))) {
+                    if (rgbFrame.isValid()) {
+                        // Calculate buffer layout
+                        const uint32_t rgbSize = rgbFrame.data.size();
+                        const uint32_t totalSize = m_tofiBufferSize * sizeof(uint16_t) + rgbSize;
+
+                        // Allocate combined buffer
+                        std::vector<uint8_t> combinedBuffer(totalSize);
+
+                        // Copy Depth + AB
+                        memcpy(combinedBuffer.data(),
+                               tofi_compute_io_buff.get(), m_tofiBufferSize * sizeof(uint16_t));
+
+                        // Insert RGB after AB
+                        memcpy(combinedBuffer.data() + m_tofiBufferSize * sizeof(uint16_t),
+                               rgbFrame.data.data(), rgbSize);
+
+                        // Write combined buffer once
+                        aditof::Status writeStatus =
+                            writeFrame(combinedBuffer.data(), totalSize, true);
+                        if (writeStatus != aditof::Status::OK) {
+                            LOG(WARNING) << "Failed to write combined frame "
+                                            "during recording";
+                        }
+                    } else {
+                        // RGB frame invalid, write ToF only
+                        aditof::Status writeStatus = writeFrame(
+                            (uint8_t *)tofi_compute_io_buff.get(),
+                            m_tofiBufferSize * sizeof(uint16_t), true);
+                        if (writeStatus != aditof::Status::OK) {
+                            LOG(WARNING)
+                                << "Failed to write ToF frame during recording";
+                        }
+                    }
+                } else {
+                    // No RGB frame available, write ToF only
+                    aditof::Status writeStatus =
+                        writeFrame((uint8_t *)tofi_compute_io_buff.get(),
+                                   m_tofiBufferSize * sizeof(uint16_t), true);
+                    if (writeStatus != aditof::Status::OK) {
+                        LOG(WARNING)
+                            << "Failed to write ToF frame during recording";
+                    }
+                }
+            } else {
+                // RGB not enabled, write ToF only
+                aditof::Status writeStatus =
+                    writeFrame((uint8_t *)tofi_compute_io_buff.get(),
+                               m_tofiBufferSize * sizeof(uint16_t), true);
+                if (writeStatus != aditof::Status::OK) {
+                    LOG(WARNING)
+                        << "Failed to write ToF frame during recording";
+                }
+            }
+#else
+            // No RGB support, write ToF only
             aditof::Status writeStatus =
                 writeFrame((uint8_t *)tofi_compute_io_buff.get(),
-                           m_tofiBufferSize * sizeof(uint16_t));
+                           m_tofiBufferSize * sizeof(uint16_t), true);
             if (writeStatus != aditof::Status::OK) {
                 LOG(WARNING)
                     << "Failed to write processed frame during recording";
-            }
-#ifdef HAS_RGB_CAMERA
-            // Try to get and write RGB frame from the RGB capture queue (only if enabled)
-            if (m_rgbCaptureEnabled) {
-                aditof::RGBFrame rgbFrame;
-                if (m_rgb_frame_Q.pop(rgbFrame, std::chrono::milliseconds(50))) {
-                    if (rgbFrame.isValid()) {
-                        aditof::Status rgbWriteStatus =
-                            writeFrame(rgbFrame.data.data(), rgbFrame.data.size());
-                        if (rgbWriteStatus != aditof::Status::OK) {
-                                LOG(ERROR) << "Failed to write RGB frame during recording";
-                        }
-                    }
-                }
             }
 #endif // HAS_RGB_CAMERA
             m_frames_written++;
@@ -823,7 +871,8 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
  * @param rgbFrame Pointer to RGBFrame to receive RGB data (can be nullptr for depth-only)
  * @return Status::OK on success, error otherwise
  */
-aditof::Status BufferProcessor::processBuffer(uint16_t *depthBuffer, aditof::RGBFrame *rgbFrame) {
+aditof::Status BufferProcessor::processBuffer(uint16_t *depthBuffer,
+                                              aditof::RGBFrame *rgbFrame) {
     Tofi_v4l2_buffer tof_processed_frame;
     const std::chrono::milliseconds m_retryDelay(10);
 
@@ -842,15 +891,18 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *depthBuffer, aditof::RGB
 
             // If RGB is requested and available in the buffer, use it
             if (rgbFrame != nullptr) {
-                if (tof_processed_frame.hasRGB && tof_processed_frame.rgbFrame.isValid()) {
+                if (tof_processed_frame.hasRGB &&
+                    tof_processed_frame.rgbFrame.isValid()) {
                     *rgbFrame = std::move(tof_processed_frame.rgbFrame);
                 } else {
                     // Try to get latest RGB frame from the RGB queue
                     aditof::RGBFrame latestRGBFrame;
-                    if (m_rgb_frame_Q.pop(latestRGBFrame, std::chrono::milliseconds(50))) {
+                    if (m_rgb_frame_Q.pop(latestRGBFrame,
+                                          std::chrono::milliseconds(50))) {
                         *rgbFrame = std::move(latestRGBFrame);
                     } else {
-                        LOG(WARNING) << "processBuffer: RGB requested but not available";
+                        LOG(WARNING)
+                            << "processBuffer: RGB requested but not available";
                         // Return empty frame rather than failing completely
                         *rgbFrame = aditof::RGBFrame();
                     }
@@ -868,7 +920,8 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *depthBuffer, aditof::RGB
                           << (attempt + 1) << ". Retrying...";
                 std::this_thread::sleep_for(m_retryDelay);
             } else {
-                LOG(WARNING) << "processBuffer: Failed after " << m_maxTries << " attempts";
+                LOG(WARNING) << "processBuffer: Failed after " << m_maxTries
+                             << " attempts";
                 return aditof::Status::GENERIC_ERROR;
             }
         }
@@ -1004,12 +1057,12 @@ aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled) const {
 }
 
 #ifdef HAS_RGB_CAMERA
-aditof::Status BufferProcessor::setRGBSensor(aditof::RGBSensor* sensor) {
+aditof::Status BufferProcessor::setRGBSensor(aditof::RGBSensor *sensor) {
     if (sensor == nullptr) {
         LOG(ERROR) << "setRGBSensor: RGB sensor is nullptr";
         return aditof::Status::INVALID_ARGUMENT;
     }
-    
+
     m_rgbSensor = sensor;
     LOG(INFO) << "setRGBSensor: RGB sensor registered with BufferProcessor";
     return aditof::Status::OK;
@@ -1020,12 +1073,13 @@ aditof::Status BufferProcessor::enableRGBCapture(bool enable) {
         LOG(ERROR) << "enableRGBCapture: Cannot enable - no RGB sensor set";
         return aditof::Status::UNAVAILABLE;
     }
-    
+
     m_rgbCaptureEnabled = enable;
     m_totalRGBCaptured = 0;
     m_totalRGBFailures = 0;
-    
-    LOG(INFO) << "enableRGBCapture: RGB capture " << (enable ? "enabled" : "disabled");
+
+    LOG(INFO) << "enableRGBCapture: RGB capture "
+              << (enable ? "enabled" : "disabled");
     return aditof::Status::OK;
 }
 
@@ -1056,7 +1110,8 @@ void BufferProcessor::startThreads() {
                           &param);
 
 #ifdef HAS_RGB_CAMERA
-    m_captureRGBThread = std::thread(&BufferProcessor::captureRGBFrameThread, this);
+    m_captureRGBThread =
+        std::thread(&BufferProcessor::captureRGBFrameThread, this);
 #endif
 }
 
@@ -1148,7 +1203,7 @@ void BufferProcessor::stopThreads() {
 #ifdef HAS_RGB_CAMERA
               << ", RGB frames freed: " << rgbFreed
 #endif
-    ;
+        ;
 }
 
 #pragma region Stream_Recording_and_Playback
@@ -1184,7 +1239,7 @@ aditof::Status BufferProcessor::startRecording(std::string &fileName,
 
     m_state = ST_RECORD;
 
-    writeFrame(parameters, paramSize);
+    writeFrame(parameters, paramSize, true);
 
     return aditof::Status::OK;
 }
@@ -1204,6 +1259,7 @@ aditof::Status BufferProcessor::stopRecording() {
             std::ios::
                 beg); // Skip over the number of bytes to read and the tag of 0xFFFF_FFFF
         // Overwrite the placeholder
+        LOG(INFO) << "count : " << m_frame_count;
         m_frame_count--; // Take into account the header frame
         m_stream_file_out.write(reinterpret_cast<const char *>(&m_frame_count),
                                 sizeof(m_frame_count));
@@ -1217,8 +1273,8 @@ aditof::Status BufferProcessor::stopRecording() {
     return status;
 }
 
-aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
-                                           uint32_t bufferSize) {
+aditof::Status BufferProcessor::writeFrame(uint8_t *buffer, uint32_t bufferSize,
+                                           bool incrementCount) {
     if (m_state != ST_RECORD) {
         return aditof::Status::GENERIC_ERROR;
     }
@@ -1233,7 +1289,9 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
             // Write buffer data
             m_stream_file_out.write((char *)(buffer), bufferSize);
 
-            m_frame_count++;
+            if (incrementCount) {
+                m_frame_count++;
+            }
 
             return aditof::Status::OK;
         }
