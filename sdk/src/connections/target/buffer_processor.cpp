@@ -731,17 +731,14 @@ void BufferProcessor::processThread() {
                     if (rgbFrame.isValid()) {
                         aditof::Status rgbWriteStatus =
                             writeFrame(rgbFrame.data.data(), rgbFrame.data.size());
-                        if (rgbWriteStatus == aditof::Status::OK) {
-                            LOG(INFO) << "RGB frame written: " << rgbFrame.data.size()
-                                      << " bytes (" << rgbFrame.width << "x"
-                                      << rgbFrame.height << ")";
-                        } else {
-                            LOG(ERROR) << "Failed to write RGB frame during recording";
+                        if (rgbWriteStatus != aditof::Status::OK) {
+                                LOG(ERROR) << "Failed to write RGB frame during recording";
                         }
                     }
                 }
             }
 #endif // HAS_RGB_CAMERA
+            m_frames_written++;
         }
 
         process_frame.tofiBuffer = tofi_compute_io_buff;
@@ -1181,6 +1178,7 @@ aditof::Status BufferProcessor::startRecording(std::string &fileName,
     }
 
     m_frame_count = 0;
+    m_frames_written = 0;
 
     m_stream_file_out = std::ofstream(fileName, std::ios::binary);
 

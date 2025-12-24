@@ -278,4 +278,10 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     std::ifstream m_stream_file_in;
     std::string m_stream_file_name;
     uint32_t m_frame_count;
+    std::atomic<uint32_t> m_frames_written{0};
+
+public:
+    uint32_t getRecordedFrameCount() const {
+        return m_frames_written.load();
+    }
 };

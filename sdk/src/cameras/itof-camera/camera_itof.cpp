@@ -1036,6 +1036,19 @@ aditof::Status CameraItof::stopRecording() {
     return status;
 }
 
+uint32_t CameraItof::getRecordedFrameCount() const {
+    if (m_isOffline) {
+        return 0;
+    }
+
+    auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+    if (adsd3500Sensor) {
+        return adsd3500Sensor->getRecordedFrameCount();
+    }
+
+    return 0;
+}
+
 aditof::Status CameraItof::adsd3500ResetIniParamsForMode(const uint16_t mode) {
     aditof::Status status = aditof::Status::OK;
 

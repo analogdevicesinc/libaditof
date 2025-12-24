@@ -631,6 +631,12 @@ class SDK_API Camera {
      */
     virtual aditof::Status setPlaybackFile(std::string &filePath) = 0;
 
+    /** 
+     * @brief Get the number of frames written during recording (depth+RGB pairs)
+     * @return uint32_t - number of complete frames written
+     */
+    virtual uint32_t getRecordedFrameCount() const = 0;
+
     /**
      * @brief Get depth processing parameters for a specific mode
      * @param[in] mode - Camera mode number

@@ -129,7 +129,7 @@ Status RGBSensor::close() {
     m_backend.reset();
     m_isOpen = false;
     
-    LOG(INFO) << "AR0234Sensor closed. Total frames captured: " << m_frameCount;
+    LOG(INFO) << "AR0234Sensor closed";
     
     return Status::OK;
 }

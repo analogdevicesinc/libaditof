@@ -203,6 +203,7 @@ class CameraItof : public aditof::Camera {
 
     aditof::Status startRecording(std::string &filePath) override;
     aditof::Status stopRecording() override;
+    uint32_t getRecordedFrameCount() const override;
 
     aditof::Status setPlaybackFile(std::string &filePath) override;
     void UpdateDepthParamsMap(bool update, const char *index,

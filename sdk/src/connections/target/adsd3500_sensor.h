@@ -240,6 +240,13 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) override;
     aditof::Status getFrameCount(uint32_t &frameCount) override;
 
+    uint32_t getRecordedFrameCount() const {
+        if (m_bufferProcessor) {
+            return m_bufferProcessor->getRecordedFrameCount();
+        }
+        return 0;
+    }
+
   private:
     aditof::Status automaticStop();
     aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize,
