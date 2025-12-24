@@ -103,6 +103,7 @@ Status GStreamerFrameGrabber::createPipeline(const GStreamerConfig& config) {
                  "sync", FALSE,              // Don't throttle to real-time (capture as fast as possible)
                  nullptr);
 
+
     // Set caps for source output (NVMM format from Argus)
     std::string sourceCaps = "video/x-raw(memory:NVMM),width=" + 
                              std::to_string(config.width) + 

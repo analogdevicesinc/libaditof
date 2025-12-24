@@ -1798,7 +1798,14 @@ void CameraItof::configureSensorModeDetails() {
         m_depthEnabled = true;
         m_abEnabled = true;
         m_confEnabled = true;
-        m_rgbEnabled = true;
+        // Only enable RGB if config allows it (default true if not specified)
+        // This prevents automatic disabling of AB when RGB is built but disabled in config
+#ifdef HAS_RGB_CAMERA
+        m_rgbEnabled = !m_iniKeyValPairs.count("rgbCameraEnable") ||
+                       m_iniKeyValPairs["rgbCameraEnable"] == "1";
+#else
+        m_rgbEnabled = false;
+#endif
         //m_xyzEnabled = false;
         //m_xyzSetViaApi = true;
 

@@ -34,6 +34,7 @@
 #include <glog/logging.h>
 #else
 #include <aditof/log.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -164,7 +165,8 @@ Status TargetSensorEnumerator::searchSensors() {
 }
 
 #ifdef HAS_RGB_CAMERA
-bool TargetSensorEnumerator::isRGBSensorAvailable(const std::string &devicePath) const {
+bool TargetSensorEnumerator::isRGBSensorAvailable(
+    const std::string &devicePath) const {
     // Check if device exists and can be accessed
     struct stat buffer;
     if (stat(devicePath.c_str(), &buffer) != 0) {
@@ -192,7 +194,7 @@ bool TargetSensorEnumerator::isRGBSensorAvailable(const std::string &devicePath)
 
     // Verify it's NOT the ToF sensor (adsd3500)
     // The RGB sensor should be "arducam-jvar" based on media-ctl output
-    std::string cardName = reinterpret_cast<const char*>(cap.card);
+    std::string cardName = reinterpret_cast<const char *>(cap.card);
     LOG(INFO) << "Device " << devicePath << " card name: " << cardName;
 
     // Reject if it's the ADSD3500 ToF sensor
@@ -225,7 +227,7 @@ Status TargetSensorEnumerator::searchRGBSensors() {
             struct v4l2_capability cap;
             if (ioctl(fd, VIDIOC_QUERYCAP, &cap) >= 0) {
                 // Use the card name from V4L2 (will be "vi-output, arducam-jvar 10-000c")
-                sensorName = reinterpret_cast<const char*>(cap.card);
+                sensorName = reinterpret_cast<const char *>(cap.card);
                 // Extract just the sensor name if possible
                 if (sensorName.find("arducam") != std::string::npos) {
                     sensorName = "AR0234 (arducam-jvar)";
@@ -240,8 +242,8 @@ Status TargetSensorEnumerator::searchRGBSensors() {
         rgbInfo.isAvailable = true;
 
         m_rgbSensorsInfo.emplace_back(rgbInfo);
-        LOG(INFO) << "Found RGB sensor: " << rgbInfo.sensorName
-                  << " at " << rgbInfo.devicePath;
+        LOG(INFO) << "Found RGB sensor: " << rgbInfo.sensorName << " at "
+                  << rgbInfo.devicePath;
     } else {
         LOG(INFO) << "No RGB sensor detected at " << rgbDevicePath;
     }
@@ -249,14 +251,16 @@ Status TargetSensorEnumerator::searchRGBSensors() {
     return Status::OK;
 }
 
-Status TargetSensorEnumerator::getRGBSensors(std::vector<RGBSensorInfo> &rgbSensors) const {
+Status TargetSensorEnumerator::getRGBSensors(
+    std::vector<RGBSensorInfo> &rgbSensors) const {
     rgbSensors = m_rgbSensorsInfo;
     return Status::OK;
 }
 #endif
 
-Status TargetSensorEnumerator::getRGBSensorStatus(bool &isAvailable,
-                                                   std::string &devicePath) const {
+Status
+TargetSensorEnumerator::getRGBSensorStatus(bool &isAvailable,
+                                           std::string &devicePath) const {
 #ifdef HAS_RGB_CAMERA
     if (!m_rgbSensorsInfo.empty() && m_rgbSensorsInfo[0].isAvailable) {
         isAvailable = true;

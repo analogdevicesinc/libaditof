@@ -134,8 +134,8 @@ struct Adsd3500Sensor::ImplData {
     std::string fw_ver;
 
     ImplData()
-        : numVideoDevs(1),
-          videoDevs(nullptr), modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
+        : numVideoDevs(1), videoDevs(nullptr),
+          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
         ccbVersion = CCBVersion::CCB_UNKNOWN;
         imagerType = SensorImagerType::IMAGER_UNKNOWN;
     }
@@ -2072,23 +2072,30 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             modeDetails.frameContent = {"raw", "depth"};
 
             // check for AB frame (skip if RGB is enabled - mutual exclusion)
-            bool hasRGB = false;
+            // Check if RGB is actually enabled in INI (not just compiled in)
+            bool rgbEnabledInConfig = false;
 #ifdef HAS_RGB_CAMERA
-            hasRGB = true;
+            // auto rgbIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
+            // // Default to FALSE if not found (only enable if explicitly set to "1")
+            // rgbEnabledInConfig = (rgbIt != iniFile.iniKeyValPairs.end()) &&
+            //                      (rgbIt->second == "1");
 #endif
 
             auto it = iniFile.iniKeyValPairs.find("bitsInAB");
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
                 bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
-                // Mutual exclusion: if RGB is available, disable AB
-                if (bitsInAB[modeDetails.modeNumber] != 0 && !hasRGB) {
-                    modeDetails.frameContent.push_back("ab");
-                } else if (hasRGB && bitsInAB[modeDetails.modeNumber] != 0) {
-                    LOG(INFO)
-                        << "Mode " << modeDetails.modeNumber
-                        << ": RGB enabled, AB disabled (mutual exclusion)";
-                    bitsInAB[modeDetails.modeNumber] = 0; // Force disable AB
+                // Mutual exclusion: add AB only if RGB is NOT enabled
+                if (bitsInAB[modeDetails.modeNumber] != 0) {
+                    if (rgbEnabledInConfig) {
+                        LOG(INFO)
+                            << "Mode " << modeDetails.modeNumber
+                            << ": RGB enabled, AB disabled (mutual exclusion)";
+                        bitsInAB[modeDetails.modeNumber] =
+                            0; // Force disable AB
+                    } else {
+                        modeDetails.frameContent.push_back("ab");
+                    }
                 }
             } else {
                 LOG(WARNING) << "bits In AB was not found in parameter list, "
@@ -2110,7 +2117,13 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             }
 
 #ifdef HAS_RGB_CAMERA
-            modeDetails.frameContent.push_back("rgb");
+            auto rgbCfgIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
+            // Default to FALSE if not found (only enable if explicitly set to "1")
+            bool addRGB = (rgbCfgIt != iniFile.iniKeyValPairs.end()) &&
+                          (rgbCfgIt->second == "1");
+            if (addRGB) {
+                modeDetails.frameContent.push_back("rgb");
+            }
 #endif
 
             // check for xyz frame
@@ -2131,24 +2144,30 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
         } else {
             modeDetails.frameContent.clear();
 
-            // check for AB frame (skip if RGB is enabled - mutual exclusion)
-            bool hasRGB = false;
+            // Check if RGB is actually enabled in INI (not just compiled in)
+            bool rgbEnabledInConfig = false;
 #ifdef HAS_RGB_CAMERA
-            hasRGB = true;
+            auto rgbIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
+            // Default to FALSE if not found (only enable if explicitly set to "1")
+            rgbEnabledInConfig = (rgbIt != iniFile.iniKeyValPairs.end()) &&
+                                 (rgbIt->second == "1");
 #endif
 
             auto it = iniFile.iniKeyValPairs.find("bitsInAB");
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
                 bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
-                // Mutual exclusion: if RGB is available, disable AB
-                if (bitsInAB[modeDetails.modeNumber] != 0 && !hasRGB) {
-                    modeDetails.frameContent.push_back("ab");
-                } else if (hasRGB && bitsInAB[modeDetails.modeNumber] != 0) {
-                    LOG(INFO)
-                        << "Mode " << modeDetails.modeNumber
-                        << ": RGB enabled, AB disabled (mutual exclusion)";
-                    bitsInAB[modeDetails.modeNumber] = 0; // Force disable AB
+                // Mutual exclusion: add AB only if RGB is NOT enabled
+                if (bitsInAB[modeDetails.modeNumber] != 0) {
+                    if (rgbEnabledInConfig) {
+                        LOG(INFO)
+                            << "Mode " << modeDetails.modeNumber
+                            << ": RGB enabled, AB disabled (mutual exclusion)";
+                        bitsInAB[modeDetails.modeNumber] =
+                            0; // Force disable AB
+                    } else {
+                        modeDetails.frameContent.push_back("ab");
+                    }
                 }
             } else {
                 LOG(WARNING) << "bits In AB was not found in parameter list, "
@@ -2157,7 +2176,13 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
 
             bitsInConf[modeDetails.modeNumber] = 0;
 #ifdef HAS_RGB_CAMERA
-            modeDetails.frameContent.push_back("rgb");
+            auto rgbCfgIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
+            // Default to FALSE if not found (only enable if explicitly set to "1")
+            bool addRGB = (rgbCfgIt != iniFile.iniKeyValPairs.end()) &&
+                          (rgbCfgIt->second == "1");
+            if (addRGB) {
+                modeDetails.frameContent.push_back("rgb");
+            }
 #endif
             modeDetails.frameContent.push_back("metadata");
         }
