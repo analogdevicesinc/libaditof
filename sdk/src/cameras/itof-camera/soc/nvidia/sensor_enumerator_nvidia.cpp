@@ -24,14 +24,20 @@
 #include "connections/target/target_sensor_enumerator.h"
 #include "target_definitions.h"
 
-#include <aditof/log.h>
 #include <dirent.h>
+#include <fcntl.h>
+#include <linux/videodev2.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#ifdef USE_GLOG
+#include <glog/logging.h>
+#else
+#include <aditof/log.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <string>
-#include <sys/stat.h>
-#include <unistd.h>
 
 using namespace aditof;
 
@@ -144,5 +150,124 @@ Status TargetSensorEnumerator::searchSensors() {
         m_sensorsInfo.emplace_back(sInfo);
     }
 
+#ifdef HAS_RGB_CAMERA
+    // Also search for RGB sensors
+    status = searchRGBSensors();
+    if (status != Status::OK) {
+        LOG(WARNING) << "RGB sensor enumeration failed, continuing without RGB";
+        // Don't return error - RGB is optional
+        status = Status::OK;
+    }
+#endif
+
     return status;
+}
+
+#ifdef HAS_RGB_CAMERA
+bool TargetSensorEnumerator::isRGBSensorAvailable(const std::string &devicePath) const {
+    // Check if device exists and can be accessed
+    struct stat buffer;
+    if (stat(devicePath.c_str(), &buffer) != 0) {
+        return false;
+    }
+
+    // Try to open the device to verify it's accessible
+    int fd = open(devicePath.c_str(), O_RDWR | O_NONBLOCK);
+    if (fd < 0) {
+        return false;
+    }
+
+    // Use V4L2 to query the device capabilities
+    struct v4l2_capability cap;
+    if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0) {
+        close(fd);
+        return false;
+    }
+
+    // Check if it's a video capture device
+    if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+        close(fd);
+        return false;
+    }
+
+    // Verify it's NOT the ToF sensor (adsd3500)
+    // The RGB sensor should be "arducam-jvar" based on media-ctl output
+    std::string cardName = reinterpret_cast<const char*>(cap.card);
+    LOG(INFO) << "Device " << devicePath << " card name: " << cardName;
+
+    // Reject if it's the ADSD3500 ToF sensor
+    if (cardName.find("adsd3500") != std::string::npos) {
+        close(fd);
+        LOG(INFO) << "Skipping " << devicePath << " - it's the ToF sensor";
+        return false;
+    }
+
+    close(fd);
+
+    // If it's a video capture device and not adsd3500, assume it's RGB
+    return true;
+}
+
+Status TargetSensorEnumerator::searchRGBSensors() {
+    LOG(INFO) << "Looking for RGB sensors on the target";
+
+    m_rgbSensorsInfo.clear();
+
+    // Check for RGB sensor at /dev/video0 (arducam-jvar/AR0234)
+    const std::string rgbDevicePath = "/dev/video0";
+
+    if (isRGBSensorAvailable(rgbDevicePath)) {
+        // Get the actual sensor name from V4L2
+        int fd = open(rgbDevicePath.c_str(), O_RDWR | O_NONBLOCK);
+        std::string sensorName = "AR0234"; // Default name
+
+        if (fd >= 0) {
+            struct v4l2_capability cap;
+            if (ioctl(fd, VIDIOC_QUERYCAP, &cap) >= 0) {
+                // Use the card name from V4L2 (will be "vi-output, arducam-jvar 10-000c")
+                sensorName = reinterpret_cast<const char*>(cap.card);
+                // Extract just the sensor name if possible
+                if (sensorName.find("arducam") != std::string::npos) {
+                    sensorName = "AR0234 (arducam-jvar)";
+                }
+            }
+            close(fd);
+        }
+
+        RGBSensorInfo rgbInfo;
+        rgbInfo.devicePath = rgbDevicePath;
+        rgbInfo.sensorName = sensorName;
+        rgbInfo.isAvailable = true;
+
+        m_rgbSensorsInfo.emplace_back(rgbInfo);
+        LOG(INFO) << "Found RGB sensor: " << rgbInfo.sensorName
+                  << " at " << rgbInfo.devicePath;
+    } else {
+        LOG(INFO) << "No RGB sensor detected at " << rgbDevicePath;
+    }
+
+    return Status::OK;
+}
+
+Status TargetSensorEnumerator::getRGBSensors(std::vector<RGBSensorInfo> &rgbSensors) const {
+    rgbSensors = m_rgbSensorsInfo;
+    return Status::OK;
+}
+#endif
+
+Status TargetSensorEnumerator::getRGBSensorStatus(bool &isAvailable,
+                                                   std::string &devicePath) const {
+#ifdef HAS_RGB_CAMERA
+    if (!m_rgbSensorsInfo.empty() && m_rgbSensorsInfo[0].isAvailable) {
+        isAvailable = true;
+        devicePath = m_rgbSensorsInfo[0].devicePath;
+    } else {
+        isAvailable = false;
+        devicePath = "";
+    }
+#else
+    isAvailable = false;
+    devicePath = "";
+#endif
+    return Status::OK;
 }

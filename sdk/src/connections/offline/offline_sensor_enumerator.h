@@ -41,6 +41,9 @@ class OfflineSensorEnumerator : public aditof::SensorEnumeratorInterface {
     virtual aditof::Status
     getKernelVersion(std::string &kernelVersion) const override;
     virtual aditof::Status getSdVersion(std::string &sdVersion) const override;
+
+    virtual aditof::Status getRGBSensorStatus(bool &isAvailable,
+                                               std::string &devicePath) const override;
 };
 
 #endif // OFFLINE_SENSOR_ENUMERATOR_H

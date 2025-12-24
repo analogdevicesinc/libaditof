@@ -54,9 +54,26 @@ buildCameras(std::unique_ptr<SensorEnumeratorInterface> enumerator,
     enumerator->getKernelVersion(kernel);
     enumerator->getSdVersion(sd_ver);
 #endif
+
+    // Get RGB sensor enumeration status
+    bool rgbAvailable = false;
+    std::string rgbDevicePath = "";
+    Status rgbStatus = enumerator->getRGBSensorStatus(rgbAvailable, rgbDevicePath);
+    if (rgbStatus != Status::OK) {
+        LOG(WARNING) << "Failed to query RGB sensor status";
+    }
+
     for (const auto &dSensor : depthSensors) {
         std::shared_ptr<Camera> camera = std::make_shared<CameraItof>(
             dSensor, uboot, kernel, sd_ver, netLinkTest);
+
+        // Set RGB sensor detection info on each camera
+        std::shared_ptr<CameraItof> itofCamera =
+            std::dynamic_pointer_cast<CameraItof>(camera);
+        if (itofCamera) {
+            itofCamera->setRGBSensorInfo(rgbDevicePath, rgbAvailable);
+        }
+
         cameras.emplace_back(camera);
     }
 

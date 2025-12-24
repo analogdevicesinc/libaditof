@@ -153,6 +153,13 @@ class CameraItof : public aditof::Camera {
     getDepthParamtersMap(uint16_t mode,
                          std::map<std::string, std::string> &params) override;
 
+    /**
+     * @brief Set RGB sensor detection information from enumeration
+     * @param[in] devicePath - Path to RGB device (e.g., "/dev/video0")
+     * @param[in] isDetected - Whether RGB hardware was detected
+     */
+    void setRGBSensorInfo(const std::string &devicePath, bool isDetected);
+
   private:
     // Methods available only when Adsd3500 is detected as part of the entire setup
 
@@ -259,7 +266,11 @@ class CameraItof : public aditof::Camera {
 
 #ifdef HAS_RGB_CAMERA
     std::unique_ptr<aditof::RGBSensor> m_rgbSensor;
-    bool m_rgbEnabled;
+    struct {
+        bool detected;      // Hardware detection result from enumeration
+        bool enabled;       // Runtime operational state after successful open()
+        std::string path;   // Device path (e.g., "/dev/video0")
+    } m_rgbStatus;
 #endif
 
     struct offlineparameter_struct {

@@ -123,3 +123,11 @@ NetworkSensorEnumerator::getSdVersion(std::string &sdVersion) const {
     sdVersion = m_sdVersion;
     return aditof::Status::OK;
 }
+
+aditof::Status
+NetworkSensorEnumerator::getRGBSensorStatus(bool &isAvailable,
+                                             std::string &devicePath) const {
+    isAvailable = false;
+    devicePath = "";
+    return aditof::Status::OK;
+}

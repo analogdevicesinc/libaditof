@@ -44,6 +44,9 @@ class NetworkSensorEnumerator : public aditof::SensorEnumeratorInterface {
     getKernelVersion(std::string &kernelVersion) const override;
     virtual aditof::Status getSdVersion(std::string &sdVersion) const override;
 
+    virtual aditof::Status getRGBSensorStatus(bool &isAvailable,
+                                               std::string &devicePath) const override;
+
   private:
     std::string m_ip;
     std::string m_imageSensorsInfo;

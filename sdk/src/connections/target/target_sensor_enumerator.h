@@ -42,10 +42,18 @@ class TargetSensorEnumerator : public aditof::SensorEnumeratorInterface {
     getKernelVersion(std::string &kernelVersion) const override;
     virtual aditof::Status getSdVersion(std::string &sdVersion) const override;
 
-  private:
-    std::string getVersionOfComponent(const std::string &component) const;
+    virtual aditof::Status getRGBSensorStatus(bool &isAvailable,
+                                               std::string &devicePath) const override;
 
   private:
+    struct RGBSensorInfo {
+        std::string devicePath;      // e.g., "/dev/video0"
+        std::string sensorName;      // e.g., "AR0234"
+        bool isAvailable;
+    };
+
+    std::string getVersionOfComponent(const std::string &component) const;
+    aditof::Status getRGBSensors(std::vector<RGBSensorInfo> &rgbSensors) const;
     enum class SensorType {
         SENSOR_ADSD3500 //!< ADSD3500 sensor
     };
@@ -63,7 +71,11 @@ class TargetSensorEnumerator : public aditof::SensorEnumeratorInterface {
         std::string uBootVersion;
     };
 
+    aditof::Status searchRGBSensors();
+    bool isRGBSensorAvailable(const std::string &devicePath) const;
+
     std::vector<SensorInfo> m_sensorsInfo;
+    std::vector<RGBSensorInfo> m_rgbSensorsInfo;
     std::string m_cardImageVersion;
     std::string m_uBootVersion;
     std::string m_kernelVersion;

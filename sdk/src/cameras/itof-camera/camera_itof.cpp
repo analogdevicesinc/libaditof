@@ -75,8 +75,9 @@ CameraItof::CameraItof(
       m_dropFrameOnce(true) {
 
 #ifdef HAS_RGB_CAMERA
-    m_rgbEnabled = false;
-    LOG(INFO) << "CameraItof: RGB camera support compiled in";
+    m_rgbStatus.detected = false;
+    m_rgbStatus.enabled = false;
+    m_rgbStatus.path = "";
 #endif
 
     FloatToLinGenerateTable();
@@ -319,6 +320,19 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             return status;
         }
 
+#ifdef HAS_RGB_CAMERA
+        // Create RGB sensor instance if hardware was detected during enumeration
+        if (m_rgbStatus.detected) {
+            try {
+                m_rgbSensor = std::make_unique<aditof::RGBSensor>();
+                LOG(INFO) << "RGB sensor instance created for hardware at " << m_rgbStatus.path;
+            } catch (const std::exception& e) {
+                LOG(ERROR) << "Failed to create RGB sensor: " << e.what();
+                m_rgbStatus.detected = false;
+            }
+        }
+#endif
+
         LOG(INFO) << "Camera initialized";
 
         return status;
@@ -336,8 +350,8 @@ aditof::Status CameraItof::start() {
     m_devStreaming = true;
 
 #ifdef HAS_RGB_CAMERA
-    // Start RGB sensor if initialized, otherwise ensure RGB capture is disabled
-    if (m_rgbSensor && m_rgbEnabled) {
+    // Start RGB sensor if enabled and operational
+    if (m_rgbSensor && m_rgbStatus.enabled) {
         try {
             Status rgbStatus = m_rgbSensor->start();
             if (rgbStatus == Status::OK) {
@@ -354,12 +368,12 @@ aditof::Status CameraItof::start() {
                     LOG(WARNING) << "Could not connect RGB sensor to BufferProcessor";
                 }
             } else {
-                LOG(WARNING) << "Failed to start RGB sensor, continuing with ToF only";
-                m_rgbEnabled = false;
+                LOG(WARNING) << "Failed to start RGB sensor";
+                m_rgbStatus.enabled = false;
             }
         } catch (const std::exception& e) {
-            LOG(WARNING) << "Exception starting RGB sensor: " << e.what();
-            m_rgbEnabled = false;
+            LOG(WARNING) << "Exception starting RGB: " << e.what();
+            m_rgbStatus.enabled = false;
         }
     } else {
         // RGB is disabled - ensure BufferProcessor knows
@@ -379,19 +393,16 @@ aditof::Status CameraItof::stop() {
     aditof::Status status = aditof::Status::OK;
 
 #ifdef HAS_RGB_CAMERA
-    // Stop RGB sensor first
-    if (m_rgbSensor && m_rgbEnabled) {
+    // Stop RGB sensor if running
+    if (m_rgbSensor && m_rgbStatus.enabled) {
         try {
-            Status rgbStatus = m_rgbSensor->stop();
-            if (rgbStatus == Status::OK) {
-                LOG(INFO) << "RGB sensor stopped successfully";
-            } else {
-                LOG(WARNING) << "Failed to stop RGB sensor gracefully";
+            if (m_rgbSensor->stop() != Status::OK) {
+                LOG(WARNING) << "Failed to stop RGB sensor";
             }
         } catch (const std::exception& e) {
-            LOG(WARNING) << "Exception stopping RGB sensor: " << e.what();
+            LOG(WARNING) << "Exception stopping RGB: " << e.what();
         }
-        m_rgbEnabled = false;
+        m_rgbStatus.enabled = false;
     }
 #endif
 
@@ -589,55 +600,32 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         }
 
 #ifdef HAS_RGB_CAMERA
-        // Check if RGB should be enabled from parameters (now that they're set)
-        bool rgbCameraEnabled = true;  // Default to enabled
-        if (!m_isOffline && m_iniKeyValPairs.count("rgbCameraEnable")) {
-            rgbCameraEnabled = (m_iniKeyValPairs["rgbCameraEnable"] == "1");
-            LOG(INFO) << "RGB camera enable parameter: " << (rgbCameraEnabled ? "enabled" : "disabled");
-        }
+        // Determine if RGB should be enabled (default: true)
+        bool rgbCameraEnable = !m_isOffline &&
+            (!m_iniKeyValPairs.count("rgbCameraEnable") ||
+             m_iniKeyValPairs["rgbCameraEnable"] == "1");
 
-        if (rgbCameraEnabled) {
-            // Initialize RGB sensor based on ToF mode
+        // Open RGB sensor if hardware detected, instance exists, and user enabled
+        if (m_rgbStatus.detected && m_rgbSensor && rgbCameraEnable) {
             try {
-                if (!m_rgbSensor) {
-                    m_rgbSensor = std::make_unique<aditof::RGBSensor>();
-                    //LOG(INFO) << "RGB sensor instance created";
-                }
+                auto rgbConfig = aditof::RGBSensorConfig::fromMode(
+                    aditof::RGBMode::MODE_0_1920x1200, 0);
 
-                aditof::RGBMode rgbMode;
-                rgbMode = aditof::RGBMode::MODE_0_1920x1200;
-                LOG(INFO) << "RGB mode selected: 1920x1200@60fps for ToF mode " << (int)mode;
-
-                aditof::RGBSensorConfig rgbConfig =
-                    aditof::RGBSensorConfig::fromMode(rgbMode, 0);
-
-                aditof::Status rgbStatus = m_rgbSensor->open(rgbConfig);
-                if (rgbStatus != aditof::Status::OK) {
-                    LOG(WARNING) << "Failed to initialize RGB sensor (camera not connected?), continuing without RGB";
-                    m_rgbSensor.reset();
-                    m_rgbEnabled = false;
+                if (m_rgbSensor->open(rgbConfig) == aditof::Status::OK) {
+                    m_rgbStatus.enabled = true;
+                    LOG(INFO) << "RGB sensor opened: 1920x1200@60fps at " << m_rgbStatus.path;
                 } else {
-                    m_rgbEnabled = true;
-                    LOG(INFO) << "RGB sensor initialized successfully";
+                    LOG(WARNING) << "Failed to open RGB sensor";
+                    m_rgbStatus.enabled = false;
                 }
             } catch (const std::exception& e) {
-                LOG(ERROR) << "Exception during RGB sensor initialization: " << e.what();
-                m_rgbSensor.reset();
-                m_rgbEnabled = false;
+                LOG(ERROR) << "Exception opening RGB: " << e.what();
+                m_rgbStatus.enabled = false;
             }
         } else {
-            LOG(INFO) << "RGB camera disabled by rgbCameraEnable parameter";
-            m_rgbEnabled = false;
-            if (m_rgbSensor) {
-                m_rgbSensor.reset();
-            }
-
-            // Disable RGB capture in BufferProcessor
-            auto adsd3500Sensor = std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
-            if (adsd3500Sensor && adsd3500Sensor->getBufferProcessor()) {
-                BufferProcessor* bufferProc = adsd3500Sensor->getBufferProcessor();
-                bufferProc->enableRGBCapture(false);
-                LOG(INFO) << "RGB capture disabled in BufferProcessor";
+            m_rgbStatus.enabled = false;
+            if (!m_rgbStatus.detected && rgbCameraEnable) {
+                LOG(WARNING) << "RGB enabled but no hardware detected";
             }
         }
 #endif
@@ -2218,7 +2206,20 @@ void CameraItof::dropFirstFrame(bool dropFrame) {
     m_dropFirstFrame = dropFrame;
 }
 
-aditof::Status
+void CameraItof::setRGBSensorInfo(const std::string &devicePath,
+                                  bool isDetected) {
+#ifdef HAS_RGB_CAMERA
+    m_rgbStatus.path = devicePath;
+    m_rgbStatus.detected = isDetected;
+
+    if (isDetected) {
+        LOG(INFO) << "RGB sensor detected at: " << devicePath;
+    }
+#else
+    (void)devicePath;
+    (void)isDetected;
+#endif
+}aditof::Status
 CameraItof::setSensorConfiguration(const std::string &sensorConf) {
     aditof::Status status = aditof::Status::OK;
 
