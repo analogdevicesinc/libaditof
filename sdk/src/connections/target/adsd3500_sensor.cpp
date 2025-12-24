@@ -2071,13 +2071,24 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             modeDetails.frameContent.clear();
             modeDetails.frameContent = {"raw", "depth"};
 
-            // check for AB frame
+            // check for AB frame (skip if RGB is enabled - mutual exclusion)
+            bool hasRGB = false;
+#ifdef HAS_RGB_CAMERA
+            hasRGB = true;
+#endif
+
             auto it = iniFile.iniKeyValPairs.find("bitsInAB");
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
                 bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
-                if (bitsInAB[modeDetails.modeNumber] != 0) {
+                // Mutual exclusion: if RGB is available, disable AB
+                if (bitsInAB[modeDetails.modeNumber] != 0 && !hasRGB) {
                     modeDetails.frameContent.push_back("ab");
+                } else if (hasRGB && bitsInAB[modeDetails.modeNumber] != 0) {
+                    LOG(INFO)
+                        << "Mode " << modeDetails.modeNumber
+                        << ": RGB enabled, AB disabled (mutual exclusion)";
+                    bitsInAB[modeDetails.modeNumber] = 0; // Force disable AB
                 }
             } else {
                 LOG(WARNING) << "bits In AB was not found in parameter list, "
@@ -2120,13 +2131,24 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
         } else {
             modeDetails.frameContent.clear();
 
-            // check for AB frame
+            // check for AB frame (skip if RGB is enabled - mutual exclusion)
+            bool hasRGB = false;
+#ifdef HAS_RGB_CAMERA
+            hasRGB = true;
+#endif
+
             auto it = iniFile.iniKeyValPairs.find("bitsInAB");
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
                 bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
-                if (bitsInAB[modeDetails.modeNumber] != 0) {
+                // Mutual exclusion: if RGB is available, disable AB
+                if (bitsInAB[modeDetails.modeNumber] != 0 && !hasRGB) {
                     modeDetails.frameContent.push_back("ab");
+                } else if (hasRGB && bitsInAB[modeDetails.modeNumber] != 0) {
+                    LOG(INFO)
+                        << "Mode " << modeDetails.modeNumber
+                        << ": RGB enabled, AB disabled (mutual exclusion)";
+                    bitsInAB[modeDetails.modeNumber] = 0; // Force disable AB
                 }
             } else {
                 LOG(WARNING) << "bits In AB was not found in parameter list, "

@@ -1781,6 +1781,13 @@ void CameraItof::configureSensorModeDetails() {
                 m_rgbEnabled = true;
         }
 
+        // Apply mutual exclusion: if RGB is enabled, disable AB
+        if (m_rgbEnabled && m_abEnabled) {
+            LOG(WARNING) << "[PLAYBACK] RGB and AB both detected in frame. "
+                            "Disabling AB (mutual exclusion).";
+            m_abEnabled = false;
+        }
+
         LOG(INFO) << "[PLAYBACK] Enable flags set: depth=" << m_depthEnabled
                   << " ab=" << m_abEnabled << " conf=" << m_confEnabled
                   << " xyz=" << m_xyzEnabled << " rgb=" << m_rgbEnabled;
@@ -1860,6 +1867,14 @@ void CameraItof::configureSensorModeDetails() {
             LOG(WARNING) << "bitsInAB was not found in parameter list";
         }
 
+        // Apply mutual exclusion: if RGB is enabled, disable AB
+        // (Note: at this point, m_rgbEnabled is still true by default, will be evaluated later)
+        if (m_rgbEnabled && m_abEnabled) {
+            m_abEnabled = false;
+            LOG(INFO) << "[LIVE MODE] RGB enabled: AB display disabled (mutual "
+                         "exclusion)";
+        }
+
         it = m_iniKeyValPairs.find("partialDepthEnable");
         if (it != m_iniKeyValPairs.end()) {
             std::string en = (it->second == "0") ? "1" : "0";
@@ -1905,6 +1920,13 @@ void CameraItof::configureSensorModeDetails() {
         // This ensures recording/playback respects config overrides
         // Only rebuild if we have INI params (not during early initialization)
         if (!m_iniKeyValPairs.empty()) {
+            // Apply final mutual exclusion check: if RGB is enabled, disable AB
+            if (m_rgbEnabled && m_abEnabled) {
+                LOG(WARNING) << "[LIVE MODE] RGB enabled but AB also enabled "
+                                "from config. Disabling AB (mutual exclusion).";
+                m_abEnabled = false;
+            }
+
             m_modeDetailsCache.frameContent.clear();
             if (m_depthEnabled) {
                 m_modeDetailsCache.frameContent.emplace_back("depth");
