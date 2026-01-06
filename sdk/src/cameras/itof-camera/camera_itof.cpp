@@ -608,10 +608,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         }
 
 #ifdef HAS_RGB_CAMERA
-        // Determine if RGB should be enabled (default: true)
+        // Determine if RGB should be enabled (default: false, must be explicitly set to "1")
         bool rgbCameraEnable =
-            !m_isOffline && (!m_iniKeyValPairs.count("rgbCameraEnable") ||
-                             m_iniKeyValPairs["rgbCameraEnable"] == "1");
+            !m_isOffline && (m_iniKeyValPairs.count("rgbCameraEnable") > 0) &&
+            (m_iniKeyValPairs["rgbCameraEnable"] == "1");
 
         // Open RGB sensor if hardware detected, instance exists, and user enabled
         if (m_rgbStatus.detected && m_rgbSensor && rgbCameraEnable) {
@@ -678,6 +678,9 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         for (const auto &item : (*modeIt).frameContent) {
             LOG(INFO) << "Configuring frame data details for type: " << item;
             if (item == "xyz" && !m_xyzEnabled) {
+                continue;
+            }
+            if (item == "rgb" && !m_rgbEnabled) {
                 continue;
             }
             if (item == "raw") { // "raw" is not supported right now
@@ -966,6 +969,12 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
 
             if (item == "raw") { // "raw" is not supported right now
                 LOG(INFO) << "[RECORDING] Skipping raw from fDataDetails (not "
+                             "supported)";
+                continue;
+            }
+
+            if (item == "rgb" && !m_rgbEnabled) {
+                LOG(INFO) << "[RECORDING] Skipping rgb from fDataDetails (not "
                              "supported)";
                 continue;
             }
@@ -1798,11 +1807,11 @@ void CameraItof::configureSensorModeDetails() {
         m_depthEnabled = true;
         m_abEnabled = true;
         m_confEnabled = true;
-        // Only enable RGB if config allows it (default true if not specified)
+        // Only enable RGB if explicitly set to "1" in config (default: false)
         // This prevents automatic disabling of AB when RGB is built but disabled in config
 #ifdef HAS_RGB_CAMERA
-        m_rgbEnabled = !m_iniKeyValPairs.count("rgbCameraEnable") ||
-                       m_iniKeyValPairs["rgbCameraEnable"] == "1";
+        m_rgbEnabled = (m_iniKeyValPairs.count("rgbCameraEnable") > 0) &&
+                       (m_iniKeyValPairs["rgbCameraEnable"] == "1");
 #else
         m_rgbEnabled = false;
 #endif
@@ -2284,7 +2293,12 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
                         value = stream.str();
                         std::size_t found = value.find(".0");
                         if (found != std::string::npos) {
-                            value = std::to_string(json_object_get_int(val));
+                            int intVal = json_object_get_int(val);
+                            value = std::to_string(intVal);
+                            if (std::string(key) == "rgbCameraEnable") {
+                                LOG(INFO) << "[JSON PARSE] Mode " << mode << " key=" << key
+                                         << " intVal=" << intVal << " finalValue=" << value;
+                            }
                         }
                     }
                     iniKeyValPairs.emplace(std::string(key), value);

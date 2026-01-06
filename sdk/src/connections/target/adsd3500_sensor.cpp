@@ -2075,10 +2075,10 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             // Check if RGB is actually enabled in INI (not just compiled in)
             bool rgbEnabledInConfig = false;
 #ifdef HAS_RGB_CAMERA
-            // auto rgbIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
-            // // Default to FALSE if not found (only enable if explicitly set to "1")
-            // rgbEnabledInConfig = (rgbIt != iniFile.iniKeyValPairs.end()) &&
-            //                      (rgbIt->second == "1");
+            auto rgbIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
+            // Default to FALSE if not found (only enable if explicitly set to "1")
+            rgbEnabledInConfig = (rgbIt != iniFile.iniKeyValPairs.end()) &&
+                                 (rgbIt->second == "1");
 #endif
 
             auto it = iniFile.iniKeyValPairs.find("bitsInAB");
@@ -2121,6 +2121,9 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             // Default to FALSE if not found (only enable if explicitly set to "1")
             bool addRGB = (rgbCfgIt != iniFile.iniKeyValPairs.end()) &&
                           (rgbCfgIt->second == "1");
+	        std::string rgbValue = (rgbCfgIt != iniFile.iniKeyValPairs.end()) ? rgbCfgIt->second : "NOT_FOUND";
+	        LOG(INFO) << __func__ << " Mode[" << i << "] modeNum=" << modeDetails.modeNumber
+	              << " rgbCameraEnable=" << rgbValue << " addRGB=" << addRGB;
             if (addRGB) {
                 modeDetails.frameContent.push_back("rgb");
             }

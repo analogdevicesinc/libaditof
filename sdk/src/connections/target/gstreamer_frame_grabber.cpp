@@ -171,7 +171,7 @@ Status GStreamerFrameGrabber::startPipeline() {
 
     // Wait for pipeline to reach PLAYING state (important for pull model)
     GstState state;
-    ret = gst_element_get_state(m_pipeline, &state, nullptr, 3 * GST_SECOND);
+    ret = gst_element_get_state(m_pipeline, &state, nullptr, 10 * GST_SECOND);
     if (ret == GST_STATE_CHANGE_FAILURE || state != GST_STATE_PLAYING) {
         LOG(ERROR) << "Pipeline failed to reach PLAYING state";
         return Status::GENERIC_ERROR;
@@ -235,7 +235,7 @@ Status GStreamerFrameGrabber::stopPipeline() {
 
     m_isRunning = false;
 
-    LOG(INFO) << "GStreamer pipeline stopped. Total frames: " << m_frameCount.load();
+    //LOG(INFO) << "GStreamer pipeline stopped. Total frames: " << m_frameCount.load();
 
     return Status::OK;
 }
