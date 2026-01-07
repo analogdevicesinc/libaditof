@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.0)
+cmake_policy(VERSION 3.12)
+cmake_policy(SET CMP0054 NEW)
+cmake_policy(SET CMP0075 NEW)
 project(libaditof_project)
 
 ####################### Disable In-source builds ##############################
@@ -27,6 +30,7 @@ option(CI_BUILD "Build for CI" OFF)
 option(WITH_SUBMODULES "Use submodules to build the library" ON)
 option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
 option(RECV_ASYNC "Receive the frames Asynchronously" ON)
+option(BUILD_TESTING "Build tests?" OFF)
 
 ######################### Target based Options ################################
 option(NXP "Set to ON when building on NXP" OFF)
@@ -219,6 +223,15 @@ add_definitions(-DRESOURCES="${RESOURCES_DIR}")
 
 add_subdirectory(dependencies)
 add_subdirectory(sdk)
+
+if (BUILD_TESTING)
+    # Configure Google Test
+    set(BUILD_GMOCK ON CACHE BOOL "Enable building Google Mock")
+    set(INSTALL_GTEST OFF CACHE BOOL "Disable installation of googletest")
+    add_subdirectory(extern/gtest)
+    add_subdirectory(tests)
+    enable_testing()
+endif()
 
 if (WITH_PYTHON)
         add_subdirectory(bindings/python)
