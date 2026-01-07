@@ -3,11 +3,16 @@
 #   and many OpenWRT packages require, much newer CMake packages.
 #  We're stopping before 3.10 because that version starts requiring
 #   c++11, which isn't available on e.g HPUX.
-cmake_minimum_required(VERSION 3.9...3.12)
+cmake_minimum_required(VERSION 3.12)
 
 # JSON-C library is C only project.
 # PROJECT_VERSION{,_MAJOR,_MINOR,_PATCH} set by project():
 project(json-c LANGUAGES C VERSION 0.18.99)
+
+# Set policies
+if(POLICY CMP0075)
+    cmake_policy(SET CMP0075 NEW)
+endif()
 
 # set default build type if not specified by user
 if(NOT CMAKE_BUILD_TYPE)
@@ -285,6 +290,10 @@ endif()
 endif()
 
 
+# Save and clear CMAKE_REQUIRED_LIBRARIES to suppress CMP0075 warning
+set(_SAVED_CMAKE_REQUIRED_LIBRARIES ${CMAKE_REQUIRED_LIBRARIES})
+set(CMAKE_REQUIRED_LIBRARIES "")
+
 check_type_size(int                 SIZEOF_INT)
 check_type_size(int64_t             SIZEOF_INT64_T)
 check_type_size(long                SIZEOF_LONG)
@@ -296,6 +305,9 @@ check_type_size("SSIZE_T"           SIZEOF_SSIZE_T)
 else()
 check_type_size("ssize_t"           SIZEOF_SSIZE_T)
 endif()
+
+# Restore CMAKE_REQUIRED_LIBRARIES
+set(CMAKE_REQUIRED_LIBRARIES ${_SAVED_CMAKE_REQUIRED_LIBRARIES})
 
 check_c_source_compiles(
 "

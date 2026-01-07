@@ -1,0 +1,58 @@
+# Python Test Requirements
+
+This file lists the dependencies needed to run the Python tests.
+
+```
+pytest>=7.0
+numpy>=1.20
+matplotlib>=3.3
+```
+
+## Installation
+
+Install the test requirements:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Running Tests
+
+Run all tests:
+
+```bash
+pytest -v
+```
+
+Run tests with detailed output:
+
+```bash
+pytest -vv
+```
+
+Run tests for a specific module:
+
+```bash
+pytest test_aditof_bindings.py -v
+```
+
+Run tests matching a pattern:
+
+```bash
+pytest -k "test_version" -v
+```
+
+Run tests and show which tests were skipped:
+
+```bash
+pytest -v -rs
+```
+
+## Test Coverage
+
+To measure test coverage (requires pytest-cov):
+
+```bash
+pip install pytest-cov
+pytest --cov=aditofpython tests/python/ --cov-report=html
+```
