@@ -101,3 +101,13 @@ cmake --build . --config RELEASE -j 8
 ## CMake Options
 
 For the build options in [CMakeLists.txt](./CMakeLists.txt) see [cmake/readme.md](./cmake/readme.md).
+
+## Tests
+
+Test infrastructure using GoogleTests and PyTest has been added.
+
+### Setting Up for testing the SDK using GoogleTests
+
+Ensure the submodule for googletest has been cloned:
+git submodule update --init extern/gtest
+
