@@ -6,7 +6,7 @@ add_executable(libaditof_sample_test
 )
 
 add_executable(sdk_version_test
-    generic/sdk_version.cpp
+    generic/sdk_version_test.cpp
 )
 
 # Link against Google Test and the aditof library
