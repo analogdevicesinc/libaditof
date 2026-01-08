@@ -108,6 +108,10 @@ Test infrastructure using GoogleTests and PyTest has been added.
 
 ### Setting Up for testing the SDK using GoogleTests
 
-Ensure the submodule for googletest has been cloned:
+In the *libaditof* folder:
+```
 git submodule update --init extern/gtest
-
+mkdir build && cd build
+cmake -DBUILD_TESTING=ON -DNVIDIA=1 ..
+cmake --build . --config RELEASE -j 6
+```
