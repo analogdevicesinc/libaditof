@@ -492,9 +492,13 @@ void BufferProcessor::captureFrameThread() {
         if (v4l2_frame_holder != nullptr) {
             memcpy(v4l2_frame_holder.get(), pdata, buf_data_len);
         } else {
-            LOG(WARNING)
+            LOG(ERROR)
                 << __func__
-                << ": v4l2_frame_holder is nullptr skipping frame copy";
+                << ": v4l2_frame_holder is nullptr, requeuing V4L2 buffer";
+            // Critical: Must requeue V4L2 buffer to avoid permanent leak
+            enqueueInternalBufferPrivate(buf, dev);
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
             continue;
         }
 
@@ -726,17 +730,20 @@ void BufferProcessor::processThread() {
                     if (rgbFrame.isValid()) {
                         // Calculate buffer layout
                         const uint32_t rgbSize = rgbFrame.data.size();
-                        const uint32_t totalSize = m_tofiBufferSize * sizeof(uint16_t) + rgbSize;
+                        const uint32_t totalSize =
+                            m_tofiBufferSize * sizeof(uint16_t) + rgbSize;
 
                         // Allocate combined buffer
                         std::vector<uint8_t> combinedBuffer(totalSize);
 
                         // Copy Depth + AB
                         memcpy(combinedBuffer.data(),
-                               tofi_compute_io_buff.get(), m_tofiBufferSize * sizeof(uint16_t));
+                               tofi_compute_io_buff.get(),
+                               m_tofiBufferSize * sizeof(uint16_t));
 
                         // Insert RGB after AB
-                        memcpy(combinedBuffer.data() + m_tofiBufferSize * sizeof(uint16_t),
+                        memcpy(combinedBuffer.data() +
+                                   m_tofiBufferSize * sizeof(uint16_t),
                                rgbFrame.data.data(), rgbSize);
 
                         // Write combined buffer once
@@ -791,6 +798,22 @@ void BufferProcessor::processThread() {
 
         process_frame.tofiBuffer = tofi_compute_io_buff;
         process_frame.size = m_tofiBufferSize;
+
+#ifdef HAS_RGB_CAMERA
+        // Attach RGB frame if available (non-blocking, opportunistic)
+        // Use minimal timeout to avoid delaying depth frames
+        process_frame.hasRGB = false;
+        if (m_rgbCaptureEnabled) {
+            aditof::RGBFrame rgbFrame;
+            // Use very short timeout (1ms) to check if RGB is available
+            if (m_rgb_frame_Q.pop(rgbFrame, std::chrono::milliseconds(1))) {
+                if (rgbFrame.isValid()) {
+                    process_frame.rgbFrame = std::move(rgbFrame);
+                    process_frame.hasRGB = true;
+                }
+            }
+        }
+#endif // HAS_RGB_CAMERA
 
         if (!m_process_done_Q.push(std::move(process_frame))) {
             LOG(WARNING) << "processThread: Push timeout to "

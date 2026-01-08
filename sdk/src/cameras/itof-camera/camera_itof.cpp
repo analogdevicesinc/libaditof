@@ -356,6 +356,9 @@ aditof::Status CameraItof::start() {
     // Start RGB sensor if enabled and operational
     if (m_rgbSensor && m_rgbStatus.enabled) {
         try {
+            // Add delay to allow ToF sensor to fully initialize before starting RGB
+            // This prevents resource conflicts with Jetson Argus camera service
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
             Status rgbStatus = m_rgbSensor->start();
             if (rgbStatus == Status::OK) {
                 LOG(INFO) << "RGB sensor started successfully";
