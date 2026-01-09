@@ -144,7 +144,13 @@ int main(int argc, char** argv) {
 
     // Automatically add --gtest_output with timestamped filename
     std::string timestamp = getUTCTimestamp();
-    std::string gtestOutput = "--gtest_output=json:report_" + timestamp + ".json";
+    std::string execName = argv[0];
+    // Extract just the executable name without path
+    size_t lastSlash = execName.find_last_of("/\\");
+    if (lastSlash != std::string::npos) {
+        execName = execName.substr(lastSlash + 1);
+    }
+    std::string gtestOutput = "--gtest_output=json:report_" + execName + "_" + timestamp + ".json";
     
     // Create new argv with the additional argument
     std::vector<char*> newArgv;
