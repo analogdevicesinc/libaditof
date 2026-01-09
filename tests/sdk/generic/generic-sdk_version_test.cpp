@@ -6,6 +6,11 @@
 #include <aditof/camera_definitions.h>
 #include <aditof/status_definitions.h>
 #include <string>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
+#include <ctime>
+#include <vector>
 
 // Use: ./sdk_version_test --version=6.2.0
 
@@ -13,6 +18,16 @@ using namespace aditof;
 
 // Global variable to store the expected version from command line
 std::string g_expectedVersion = "6.2.0";
+
+// Generate UTC timestamp in format: YYYYMMDD_HHMMSS
+std::string getUTCTimestamp() {
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    
+    std::ostringstream oss;
+    oss << std::put_time(std::gmtime(&time_t_now), "%Y%m%d_%H%M%S");
+    return oss.str();
+}
 
 // Test version information
 TEST(VersionTest, VersionMacrosAreDefined) {
@@ -44,6 +59,23 @@ int main(int argc, char** argv) {
         }
     }
 
-    ::testing::InitGoogleTest(&argc, argv);
+    // Automatically add --gtest_output with timestamped filename
+    std::string timestamp = getUTCTimestamp();
+    std::string gtestOutput = "--gtest_output=json:report_" + timestamp + ".json";
+    
+    // Create new argv with the additional argument
+    std::vector<char*> newArgv;
+    for (int i = 0; i < argc; ++i) {
+        newArgv.push_back(argv[i]);
+    }
+    newArgv.push_back(const_cast<char*>(gtestOutput.c_str()));
+    newArgv.push_back(nullptr);
+    
+    int newArgc = argc + 1;
+
+    ::testing::InitGoogleTest(&newArgc, newArgv.data());
+
+    ::testing::Test::RecordProperty("Parameter expected_version", g_expectedVersion);
+
     return RUN_ALL_TESTS();
 }
