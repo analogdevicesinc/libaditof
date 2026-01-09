@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.15)
 
 # Add test executables
-add_executable(libaditof_sample_test
-    sample/sample_test.cpp
+add_executable(generic-sdk_version_test
+    generic-sdk_version_test.cpp
 )
 
 # Link against Google Test and the aditof library
-target_link_libraries(libaditof_sample_test
+target_link_libraries(generic-sdk_version_test
     PRIVATE
         gtest
         gtest_main
@@ -14,13 +14,11 @@ target_link_libraries(libaditof_sample_test
 )
 
 # Include directories
-target_include_directories(libaditof_sample_test
+target_include_directories(generic-sdk_version_test
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/../include
 )
 
 # Add tests to CTest
 include(GoogleTest)
-gtest_discover_tests(libaditof_sample_test)
-
-add_subdirectory(generic)
+gtest_discover_tests(generic-sdk_version_test)
