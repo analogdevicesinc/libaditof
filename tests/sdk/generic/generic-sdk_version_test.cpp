@@ -51,11 +51,14 @@ TEST(VersionTest, ApiVersionReturnsNonEmptyString) {
 }
 
 int main(int argc, char** argv) {
+    bool bHelp = false;
     // Parse custom command-line argument for expected version
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
         if (arg.find("--version=") == 0) {
             g_expectedVersion = arg.substr(10);  // Extract version after "--version="
+        }  else if (arg == "--help" || arg == "-h") {
+            bHelp = true;
         }
     }
 
@@ -73,6 +76,11 @@ int main(int argc, char** argv) {
     
     int newArgc = argc + 1;
 
+    if (bHelp) {
+        std::cout << "Usage: " << argv[0] << " [--version=<expected_version>] [--help|-h]" << std::endl;
+        std::cout << "  --version: Specify the expected API version (default: 6.2.0)" << std::endl;
+        std::cout << std::endl;
+    }
     ::testing::InitGoogleTest(&newArgc, newArgv.data());
 
     ::testing::Test::RecordProperty("Parameter expected_version", g_expectedVersion);
