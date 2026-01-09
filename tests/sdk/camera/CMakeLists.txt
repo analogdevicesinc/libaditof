@@ -8,4 +8,4 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/AditofTest.cmake)
 
 # To add more tests, just add one line per test:
 add_aditof_test(camera-get_frames_test camera-get_frames_test.cpp)
-add_aditof_test(camera-adsd3500Reset camera-adsd3500Reset.cpp)
+add_aditof_test(camera-adsd3500_soft_reset camera-adsd3500_soft_reset.cpp)
