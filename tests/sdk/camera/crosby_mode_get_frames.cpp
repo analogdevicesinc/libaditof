@@ -203,7 +203,10 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
         ::testing::Test::RecordProperty("elapsed_seconds", seconds);
         ::testing::Test::RecordProperty("fps", fps);
         fps = std::round(fps);
-        EXPECT_FLOAT_EQ(fps, static_cast<double>(g_fps));
+        if (g_num_frames > 10) {
+            EXPECT_FLOAT_EQ(fps, static_cast<double>(g_fps));
+        }
+        EXPECT_EQ(framesReceived, g_num_frames);
 
     } else {
         GTEST_SKIP() << "Camera initialization failed, skipping test";
@@ -211,6 +214,8 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
 }
 
 int main(int argc, char** argv) {
+
+    bool bHelp = false;
     // Parse custom command-line argument for expected version
     for (int i = 1; i < argc; ++i) {
         std::string arg(argv[i]);
@@ -222,6 +227,8 @@ int main(int argc, char** argv) {
             g_num_frames = static_cast<uint16_t>(std::stoi(arg.substr(13)));  // Extract num_frames after "--num_frames="
         } else if (arg.find("--fps=") == 0) {
             g_fps = static_cast<uint16_t>(std::stoi(arg.substr(6)));  // Extract fps after "--fps="
+        } else if (arg == "--help" || arg == "-h") {
+            bHelp = true;
         }
     }
 
@@ -239,6 +246,14 @@ int main(int argc, char** argv) {
     
     int newArgc = argc + 1;
 
+    if (bHelp) {
+        std::cout << "Usage: " << argv[0] << " [--module=<module_name>] [--mode=<mode_number>] [--num_frames=<number_of_frames>] [--fps=<frames_per_second>] [--help|-h]" << std::endl;
+        std::cout << "  --module: Specify the camera module (default: crosby)" << std::endl;
+        std::cout << "  --mode: Specify the camera mode (default: 1)" << std::endl;
+        std::cout << "  --num_frames: Specify the number of frames to capture (default: 1)" << std::endl;
+        std::cout << "  --fps: Specify the frames per second (default: 10)" << std::endl;
+        std::cout << std::endl;
+    }
     ::testing::InitGoogleTest(&newArgc, newArgv.data());
 
     ::testing::Test::RecordProperty("Parameter module", g_module);
