@@ -17,6 +17,7 @@
 
 using namespace aditof;
 
+std::string g_cameraipaddress = "";
 
 struct ModeDetails_struct {
     uint16_t width;
@@ -92,7 +93,11 @@ TEST(SystemTest, GetCameraListWithoutCameras) {
     
     // This should not throw even if no cameras are connected
     EXPECT_NO_THROW({
-        system.getCameraList(cameras);
+        if (g_cameraipaddress == "") {
+            system.getCameraList(cameras);
+        } else {
+            system.getCameraList(cameras, "ip:" + g_cameraipaddress);
+        }
     });
     
     // The cameras vector might be empty if no hardware is connected
@@ -106,7 +111,11 @@ protected:
         system = std::make_unique<System>();
         
         // Try to get cameras, but don't fail if none are available
-        system->getCameraList(cameras);
+        if (g_cameraipaddress == "") {
+            system->getCameraList(cameras);
+        } else {
+            system->getCameraList(cameras, "ip:" + g_cameraipaddress);
+        }
         
         if (!cameras.empty()) {
             camera = cameras.front();
@@ -227,7 +236,9 @@ int main(int argc, char** argv) {
             g_num_frames = static_cast<uint16_t>(std::stoi(arg.substr(13)));  // Extract num_frames after "--num_frames="
         } else if (arg.find("--fps=") == 0) {
             g_fps = static_cast<uint16_t>(std::stoi(arg.substr(6)));  // Extract fps after "--fps="
-        } else if (arg == "--help" || arg == "-h") {
+        } else if (arg.find("--ip=") == 0) {
+            g_cameraipaddress = arg.substr(5);  // Extract IP address after "--ip="
+        }  else if (arg == "--help" || arg == "-h") {
             bHelp = true;
         }
     }
@@ -258,6 +269,7 @@ int main(int argc, char** argv) {
         std::cout << "  --mode: Specify the camera mode (default: 1)" << std::endl;
         std::cout << "  --num_frames: Specify the number of frames to capture (default: 1)" << std::endl;
         std::cout << "  --fps: Specify the frames per second (default: 10)" << std::endl;
+        std::cout << "  --ip: Specify the camera IP address" << std::endl;
         std::cout << std::endl;
     }
     ::testing::InitGoogleTest(&newArgc, newArgv.data());
