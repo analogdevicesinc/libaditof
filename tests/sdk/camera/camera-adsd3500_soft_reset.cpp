@@ -18,6 +18,8 @@
 
 using namespace aditof;
 
+std::string g_cameraipaddress = "";
+
 // Generate UTC timestamp in format: YYYYMMDD_HHMMSS
 std::string getUTCTimestamp() {
     auto now = std::chrono::system_clock::now();
@@ -41,7 +43,11 @@ TEST(SystemTest, GetCameraListWithoutCameras) {
     
     // This should not throw even if no cameras are connected
     EXPECT_NO_THROW({
-        system.getCameraList(cameras);
+        if (g_cameraipaddress == "") {
+            system.getCameraList(cameras);
+        } else {
+            system.getCameraList(cameras, "ip:" + g_cameraipaddress);
+        }
     });
     
     // The cameras vector might be empty if no hardware is connected
@@ -55,7 +61,11 @@ protected:
         system = std::make_unique<System>();
         
         // Try to get cameras, but don't fail if none are available
-        system->getCameraList(cameras);
+        if (g_cameraipaddress == "") {
+            system->getCameraList(cameras);
+        } else {
+            system->getCameraList(cameras, "ip:" + g_cameraipaddress);
+        }
         
         if (!cameras.empty()) {
             camera = cameras.front();
@@ -142,6 +152,18 @@ TEST_F(CameraTestFixture, adsd3500Reset) {
 
 int main(int argc, char** argv) {
 
+    bool bHelp = false;
+    // Parse custom command-line argument for expected version
+    for (int i = 1; i < argc; ++i) {
+        std::string arg(argv[i]);
+        if (arg.find("--ip=") == 0) {
+            g_cameraipaddress = arg.substr(5);  // Extract IP address after "--ip="
+        }  else if (arg == "--help" || arg == "-h") {
+            bHelp = true;
+        }
+    }
+
+
     // Automatically add --gtest_output with timestamped filename
     std::string timestamp = getUTCTimestamp();
     std::string execName = argv[0];
@@ -162,6 +184,11 @@ int main(int argc, char** argv) {
     
     int newArgc = argc + 1;
 
+    if (bHelp) {
+        std::cout << "Usage: " << argv[0] << " [--ip=<camera_ip_address>] [--help|-h]" << std::endl;
+        std::cout << "  --ip: Specify the camera IP address" << std::endl;
+        std::cout << std::endl;
+    }
     ::testing::InitGoogleTest(&newArgc, newArgv.data());
 
     return RUN_ALL_TESTS();
