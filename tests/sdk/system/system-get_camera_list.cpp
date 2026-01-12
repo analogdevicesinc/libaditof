@@ -102,6 +102,7 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     ::testing::InitGoogleTest(&newArgc, newArgv.data());
+    ::testing::Test::RecordProperty("Parameter IP Address", g_cameraipaddress);
 
     return RUN_ALL_TESTS();
 }
