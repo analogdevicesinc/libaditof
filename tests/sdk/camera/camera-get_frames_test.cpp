@@ -278,6 +278,7 @@ int main(int argc, char** argv) {
     ::testing::Test::RecordProperty("Parameter mode", g_mode);
     ::testing::Test::RecordProperty("Parameter num_frames", g_num_frames);
     ::testing::Test::RecordProperty("Parameter fps", g_fps);
+    ::testing::Test::RecordProperty("Parameter IP Address", g_cameraipaddress);
 
     return RUN_ALL_TESTS();
 }
