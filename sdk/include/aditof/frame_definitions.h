@@ -24,6 +24,7 @@
 #ifndef FRAME_DEFINITIONS_H
 #define FRAME_DEFINITIONS_H
 
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>

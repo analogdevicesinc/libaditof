@@ -23,10 +23,10 @@
  */
 #include "aditof/sensor_enumerator_factory.h"
 
-/* On target SDK will know only about TargetSensorEnumerator, while
-// (optionally) about NetworkSensorEnumerator. */
+/* On target SDK will use PlatformSensorEnumerator for platform-specific device discovery,
+// while optionally supporting NetworkSensorEnumerator and OfflineSensorEnumerator. */
 #ifdef TARGET
-#include "connections/target/target_sensor_enumerator.h"
+#include "platform/sensor_enumerator.h"
 #else
 #include "connections/network/network_sensor_enumerator.h"
 #endif
@@ -41,7 +41,7 @@ std::unique_ptr<SensorEnumeratorInterface>
 SensorEnumeratorFactory::buildTargetSensorEnumerator() {
 #ifdef TARGET
     return std::unique_ptr<SensorEnumeratorInterface>(
-        new TargetSensorEnumerator());
+        new PlatformSensorEnumerator());
 #endif
     return nullptr;
 }

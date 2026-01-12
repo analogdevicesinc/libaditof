@@ -21,9 +21,36 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef TARGET_DEFINITIONS_H
-#define TARGET_DEFINITIONS_H
+#ifndef PLATFORM_FACTORY_H
+#define PLATFORM_FACTORY_H
 
-static const char *CAPTURE_DEVICE_NAME = "vi-output, adsd3500";
+#include "platform_interface.h"
+#include <memory>
 
-#endif // TARGET_DEFINITIONS_H
+namespace aditof {
+namespace platform {
+
+/**
+ * @brief Factory for creating platform instances
+ * 
+ * The factory selects the appropriate platform implementation at compile time
+ * based on CMake flags (NVIDIA, NXP, etc.). This ensures zero runtime overhead
+ * for platform selection.
+ */
+class PlatformFactory {
+public:
+    /**
+     * @brief Create platform instance for current target
+     * @return Unique pointer to platform implementation
+     */
+    static std::unique_ptr<IPlatform> create();
+    
+private:
+    PlatformFactory() = delete;
+    ~PlatformFactory() = delete;
+};
+
+} // namespace platform
+} // namespace aditof
+
+#endif // PLATFORM_FACTORY_H
