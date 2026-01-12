@@ -54,6 +54,7 @@ TEST(SystemTest, GetCameraListWithoutCameras) {
     // This is expected in a test environment
 }
 
+bool g_callbackInvoked = false;
 // Test fixture for Camera-related tests
 class CameraTestFixture : public ::testing::Test {
 protected:
@@ -70,12 +71,27 @@ protected:
         if (!cameras.empty()) {
             camera = cameras.front();
             has_camera = true;
+
+            g_callbackInvoked = false;
+            // Registering a callback to be executed when ADSD3500 issues an interrupt
+            std::shared_ptr<DepthSensorInterface> sensor = camera->getSensor();
+            callback = [this](Adsd3500Status status) {
+                g_callbackInvoked = true;
+                EXPECT_EQ(status, Adsd3500Status::OK);
+            };
+            
+            Status registerCbStatus =
+                sensor->adsd3500_register_interrupt_callback(callback);
+            ASSERT_TRUE(registerCbStatus == Status::OK);
         } else {
             has_camera = false;
         }
     }
 
     void TearDown() override {
+        camera = cameras.front();
+        std::shared_ptr<DepthSensorInterface> sensor = camera->getSensor();
+        sensor->adsd3500_unregister_interrupt_callback(callback);
         // No explicit cleanup needed - cameras will be cleaned up automatically
         cameras.clear();
         camera.reset();
@@ -85,6 +101,7 @@ protected:
     std::vector<std::shared_ptr<Camera>> cameras;
     std::shared_ptr<Camera> camera;
     bool has_camera = false;
+    aditof::SensorInterruptCallback callback;
 };
 
 TEST_F(CameraTestFixture, SystemHasCameraListMethod) {
@@ -106,7 +123,7 @@ TEST_F(CameraTestFixture, CameraDetailsAccessible) {
     }
 }
 
-TEST_F(CameraTestFixture, adsd3500Reset) {
+TEST_F(CameraTestFixture, adsd3500SoftReset) {
     if (!has_camera) {
         GTEST_SKIP() << "No camera available for testing";
     }
@@ -115,16 +132,9 @@ TEST_F(CameraTestFixture, adsd3500Reset) {
     
     if (init_status == Status::OK) {
     
-        // Registering a callback to be executed when ADSD3500 issues an interrupt
-        std::shared_ptr<DepthSensorInterface> sensor = camera->getSensor();
-        aditof::SensorInterruptCallback callback = [](Adsd3500Status status) {
-            std::cout << "ADSD3500 Interrupt Callback invoked with status: "
-                    << static_cast<int>(status) << std::endl;
-        };
-        
-        Status registerCbStatus =
-            sensor->adsd3500_register_interrupt_callback(callback);
-        ASSERT_TRUE(registerCbStatus == Status::OK);
+        // Reset the flag before the test operations
+        ASSERT_TRUE(g_callbackInvoked == true);
+        g_callbackInvoked = false;
 
         Status status = camera->adsd3500SetFrameRate(23);
         ASSERT_TRUE(status == Status::OK);
@@ -190,6 +200,7 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     ::testing::InitGoogleTest(&newArgc, newArgv.data());
+    ::testing::Test::RecordProperty("Parameter IP Address", g_cameraipaddress);
 
     return RUN_ALL_TESTS();
 }
