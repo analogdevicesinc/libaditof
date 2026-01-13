@@ -18,6 +18,8 @@
 using namespace aditof;
 
 std::string g_cameraipaddress = "";
+bool g_savelastframe = false;
+std::string g_timestamp;
 
 struct ModeDetails_struct {
     uint16_t width;
@@ -156,6 +158,32 @@ TEST_F(CameraTestFixture, CameraDetailsAccessible) {
     }
 }
 
+#include <fstream>
+Status save_frame(aditof::Frame &frame, std::string frameType,
+                  const int &mode_num) {
+
+    uint16_t *data1;
+    FrameDataDetails fDetails;
+    Status status = Status::OK;
+    status = frame.getData(frameType, &data1);
+    if (status != Status::OK) {
+        return status;
+    }
+
+    if (!data1) {
+        return status;
+    }
+
+    std::ofstream g("out_" + frameType + "_" + fDetails.type + "mode_" +
+                        std::to_string(mode_num) + "_" + g_timestamp + ".bin",
+                    std::ios::binary);
+    frame.getDataDetails(frameType, fDetails);
+    g.write((char *)data1, fDetails.width * fDetails.height * sizeof(uint16_t));
+    g.close();
+
+    return status;
+}
+
 TEST_F(CameraTestFixture, CameraGetFrames) {
     if (!has_camera) {
         GTEST_SKIP() << "No camera available for testing";
@@ -169,6 +197,7 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
     Status init_status = camera->initialize();
     
     if (init_status == Status::OK) {
+
         Status status = camera->setMode(g_mode);
         ASSERT_TRUE(status == Status::OK);
 
@@ -180,9 +209,10 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
 
         auto startTime = std::chrono::steady_clock::now();
         uint16_t framesReceived = 0;
+        uint32_t frameNumber = 0;
 
+        aditof::Frame frame;
         for (uint16_t cnt = 0; cnt < g_num_frames; cnt++) {
-            aditof::Frame frame;
             status = camera->requestFrame(&frame);
             if (status != Status::OK) {
                 status = camera->stop();
@@ -199,6 +229,23 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
             frame.getDataDetails("ab", fDetails);
             ASSERT_TRUE(fDetails.width == crosbyModeDetails[g_mode].width);
             ASSERT_TRUE(fDetails.height == crosbyModeDetails[g_mode].height);
+
+            aditof::Metadata metadata;
+            status = frame.getMetadataStruct(metadata);
+            ASSERT_TRUE(status == Status::OK);
+
+            if (frameNumber == 0) {
+                frameNumber = metadata.frameNumber;
+            } else {
+                if (metadata.frameNumber != frameNumber + 1) {
+                    ADD_FAILURE() << "Expected Frame Number: " << frameNumber + 1 << " Got: " << metadata.frameNumber;
+                }
+                frameNumber = metadata.frameNumber;
+            }
+
+            ASSERT_TRUE(metadata.imagerMode == g_mode);
+            ASSERT_TRUE(metadata.width == crosbyModeDetails[g_mode].width);
+            ASSERT_TRUE(metadata.height == crosbyModeDetails[g_mode].height);
         }
 
         auto endTime = std::chrono::steady_clock::now();
@@ -207,6 +254,12 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
 
         status = camera->stop();
         ASSERT_TRUE(status == Status::OK);
+
+        if (g_savelastframe && framesReceived > 0) {
+            status = save_frame(frame, "ab", g_mode);
+            status = save_frame(frame, "depth", g_mode);
+            ASSERT_TRUE(status == Status::OK);
+        }
 
         ::testing::Test::RecordProperty("frames_received", framesReceived);
         ::testing::Test::RecordProperty("elapsed_seconds", seconds);
@@ -232,26 +285,28 @@ int main(int argc, char** argv) {
             g_module = arg.substr(9);  // Extract module after "--module="
         } else if (arg.find("--mode=") == 0) {
             g_mode = static_cast<uint16_t>(std::stoi(arg.substr(7)));  // Extract mode after "--mode="
-        } else if (arg.find("--num_frames=") == 0) {
-            g_num_frames = static_cast<uint16_t>(std::stoi(arg.substr(13)));  // Extract num_frames after "--num_frames="
+        } else if (arg.find("--frames=") == 0) {
+            g_num_frames = static_cast<uint16_t>(std::stoi(arg.substr(9)));  // Extract frames after "--frames="
         } else if (arg.find("--fps=") == 0) {
             g_fps = static_cast<uint16_t>(std::stoi(arg.substr(6)));  // Extract fps after "--fps="
+        } else if (arg.find("--save") == 0 || arg.find("-h") == 0) {
+            g_savelastframe = true;
         } else if (arg.find("--ip=") == 0) {
             g_cameraipaddress = arg.substr(5);  // Extract IP address after "--ip="
-        }  else if (arg == "--help" || arg == "-h") {
+        } else if (arg == "--help" || arg == "-h") {
             bHelp = true;
         }
     }
 
     // Automatically add --gtest_output with timestamped filename
-    std::string timestamp = getUTCTimestamp();
+    g_timestamp = getUTCTimestamp();
     std::string execName = argv[0];
     // Extract just the executable name without path
     size_t lastSlash = execName.find_last_of("/\\");
     if (lastSlash != std::string::npos) {
         execName = execName.substr(lastSlash + 1);
     }
-    std::string gtestOutput = "--gtest_output=json:report_" + execName + "_" + timestamp + ".json";
+    std::string gtestOutput = "--gtest_output=json:report_" + execName + "_" + g_timestamp + ".json";
     
     // Create new argv with the additional argument
     std::vector<char*> newArgv;
@@ -267,8 +322,9 @@ int main(int argc, char** argv) {
         std::cout << "Usage: " << argv[0] << " [--module=<module_name>] [--mode=<mode_number>] [--num_frames=<number_of_frames>] [--fps=<frames_per_second>] [--help|-h]" << std::endl;
         std::cout << "  --module: Specify the camera module (default: crosby)" << std::endl;
         std::cout << "  --mode: Specify the camera mode (default: 1)" << std::endl;
-        std::cout << "  --num_frames: Specify the number of frames to capture (default: 1)" << std::endl;
+        std::cout << "  --frames: Specify the number of frames to capture (default: 1)" << std::endl;
         std::cout << "  --fps: Specify the frames per second (default: 10)" << std::endl;
+        std::cout << "  --save: Save the last captured frame to a binary file" << std::endl;
         std::cout << "  --ip: Specify the camera IP address" << std::endl;
         std::cout << std::endl;
     }
