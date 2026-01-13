@@ -228,7 +228,7 @@ if (BUILD_TESTING)
     # Configure Google Test
     set(BUILD_GMOCK ON CACHE BOOL "Enable building Google Mock")
     set(INSTALL_GTEST OFF CACHE BOOL "Disable installation of googletest")
-    add_subdirectory(extern/gtest)
+    add_subdirectory(dependencies/third-party/gtest)
     add_subdirectory(tests)
     enable_testing()
 endif()
