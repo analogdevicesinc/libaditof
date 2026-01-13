@@ -31,6 +31,7 @@ option(WITH_SUBMODULES "Use submodules to build the library" ON)
 option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
 option(RECV_ASYNC "Receive the frames Asynchronously" ON)
 option(BUILD_TESTING "Build tests?" OFF)
+set(SOM_TYPE "Dual" CACHE STRING "Which SoM SDK is building for?")
 
 ######################### Target based Options ################################
 option(NXP "Set to ON when building on NXP" OFF)
@@ -129,6 +130,13 @@ endif()
 
 if (WITH_NETWORK)
         add_definitions(-DHAS_NETWORK)
+endif()
+
+if(SOM_TYPE STREQUAL "Dual")
+        message("Building for Dual pulsatrix")
+        add_definitions(-DDUAL)
+else()
+        add_definitions(-DSINGLE)
 endif()
 
 set(RESOURCES_DIR "${CMAKE_BINARY_DIR}/resources")
