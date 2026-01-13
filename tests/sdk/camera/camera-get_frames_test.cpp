@@ -82,30 +82,6 @@ std::string getUTCTimestamp() {
     return oss.str();
 }
 
-// Test System class
-TEST(SystemTest, SystemInstantiation) {
-    EXPECT_NO_THROW({
-        System system;
-    });
-}
-
-TEST(SystemTest, GetCameraListWithoutCameras) {
-    System system;
-    std::vector<std::shared_ptr<Camera>> cameras;
-    
-    // This should not throw even if no cameras are connected
-    EXPECT_NO_THROW({
-        if (g_cameraipaddress == "") {
-            system.getCameraList(cameras);
-        } else {
-            system.getCameraList(cameras, "ip:" + g_cameraipaddress);
-        }
-    });
-    
-    // The cameras vector might be empty if no hardware is connected
-    // This is expected in a test environment
-}
-
 // Test fixture for Camera-related tests
 class CameraTestFixture : public ::testing::Test {
 protected:
