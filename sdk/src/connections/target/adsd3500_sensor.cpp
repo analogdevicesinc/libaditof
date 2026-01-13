@@ -71,7 +71,7 @@
 #define CTRL_CONFIDENCE_BITS (0x9819d4)
 #define CTRL_FSYNC_TRIGGER (0x9819d7)
 
-#if defined(NXP) || defined(RPI)
+#if defined(NXP)
 #undef V4L2_CID_AD_DEV_CHIP_CONFIG
 #define V4L2_CID_AD_DEV_CHIP_CONFIG (0x9819e1)
 #undef CTRL_SET_MODE
@@ -872,10 +872,10 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
         int bitDepth = (type.pixelFormatIndex == 1) ? 12 : 8;
         bool mediaConfigured = platform::rpi::configureMediaPipeline(
-            mediaDevice,              // dynamically detected media device
-            m_driverPath,             // video device (/dev/video0)
-            sensorEntity,             // dynamically detected sensor entity
-            type.baseResolutionWidth, // sensor width (e.g., 1024)
+            mediaDevice,            // dynamically detected media device
+            m_driverPath,           // video device (/dev/video0)
+            sensorEntity,           // dynamically detected sensor entity
+            type.frameWidthInBytes, // sensor width (e.g., 1024)
             type.frameHeightInBytes, // total V4L2 height with all planes (e.g., 4096 for mode 0)
             bitDepth // bit depth based on pixel format
         );
@@ -1724,6 +1724,7 @@ aditof::Status Adsd3500Sensor::adsd3500_write_payload(uint8_t *payload,
 
 aditof::Status Adsd3500Sensor::adsd3500_reset() {
     using namespace aditof;
+    aditof::Status status = aditof::Status::OK;
 
 #if defined(NXP)
     m_chipResetDone = false;
@@ -1812,6 +1813,60 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
         gpio11.close();
     }
     adsd3500_unregister_interrupt_callback(cb);
+#elif defined(RPI)
+    m_chipResetDone = false;
+    m_adsd3500Status = Adsd3500Status::OK;
+    aditof::SensorInterruptCallback cb = [this](Adsd3500Status status) {
+        m_adsd3500Status = status;
+        m_chipResetDone = true;
+    };
+    status = adsd3500_register_interrupt_callback(cb);
+    bool interruptsAvailable = (status == Status::OK);
+    // RPI: Toggle GPIO34 (ISP_RST) to reset ADSD3500
+    LOG(INFO) << "Resetting ADSD3500 via GPIO34 (ISP_RST)";
+
+    // Find GPIO34 number from sysfs
+    FILE *fp = popen("cat /sys/kernel/debug/gpio 2>/dev/null | grep -i GPIO34 "
+                     "| sed -E 's/.*gpio-([0-9]+).*/\\1/'",
+                     "r");
+    if (fp) {
+        char gpio_num[16] = {0};
+        if (fgets(gpio_num, sizeof(gpio_num), fp)) {
+            int gpio = atoi(gpio_num);
+            if (gpio > 0) {
+                char cmd[256];
+                snprintf(cmd, sizeof(cmd),
+                         "echo 0 > /sys/class/gpio/gpio%d/value", gpio);
+                system(cmd);
+                usleep(1000000); // 1 second
+                snprintf(cmd, sizeof(cmd),
+                         "echo 1 > /sys/class/gpio/gpio%d/value", gpio);
+                system(cmd);
+                if (interruptsAvailable) {
+                    LOG(INFO) << "Waiting for ADSD3500 to reset.";
+                    int secondsTimeout = 10;
+                    int secondsWaited = 0;
+                    int secondsWaitingStep = 1;
+                    while (!m_chipResetDone && secondsWaited < secondsTimeout) {
+                        LOG(INFO) << ".";
+                        std::this_thread::sleep_for(
+                            std::chrono::seconds(secondsWaitingStep));
+                        secondsWaited += secondsWaitingStep;
+                    }
+                    LOG(INFO) << "Waited: " << secondsWaited << " seconds";
+                } else {
+                    usleep(10000000);
+                }
+                LOG(INFO) << "ADSD3500 reset complete via GPIO, " << gpio;
+
+            } else {
+                LOG(WARNING) << "Could not find GPIO34, reset skipped";
+            }
+        }
+        pclose(fp);
+    } else {
+        LOG(WARNING) << "Could not access GPIO debug interface, reset skipped";
+    }
 #endif
     return aditof::Status::OK;
 }
