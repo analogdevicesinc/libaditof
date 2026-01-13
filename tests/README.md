@@ -2,7 +2,7 @@
 
 In the *libaditof* folder:
 ```
-git submodule update --init extern/gtest
+git submodule update --init gtest
 mkdir build && cd build
 cmake -DBUILD_TESTING=ON -DNVIDIA=1 ..
 cmake --build . --config RELEASE -j 6
