@@ -1,0 +1,24 @@
+services:
+  aditof:
+    image: adcam-build-test
+    devices:
+      - /dev/media0:/dev/media0
+      - /dev/video0:/dev/video0
+      - /dev/v4l-subdev0:/dev/v4l-subdev0
+      - /dev/v4l-subdev1:/dev/v4l-subdev1
+      # NVIDIA ISP (Image Signal Processor) devices
+      - /dev/nvhost-ctrl-isp:/dev/nvhost-ctrl-isp
+      - /dev/nvhost-ctrl-isp-thi:/dev/nvhost-ctrl-isp-thi
+      # NVIDIA CSI (Camera Serial Interface) devices
+      - /dev/nvhost-ctrl-nvcsi:/dev/nvhost-ctrl-nvcsi
+      # NVIDIA VI (Video Input) devices
+      - /dev/nvhost-ctrl-vi0:/dev/nvhost-ctrl-vi0
+      - /dev/nvhost-ctrl-vi0-thi:/dev/nvhost-ctrl-vi0-thi
+      - /dev/nvhost-ctrl-vi1:/dev/nvhost-ctrl-vi1
+      - /dev/nvhost-ctrl-vi1-thi:/dev/nvhost-ctrl-vi1-thi
+    volumes:
+      - /sys:/sys
+    privileged: true
+    stdin_open: true
+    tty: true
+    working_dir: /workspace/libaditof/build
