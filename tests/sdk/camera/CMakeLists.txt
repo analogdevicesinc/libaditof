@@ -7,5 +7,5 @@ include(GoogleTest)
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/AditofTest.cmake)
 
 # To add more tests, just add one line per test:
-add_aditof_test(camera-get_frames_test camera-get_frames_test.cpp)
+add_aditof_test(camera-get_frames camera-get_frames.cpp)
 add_aditof_test(camera-adsd3500_reset camera-adsd3500_reset.cpp)
