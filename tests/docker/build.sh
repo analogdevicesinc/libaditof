@@ -143,13 +143,21 @@ if [ $? -eq 0 ]; then
     echo "     sudo chmod +x /usr/local/bin/docker-compose"
     echo ""
     echo "  2. Run a command in the container with device access:"
-    echo "     docker-compose run aditof ./tests/sdk/bin/camera-adsd3500_reset"
+    echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/libaditof/build/tests/sdk/bin/camera-adsd3500_reset"
+    echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/libaditof/build/tests/sdk/bin/camera-get_frames --mode=3"
     echo ""
     echo "  3. Or, get an interactive shell:"
     echo "     docker-compose run aditof /bin/bash"
     echo ""
     echo "Alternative: Run directly with docker:"
     echo "  sudo docker run -it --device /dev/media0 --device /dev/video0 $IMAGE_TAG /bin/bash"
+
+    if [ -d "./out" ]; then
+        echo ""
+        echo "Note: The ./out directory exists and can be used to share files between host and container."
+    else
+        mkdir ./out
+    fi
 else
     echo ""
     echo "✗ Docker build failed"
