@@ -37,7 +37,7 @@ RUN mkdir -p build
 WORKDIR /workspace/libaditof/build
 
 # Configure with CMake - output will be visible during docker build
-RUN cmake -DBUILD_TESTING=ON -DNVIDIA=1 -DWITH_NETWORK=OFF ..
+RUN cmake -DBUILD_TESTING=ON -DNVIDIA=1 -DWITH_NETWORK=OFF -DWITH_SUBMODULES=OFF ..
 
 # Build the project with verbose output
 #RUN cmake --build . -j ${BUILD_JOBS} --verbose
