@@ -41,6 +41,7 @@
 #include <unordered_map>
 
 #include "buffer_processor.h"
+#include "nv12_to_rgb.h"
 
 uint8_t depthComputeOpenSourceEnabled = 0;
 
@@ -378,22 +379,54 @@ void BufferProcessor::captureRGBFrameThread() {
 
         auto captureStart = std::chrono::high_resolution_clock::now();
 
-        // Capture RGB frame from sensor (GStreamer backend with optimized pull model)
-        aditof::RGBFrame rgbFrame;
-        aditof::Status status = m_rgbSensor->getFrame(rgbFrame, 200);
+        // Capture RGB frame from sensor (returns NV12 format data)
+        aditof::RGBFrame nv12Frame;
+        aditof::Status status = m_rgbSensor->getFrame(nv12Frame, 200);
 
         auto captureEnd = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> captureTime =
             captureEnd - captureStart;
 
-        if (status == aditof::Status::OK && rgbFrame.isValid()) {
-            // Push RGB frame to queue
-            if (m_rgb_frame_Q.push(std::move(rgbFrame))) {
-                totalRGBFramesCaptured++;
-                totalRGBCaptureTime += captureTime.count();
-                m_totalRGBCaptured++;
+        if (status == aditof::Status::OK && nv12Frame.isValid()) {
+            // Convert NV12 to BGR format for OpenGL/viewer compatibility
+            // NV12: 1.5 bytes/pixel (Y + UV/2), BGR: 3 bytes/pixel
+            auto convertStart = std::chrono::high_resolution_clock::now();
+
+            aditof::RGBFrame bgrFrame;
+            bgrFrame.width = nv12Frame.width;
+            bgrFrame.height = nv12Frame.height;
+            bgrFrame.timestamp = nv12Frame.timestamp;
+
+            // Convert NV12 to BGR (SIMD-optimized)
+            status =
+                aditof::convertNV12toBGR(nv12Frame.data, bgrFrame.data,
+                                         nv12Frame.width, nv12Frame.height);
+
+            auto convertEnd = std::chrono::high_resolution_clock::now();
+            std::chrono::duration<double, std::milli> convertTime =
+                convertEnd - convertStart;
+
+            if (status == aditof::Status::OK) {
+                // Push converted BGR frame to queue
+                if (m_rgb_frame_Q.push(std::move(bgrFrame))) {
+                    totalRGBFramesCaptured++;
+                    totalRGBCaptureTime +=
+                        (captureTime.count() + convertTime.count());
+                    m_totalRGBCaptured++;
+
+                    // Log conversion performance occasionally
+                    if (totalRGBFramesCaptured % 100 == 0) {
+                        LOG(INFO)
+                            << "RGB Frame #" << totalRGBFramesCaptured
+                            << ": Capture=" << captureTime.count()
+                            << "ms, Convert=" << convertTime.count() << "ms";
+                    }
+                } else {
+                    LOG(WARNING) << "RGB frame queue full, dropping frame";
+                    m_totalRGBFailures++;
+                }
             } else {
-                LOG(WARNING) << "RGB frame queue full, dropping frame";
+                LOG(ERROR) << "NV12 to BGR conversion failed";
                 m_totalRGBFailures++;
             }
         } else {
