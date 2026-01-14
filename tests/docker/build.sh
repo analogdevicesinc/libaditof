@@ -143,7 +143,7 @@ if [ $? -eq 0 ]; then
     echo "     sudo chmod +x /usr/local/bin/docker-compose"
     echo ""
     echo "  2. Run a command in the container with device access:"
-    echo "     docker-compose run aditof ./tests/sdk/camera/camera-adsd3500_reset"
+    echo "     docker-compose run aditof ./tests/sdk/bin/camera-adsd3500_reset"
     echo ""
     echo "  3. Or, get an interactive shell:"
     echo "     docker-compose run aditof /bin/bash"
