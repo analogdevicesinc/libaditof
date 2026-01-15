@@ -106,8 +106,6 @@ bool compareJsonFiles(const std::string& jsonFile1,
                 
                 // Compare with small epsilon for floating point
                 if (std::abs(val1_double - val2_double) > 1e-9) {
-                    std::cout << "Difference found at '" << newPath << "': " 
-                              << val1_double << " vs " << val2_double << std::endl;
                     differences[newPath] = {val1_double, val2_double};
                 }
             }
@@ -116,7 +114,6 @@ bool compareJsonFiles(const std::string& jsonFile1,
                 const char* str1 = json_object_to_json_string(val);
                 const char* str2 = json_object_to_json_string(val2);
                 if (std::string(str1) != std::string(str2)) {
-                    std::cout << "Difference found at '" << newPath << "'" << std::endl;
                     differences[newPath] = {std::nan(""), std::nan("")};
                 }
             }
@@ -319,6 +316,7 @@ protected:
         cameras.clear();
         camera.reset();
         std::remove(jsonFilePath.c_str());
+        std::remove(jsonFilePath2.c_str());
     }
 
     std::unique_ptr<System> system;
@@ -326,7 +324,8 @@ protected:
     std::shared_ptr<Camera> camera;
     bool has_camera = false;
     aditof::SensorInterruptCallback callback;
-    const std::string jsonFilePath = "depth_params.json";
+    const std::string jsonFilePath = "/tmp/depth_params.json";
+    const std::string jsonFilePath2 = "/tmp/depth_params2.json";
 };
 
 TEST_F(CameraTestFixture, SystemHasCameraListMethod) {
@@ -348,7 +347,7 @@ TEST_F(CameraTestFixture, CameraDetailsAccessible) {
     }
 }
 
-TEST_F(CameraTestFixture, adsd3500SoftReset) {
+TEST_F(CameraTestFixture, parametercomparedefault) {
     if (!has_camera) {
         GTEST_SKIP() << "No camera available for testing";
     }
@@ -370,7 +369,41 @@ TEST_F(CameraTestFixture, adsd3500SoftReset) {
         // Compare JSON file with reference
          std::map<std::string, std::pair<double, double>> differences;
         result = compareJsonFiles(g_moduleJSONMap.at(g_module), jsonFilePath, differences);
+        // Print differences if any
+        for (const auto& diff : differences) {
+            RecordProperty("Difference at '" + diff.first + "'",
+                              std::to_string(diff.second.first) + " vs " + std::to_string(diff.second.second));
+            std::cout << "Difference at '" << diff.first << "': " 
+                      << diff.second.first << " vs " << diff.second.second << std::endl;
+        }
         ASSERT_TRUE(result == true);
+    
+    } else {
+        GTEST_SKIP() << "Camera initialization failed, skipping test";
+    }
+}
+
+TEST_F(CameraTestFixture, parameterchangevalues) {
+    if (!has_camera) {
+        GTEST_SKIP() << "No camera available for testing";
+    }
+
+    bool result;
+    Status init_status = camera->initialize();
+    
+    if (init_status == Status::OK) {
+
+        std::remove(jsonFilePath.c_str());
+        Status status = camera->saveDepthParamsToJsonFile(jsonFilePath);
+        ASSERT_TRUE(status == Status::OK);
+
+        status = camera->saveDepthParamsToJsonFile(jsonFilePath2);
+        ASSERT_TRUE(status == Status::OK);
+
+        std::vector<uint8_t> available_modes;
+        status = camera->getAvailableModes(available_modes);
+        ASSERT_TRUE(status == Status::OK);
+        ASSERT_FALSE(available_modes.empty());
 
         // Log each parameter
         std::map<std::string, double> values;
@@ -383,10 +416,15 @@ TEST_F(CameraTestFixture, adsd3500SoftReset) {
                         g_depthparams,
                         values);
             ASSERT_TRUE(result);
-
-            for (const auto &key : values) {
-                RecordProperty("depth-compute_" + std::to_string(mode) + "_" + key.first, values[key.first]);
+            // Modify each parameter by adding 1.0
+            for (auto& param : values) {
+                param.second += 1.0;
             }
+            result = changeJsonParameter(jsonFilePath,
+                        std::to_string(mode),
+                        "depth-compute",
+                        values);
+            ASSERT_TRUE(result);
 
             values.clear();
             result = readJsonParameter(jsonFilePath,
@@ -395,9 +433,35 @@ TEST_F(CameraTestFixture, adsd3500SoftReset) {
                         g_configurationparams,
                         values);
             ASSERT_TRUE(result);
+            // Modify each parameter by adding 1.0
+            for (auto& param : values) {
+                param.second += 1.0;
+            }
+            result = changeJsonParameter(jsonFilePath,
+                        std::to_string(mode),
+                        "configuration-parameters",
+                        values);
+            ASSERT_TRUE(result);
+        }
 
-            for (const auto &key : values) {
-                RecordProperty("configuration-parameters_" + std::to_string(mode) + "_" + key.first, values[key.first]);
+        // Make sure changed values are not lingering in the system
+        status = camera->loadDepthParamsFromJsonFile(jsonFilePath2);
+        ASSERT_TRUE(status == Status::OK);
+
+        // Load modified parameters
+        status = camera->loadDepthParamsFromJsonFile(jsonFilePath);
+        ASSERT_TRUE(status == Status::OK);
+
+        std::map<std::string, std::pair<double, double>> differences;
+        compareJsonFiles(jsonFilePath, jsonFilePath2, differences);
+        ASSERT_TRUE(result == true);
+        // Print differences if any
+        for (const auto& diff : differences) {
+            if (diff.second.first - 1 != diff.second.second) {
+                RecordProperty("Difference at '" + diff.first + "'",
+                                std::to_string(diff.second.first) + " vs " + std::to_string(diff.second.second));
+                std::cout << "Difference at '" << diff.first << "': " 
+                        << diff.second.first << " vs " << diff.second.second << std::endl;
             }
         }
     
