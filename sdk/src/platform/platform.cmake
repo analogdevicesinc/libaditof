@@ -23,7 +23,7 @@ elseif(RPI)
     set(PLATFORM_RESET_GPIO_PIN 34)   # Physical pin number for debugfs lookup
     set(PLATFORM_RESET_PULSE_US 100000)  # 100ms low pulse
     set(PLATFORM_RESET_DELAY_US 2000000) # 2s default delay
-    message(STATUS "Configured for Raspberry Pi platform, GPIO Pin=${PLATFORM_RESET_GPIO_PIN}")
+    message(STATUS "Configured for Raspberry Pi platform ")
     
 elseif(NXP)
     set(PLATFORM_NAME "NXP i.MX 8")
@@ -34,7 +34,7 @@ elseif(NXP)
     set(PLATFORM_RESET_GPIO_PIN 0)    # Configure with actual GPIO number
     set(PLATFORM_RESET_PULSE_US 1000000) # 1s low pulse
     set(PLATFORM_RESET_DELAY_US 7000000) # 7s default delay
-    message(STATUS "Configured for NXP i.MX platform, GPIO Pin=${PLATFORM_RESET_GPIO_PIN}")
+    message(STATUS "Configured for NXP i.MX platform ")
     
 else()
     message(FATAL_ERROR "No platform defined! Use -DNVIDIA=ON, -DRPI=ON, or -DNXP=ON")
