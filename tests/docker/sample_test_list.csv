@@ -1,3 +1,8 @@
 TestID,Execute,TestName,TestParameters
 CA0001,Y,camera-adsd3500_reset
-CA0002,Y,camera-get_frames,--mode=3 --fps=10
+CA0002,Y,camera-get_frames,--mode=1 --fps=5 --frames=100 --save
+CA0003,Y,camera-get_frames,--mode=1 --fps=10 --frames=100 --save
+CA0004,Y,camera-get_frames,--mode=1 --fps=15 --frames=100 --save
+CA0005,Y,camera-get_frames,--mode=1 --fps=20 --frames=100 --save
+CA0006,Y,camera-get_frames,--mode=1 --fps=25 --frames=100 --save
+CA0007,Y,camera-get_frames,--mode=1 --fps=30 --frames=100 --save
