@@ -62,18 +62,29 @@ class Platform {
     Status findToFSensors(std::vector<SensorInfo> &sensors);
     Status findRGBSensors(std::vector<RGBSensorInfo> &sensors);
 
-    Status parseMediaPipeline(const std::string &mediaDevice,
-                              std::string &devPath, std::string &subdevPath,
-                              std::string &deviceName);
-
+    /**
+     * @brief Reset the ToF sensor via GPIO
+     * @param[in] waitForInterrupt If true, wait for sensor interrupt callback
+     * @param[in,out] resetDone Pointer to flag set by interrupt handler when reset completes
+     * @param[in] timeoutSeconds Maximum seconds to wait for interrupt (default: 10)
+     * @return Status::OK on success, error status otherwise
+     * @note Platform-specific implementation (RPI/NVIDIA/NXP)
+     */
     Status resetSensor(bool waitForInterrupt = false, bool *resetDone = nullptr,
                        int timeoutSeconds = 10);
 
-    // Static accessor for platform instance
+    /**
+     * @brief Get singleton instance of Platform
+     * @return Reference to the global Platform instance
+     */
     static Platform &getInstance();
 
   private:
     std::string getVersionOfComponent(const std::string &component) const;
+
+    Status parseMediaPipeline(const std::string &mediaDevice,
+                              std::string &devPath, std::string &subdevPath,
+                              std::string &deviceName);
 };
 
 } // namespace platform
