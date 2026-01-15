@@ -271,6 +271,9 @@ int main(int argc, char** argv) {
             g_cameraipaddress = arg.substr(5);  // Extract IP address after "--ip="
         } else if (arg == "--help" || arg == "-h") {
             bHelp = true;
+        } else {
+            std::cout << "Unknown argument: " << arg << std::endl;
+            bHelp = true;
         }
     }
 
@@ -295,7 +298,7 @@ int main(int argc, char** argv) {
     int newArgc = argc + 1;
 
     if (bHelp) {
-        std::cout << "Usage: " << argv[0] << " [--module=<module_name>] [--mode=<mode_number>] [--num_frames=<number_of_frames>] [--fps=<frames_per_second>] [--help|-h]" << std::endl;
+        std::cout << "Usage: " << argv[0] << " [--module=<module_name>] [--mode=<mode_number>] [--num_frames=<number_of_frames>] [--fps=<frames_per_second>]  [--ip=<camera_ip_address>] [--save] [--help|-h]" << std::endl;
         std::cout << "  --module: Specify the camera module (default: crosby)" << std::endl;
         std::cout << "  --mode: Specify the camera mode (default: 1)" << std::endl;
         std::cout << "  --frames: Specify the number of frames to capture (default: 1)" << std::endl;
@@ -305,11 +308,15 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     ::testing::InitGoogleTest(&newArgc, newArgv.data());
+    if (bHelp) {
+        return 0;
+    }
 
     ::testing::Test::RecordProperty("Parameter module", g_module);
     ::testing::Test::RecordProperty("Parameter mode", g_mode);
     ::testing::Test::RecordProperty("Parameter num_frames", g_num_frames);
     ::testing::Test::RecordProperty("Parameter fps", g_fps);
+    ::testing::Test::RecordProperty("Parameter save", g_savelastframe);
     ::testing::Test::RecordProperty("Parameter IP Address", g_cameraipaddress);
 
     return RUN_ALL_TESTS();

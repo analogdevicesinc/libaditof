@@ -73,6 +73,9 @@ int main(int argc, char** argv) {
             g_cameraipaddress = arg.substr(5);  // Extract IP address after "--ip="
         }  else if (arg == "--help" || arg == "-h") {
             bHelp = true;
+        } else {
+            std::cout << "Unknown argument: " << arg << std::endl;
+            bHelp = true;
         }
     }
 
@@ -102,6 +105,9 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     ::testing::InitGoogleTest(&newArgc, newArgv.data());
+    if (bHelp) {
+        return 0;
+    }
     ::testing::Test::RecordProperty("Parameter IP Address", g_cameraipaddress);
 
     return RUN_ALL_TESTS();
