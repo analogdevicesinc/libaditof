@@ -21,6 +21,7 @@ function(add_aditof_test TEST_NAME)
             gtest_main
             aditof
             json-c
+            aditof_test_utils
     )
     
     # Include directories - assumes test is in tests/sdk/<category>/

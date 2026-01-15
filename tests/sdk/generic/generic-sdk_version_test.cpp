@@ -5,11 +5,8 @@
 #include <aditof/frame.h>
 #include <aditof/camera_definitions.h>
 #include <aditof/status_definitions.h>
+#include <aditof_test_utils.h>
 #include <string>
-#include <chrono>
-#include <iomanip>
-#include <sstream>
-#include <ctime>
 #include <vector>
 
 // Use: ./sdk_version_test --version=6.2.0
@@ -18,16 +15,6 @@ using namespace aditof;
 
 // Global variable to store the expected version from command line
 std::string g_expectedVersion = "6.2.0";
-
-// Generate UTC timestamp in format: YYYYMMDD_HHMMSS
-std::string getUTCTimestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t_now), "%Y%m%d_%H%M%S");
-    return oss.str();
-}
 
 // Test version information
 TEST(VersionTest, VersionMacrosAreDefined) {
@@ -51,50 +38,18 @@ TEST(VersionTest, ApiVersionReturnsNonEmptyString) {
 }
 
 int main(int argc, char** argv) {
-    bool bHelp = false;
-    // Parse custom command-line argument for expected version
-    for (int i = 1; i < argc; ++i) {
-        std::string arg(argv[i]);
-        if (arg.find("--version=") == 0) {
-            g_expectedVersion = arg.substr(10);  // Extract version after "--version="
-        }  else if (arg == "--help" || arg == "-h") {
-            bHelp = true;
-        } else {
-            std::cout << "Unknown argument: " << arg << std::endl;
-            bHelp = true;
-        }
-    }
-
-    // Automatically add --gtest_output with timestamped filename
-    std::string timestamp = getUTCTimestamp();
-    std::string execName = argv[0];
-    // Extract just the executable name without path
-    size_t lastSlash = execName.find_last_of("/\\");
-    if (lastSlash != std::string::npos) {
-        execName = execName.substr(lastSlash + 1);
-    }
-    std::string gtestOutput = "--gtest_output=json:report_" + execName + "_" + timestamp + ".json";
+    // Create test runner
+    aditof_test::TestRunner runner(argv[0]);
     
-    // Create new argv with the additional argument
-    std::vector<char*> newArgv;
-    for (int i = 0; i < argc; ++i) {
-        newArgv.push_back(argv[i]);
-    }
-    newArgv.push_back(const_cast<char*>(gtestOutput.c_str()));
-    newArgv.push_back(nullptr);
+    // Add custom arguments
+    runner.addArgument({"--version=", &g_expectedVersion, "Specify the expected API version (default: 6.2.0)"});
     
-    int newArgc = argc + 1;
-
-    if (bHelp) {
-        std::cout << "Usage: " << argv[0] << " [--version=<expected_version>] [--help|-h]" << std::endl;
-        std::cout << "  --version: Specify the expected API version (default: 6.2.0)" << std::endl;
-        std::cout << std::endl;
+    // Initialize (parses args, sets up GTest output)
+    int initResult = runner.initialize(argc, argv);
+    if (initResult != -1) {
+        return initResult;  // Help was shown or error occurred
     }
-    ::testing::InitGoogleTest(&newArgc, newArgv.data());
-    if (bHelp) {
-        return 0;
-    }
-    ::testing::Test::RecordProperty("Parameter expected_version", g_expectedVersion);
-
-    return RUN_ALL_TESTS();
+    
+    // Run tests
+    return runner.runTests();
 }

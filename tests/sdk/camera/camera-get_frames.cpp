@@ -1,11 +1,8 @@
 #include <gtest/gtest.h>
 #include <aditof/version.h>
 #include <aditof/system.h>
-#include <chrono>
+#include <aditof_test_utils.h>
 #include <iostream>
-#include <iomanip>
-#include <sstream>
-#include <ctime>
 #include <vector>
 #include <aditof/camera.h>
 #include <aditof/frame.h>
@@ -14,6 +11,7 @@
 #include <array>
 #include <map>
 #include <cmath>
+#include <fstream>
 
 using namespace aditof;
 
@@ -71,16 +69,6 @@ std::string g_module = "crosby";
 uint16_t g_mode = 1;
 uint16_t g_num_frames = 1;
 uint16_t g_fps = 10;
-
-// Generate UTC timestamp in format: YYYYMMDD_HHMMSS
-std::string getUTCTimestamp() {
-    auto now = std::chrono::system_clock::now();
-    auto time_t_now = std::chrono::system_clock::to_time_t(now);
-    
-    std::ostringstream oss;
-    oss << std::put_time(std::gmtime(&time_t_now), "%Y%m%d_%H%M%S");
-    return oss.str();
-}
 
 // Test fixture for Camera-related tests
 class CameraTestFixture : public ::testing::Test {
@@ -252,72 +240,26 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
 }
 
 int main(int argc, char** argv) {
-
-    bool bHelp = false;
-    // Parse custom command-line argument for expected version
-    for (int i = 1; i < argc; ++i) {
-        std::string arg(argv[i]);
-        if (arg.find("--module=") == 0) {
-            g_module = arg.substr(9);  // Extract module after "--module="
-        } else if (arg.find("--mode=") == 0) {
-            g_mode = static_cast<uint16_t>(std::stoi(arg.substr(7)));  // Extract mode after "--mode="
-        } else if (arg.find("--frames=") == 0) {
-            g_num_frames = static_cast<uint16_t>(std::stoi(arg.substr(9)));  // Extract frames after "--frames="
-        } else if (arg.find("--fps=") == 0) {
-            g_fps = static_cast<uint16_t>(std::stoi(arg.substr(6)));  // Extract fps after "--fps="
-        } else if (arg.find("--save") == 0 || arg.find("-h") == 0) {
-            g_savelastframe = true;
-        } else if (arg.find("--ip=") == 0) {
-            g_cameraipaddress = arg.substr(5);  // Extract IP address after "--ip="
-        } else if (arg == "--help" || arg == "-h") {
-            bHelp = true;
-        } else {
-            std::cout << "Unknown argument: " << arg << std::endl;
-            bHelp = true;
-        }
-    }
-
-    // Automatically add --gtest_output with timestamped filename
-    g_timestamp = getUTCTimestamp();
-    std::string execName = argv[0];
-    // Extract just the executable name without path
-    size_t lastSlash = execName.find_last_of("/\\");
-    if (lastSlash != std::string::npos) {
-        execName = execName.substr(lastSlash + 1);
-    }
-    std::string gtestOutput = "--gtest_output=json:report_" + execName + "_" + g_timestamp + ".json";
+    // Create test runner
+    aditof_test::TestRunner runner(argv[0]);
     
-    // Create new argv with the additional argument
-    std::vector<char*> newArgv;
-    for (int i = 0; i < argc; ++i) {
-        newArgv.push_back(argv[i]);
-    }
-    newArgv.push_back(const_cast<char*>(gtestOutput.c_str()));
-    newArgv.push_back(nullptr);
+    // Add custom arguments
+    runner.addArgument({"--module=", &g_module, "Specify the camera module (default: crosby)"});
+    runner.addArgument({"--mode=", &g_mode, "Specify the camera mode (default: 1)"});
+    runner.addArgument({"--frames=", &g_num_frames, "Specify the number of frames to capture (default: 1)"});
+    runner.addArgument({"--fps=", &g_fps, "Specify the frames per second (default: 10)"});
+    runner.addArgument({"--save", &g_savelastframe, "Save the last captured frame to a binary file"});
+    runner.addArgument({"--ip=", &g_cameraipaddress, "Specify the camera IP address"});
     
-    int newArgc = argc + 1;
-
-    if (bHelp) {
-        std::cout << "Usage: " << argv[0] << " [--module=<module_name>] [--mode=<mode_number>] [--num_frames=<number_of_frames>] [--fps=<frames_per_second>]  [--ip=<camera_ip_address>] [--save] [--help|-h]" << std::endl;
-        std::cout << "  --module: Specify the camera module (default: crosby)" << std::endl;
-        std::cout << "  --mode: Specify the camera mode (default: 1)" << std::endl;
-        std::cout << "  --frames: Specify the number of frames to capture (default: 1)" << std::endl;
-        std::cout << "  --fps: Specify the frames per second (default: 10)" << std::endl;
-        std::cout << "  --save: Save the last captured frame to a binary file" << std::endl;
-        std::cout << "  --ip: Specify the camera IP address" << std::endl;
-        std::cout << std::endl;
+    // Initialize (parses args, sets up GTest output)
+    int initResult = runner.initialize(argc, argv);
+    if (initResult != -1) {
+        return initResult;  // Help was shown or error occurred
     }
-    ::testing::InitGoogleTest(&newArgc, newArgv.data());
-    if (bHelp) {
-        return 0;
-    }
-
-    ::testing::Test::RecordProperty("Parameter module", g_module);
-    ::testing::Test::RecordProperty("Parameter mode", g_mode);
-    ::testing::Test::RecordProperty("Parameter num_frames", g_num_frames);
-    ::testing::Test::RecordProperty("Parameter fps", g_fps);
-    ::testing::Test::RecordProperty("Parameter save", g_savelastframe);
-    ::testing::Test::RecordProperty("Parameter IP Address", g_cameraipaddress);
-
-    return RUN_ALL_TESTS();
+    
+    // Set timestamp for save_frame function
+    g_timestamp = runner.getTimestamp();
+    
+    // Run tests
+    return runner.runTests();
 }
