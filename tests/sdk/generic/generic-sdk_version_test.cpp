@@ -59,6 +59,9 @@ int main(int argc, char** argv) {
             g_expectedVersion = arg.substr(10);  // Extract version after "--version="
         }  else if (arg == "--help" || arg == "-h") {
             bHelp = true;
+        } else {
+            std::cout << "Unknown argument: " << arg << std::endl;
+            bHelp = true;
         }
     }
 
@@ -88,7 +91,9 @@ int main(int argc, char** argv) {
         std::cout << std::endl;
     }
     ::testing::InitGoogleTest(&newArgc, newArgv.data());
-
+    if (bHelp) {
+        return 0;
+    }
     ::testing::Test::RecordProperty("Parameter expected_version", g_expectedVersion);
 
     return RUN_ALL_TESTS();
