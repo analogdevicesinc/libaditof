@@ -4,6 +4,8 @@
 #include <iomanip>
 #include <sstream>
 #include <ctime>
+#include <cstdlib>
+#include <climits>
 
 namespace aditof_test {
 
@@ -22,12 +24,24 @@ TestRunner::TestRunner(const std::string& programName)
     , helpRequested_(false)
     , strictArgs_(true)
     , preTestValidator_(nullptr)
-    , newArgc_(0) {
+    , newArgc_(0)
+    , executablePath_(programName) {
     
     // Extract just the executable name without path
     size_t lastSlash = execName_.find_last_of("/\\");
     if (lastSlash != std::string::npos) {
         execName_ = execName_.substr(lastSlash + 1);
+    }
+    
+    // Resolve full executable path and extract directory
+    char resolvedPath[PATH_MAX];
+    if (realpath(programName.c_str(), resolvedPath) != nullptr) {
+        std::string fullPath(resolvedPath);
+        // Remove executable name, keep only directory
+        size_t dirSlash = fullPath.find_last_of('/');
+        if (dirSlash != std::string::npos) {
+            executablePath_ = fullPath.substr(0, dirSlash);
+        }
     }
     
     timestamp_ = getUTCTimestamp();
