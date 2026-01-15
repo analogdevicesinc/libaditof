@@ -6,6 +6,8 @@
 #include <vector>
 #include <map>
 #include <functional>
+#include <cstdlib>
+#include <climits>
 #include <aditof/camera.h>
 #include <aditof/frame.h>
 #include <aditof/camera_definitions.h>
@@ -15,6 +17,8 @@
 #include <cmath>
 #include <thread>
 #include <json.h>
+#include <cstdlib>
+#include <limits.h>
 
 using namespace aditof;
 
@@ -45,7 +49,7 @@ const std::vector<std::string> g_configurationparams = {
 };
 
 std::string g_module = "crosby";
-const std::map<std::string, std::string> g_moduleJSONMap = {
+std::map<std::string, std::string> g_moduleJSONMap = {
     {"crosby", "depth_params_crosby.json"},
     {"tembinv2", "depth_params_tembinv2.json"},
     {"mystic", "depth_params_mystic.json"}
@@ -494,6 +498,11 @@ int main(int argc, char** argv) {
         ::testing::Test::RecordProperty("Unknown Module", g_module);
         return false;
     });
+
+    std::string fullPath = runner.getExecutablePath();
+    for (const auto& module : g_moduleJSONMap) {
+        g_moduleJSONMap.at(module.first) =  fullPath + "/" + g_moduleJSONMap.at(module.first);
+    }
     
     // Run tests
     return runner.runTests();
