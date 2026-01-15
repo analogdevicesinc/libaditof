@@ -1,0 +1,3 @@
+TestID,Execute,TestName,TestParameters
+CA0001,Y,camera-adsd3500_reset
+CA0002,Y,camera-get_frames,--mode=3 --fps=10
