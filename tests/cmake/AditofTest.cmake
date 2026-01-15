@@ -20,12 +20,14 @@ function(add_aditof_test TEST_NAME)
             gtest
             gtest_main
             aditof
+            json-c
     )
     
     # Include directories - assumes test is in tests/sdk/<category>/
     target_include_directories(${TEST_NAME}
         PRIVATE
             ${CMAKE_CURRENT_SOURCE_DIR}/../include
+            ${CMAKE_BINARY_DIR}/dependencies/third-party/json-c
     )
     
     # Register with CTest for test discovery
