@@ -22,9 +22,8 @@
  * SOFTWARE.
  */
 #include "sensor_enumerator.h"
-#include "connections/target/adsd3500_sensor.h"
 #include "connections/target/adsd3500_interrupt_notifier.h"
-#include "platform_factory.h"
+#include "connections/target/adsd3500_sensor.h"
 
 #ifdef USE_GLOG
 #include <glog/logging.h>
@@ -34,10 +33,9 @@
 
 using namespace aditof;
 
-PlatformSensorEnumerator::PlatformSensorEnumerator()
-    : m_platform(platform::PlatformFactory::create()) {
+PlatformSensorEnumerator::PlatformSensorEnumerator() {
 
-    auto info = m_platform->getPlatformInfo();
+    auto info = m_platform.getPlatformInfo();
 #ifdef USE_GLOG
     LOG(INFO) << "Initialized platform: " << info.name << " ("
               << info.architecture << ")";
@@ -55,7 +53,7 @@ Status PlatformSensorEnumerator::searchSensors() {
     m_rgbSensorsInfo.clear();
 
     // Find ToF sensors
-    status = m_platform->findToFSensors(m_sensorsInfo);
+    status = m_platform.findToFSensors(m_sensorsInfo);
     if (status != Status::OK) {
 #ifdef USE_GLOG
         LOG(WARNING) << "Failed to find ToF sensors";
@@ -73,7 +71,7 @@ Status PlatformSensorEnumerator::searchSensors() {
 
 #ifdef HAS_RGB_CAMERA
     // Find RGB sensors
-    status = m_platform->findRGBSensors(m_rgbSensorsInfo);
+    status = m_platform.findRGBSensors(m_rgbSensorsInfo);
     if (status != Status::OK) {
 #ifdef USE_GLOG
         LOG(WARNING) << "Failed to find RGB sensors";
@@ -91,9 +89,9 @@ Status PlatformSensorEnumerator::searchSensors() {
 #endif
 
     // Retrieve version information
-    m_uBootVersion = m_platform->getBootloaderVersion();
-    m_kernelVersion = m_platform->getKernelVersion();
-    m_sdVersion = m_platform->getSDCardVersion();
+    m_uBootVersion = m_platform.getBootloaderVersion();
+    m_kernelVersion = m_platform.getKernelVersion();
+    m_sdVersion = m_platform.getSDCardVersion();
 
     return Status::OK;
 }
