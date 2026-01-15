@@ -29,6 +29,7 @@ print_usage() {
     printf '%b\n' "${WHITE}Usage:${RESET} $0 [-f FILE|--file FILE] [FILE]"
     printf '%b\n' "  -f, --file FILE    Path to CSV file to process (default: test_list.csv)"
     printf '%b\n' "  -o, --output PATH  Local path for results"
+    printf '%b\n' "  -n, --repeat N     Run all executable tests N times (default: 1)"
     printf '%b\n' "  -h, --help         Show this help message and exit"
     printf '\n'
     printf '%b\n' "Expect a TSV with header line, e.g.:"
@@ -41,6 +42,7 @@ print_usage() {
 # Default input file
 input_file=""
 output_path=""
+repeat_count=1
 
 # If the user provided no arguments at all, show help and exit.
 # This avoids silently using the default file and makes the script usage explicit.
@@ -72,6 +74,16 @@ while [[ $# -gt 0 ]]; do
                 shift 2
             else
                 printf '%b\n' "${RED}Error:${RESET} --output requires a non-empty argument."
+                print_usage
+                exit 2
+            fi
+            ;;
+        -n|--repeat)
+            if [[ -n "${2-}" && "${2}" =~ ^[0-9]+$ && "${2}" -gt 0 ]]; then
+                repeat_count="$2"
+                shift 2
+            else
+                printf '%b\n' "${RED}Error:${RESET} --repeat requires a positive integer argument."
                 print_usage
                 exit 2
             fi
@@ -123,62 +135,70 @@ TESTS_FAILED=0
 
 printf '%s\n' "--- Processing ---"
 
-while IFS=$',' read -r testid execute testname testparameters || \
-      [[ -n "$testid" || -n "$execute" || -n "$testname" || -n "$testparameters" ]]; do
+# Repeat the entire suite repeat_count times
+for i in $(seq 1 "$repeat_count"); do
+    while IFS=$',' read -r testid execute testname testparameters || \
+          [[ -n "$testid" || -n "$execute" || -n "$testname" || -n "$testparameters" ]]; do
 
-    # skip empty lines
-    if [[ -z "$testid" && -z "$execute" && -z "$testname" && -z "$testparameters" ]]; then
-        continue
-    fi
+        # skip empty lines
+        if [[ -z "$testid" && -z "$execute" && -z "$testname" && -z "$testparameters" ]]; then
+            continue
+        fi
 
-    # Print the initial "Processing" text without a newline, using printf (portable)
-    printf '%s' "${testid},${testname},${testparameters},"
-    ((TESTS_TOTAL++))
-    if [[ "$execute" != [Yy] ]]; then
-        printf '%b\n' "${ORANGE}Skipped${RESET}"
-        ((TESTS_SKIPPED++))
-    else
-        mkdir -p "${output_path}/test_${testid}"
-
-        REMOTE_FOLDER="/out/test_${testid}"
-        LOCAL_DIR="${output_path}/test_${testid}"
-        FOLDER_MAPPING="${LOCAL_DIR}:${REMOTE_FOLDER}"
-        LOGPATH="${LOCAL_DIR}/result.log"
-
-        # Prevent docker-compose from reading the loop's stdin by redirecting it from /dev/null.
-        # Capture exit code so the script doesn't unexpectedly exit if you have set -e.
-        docker-compose run --rm -T \
-            -v "$FOLDER_MAPPING" \
-            -w "$REMOTE_FOLDER" \
-            aditof /workspace/libaditof/build/tests/sdk/bin/"$testname" $testparameters \
-            > "$LOGPATH" 2>&1 < /dev/null
-        rc=$?
-        if [[ $rc -ne 0 ]]; then
-            # Print a clear message using printf (use %b if you want colors interpreted)
-            printf '%b\n' "${RED}docker-compose exited with code ${rc} for TestID ${testid}${RESET}"
-        else
-            # docker-compose succeeded — print success on the same line (we printed the "Processing..." without newline)
-            pattern='PASSED'
-
-            # Check the generated log for the pattern
-            if grep -q -- "$pattern" "$LOGPATH"; then
-                found=true
-            else
-                found=false
+        if [[ "$execute" != [Yy] ]]; then
+            # Report skipped tests only on the first pass
+            if [[ "$i" -eq 1 ]]; then
+                printf '%s' "${testid},${testname},${testparameters},"
+                printf '%b\n' "${ORANGE}Skipped${RESET}"
+                ((TESTS_SKIPPED++))
             fi
+        else
+            mkdir -p "${output_path}/test_${testid}/run_${i}"
 
-            # use it:
-            if $found; then
-                printf '%b\n' "${GREEN}Passed${RESET}"
-                ((TESTS_PASSED++))
+            REMOTE_FOLDER="/out/test_${testid}/run_${i}"
+            LOCAL_DIR="${output_path}/test_${testid}/run_${i}"
+            FOLDER_MAPPING="${LOCAL_DIR}:${REMOTE_FOLDER}"
+            LOGPATH="${LOCAL_DIR}/result.log"
+
+            # Print the initial "Processing" text without a newline, per run
+            printf '%s' "${testid},${testname},${testparameters},run_${i},"
+            ((TESTS_TOTAL++))
+
+            # Prevent docker-compose from reading the loop's stdin by redirecting it from /dev/null.
+            # Capture exit code so the script doesn't unexpectedly exit if you have set -e.
+            docker-compose run --rm -T \
+                -v "$FOLDER_MAPPING" \
+                -w "$REMOTE_FOLDER" \
+                aditof /workspace/libaditof/build/tests/sdk/bin/"$testname" $testparameters \
+                > "$LOGPATH" 2>&1 < /dev/null
+            rc=$?
+            if [[ $rc -ne 0 ]]; then
+                # Print a clear message using printf (use %b if you want colors interpreted)
+                printf '%b\n' "${RED}docker-compose exited with code ${rc} for TestID ${testid}${RESET}"
             else
-                printf '%b\n' "${RED}Failed${RESET}"
-                ((TESTS_FAILED++))
+                # docker-compose succeeded — print success on the same line
+                pattern='PASSED'
+
+                # Check the generated log for the pattern
+                if grep -q -- "$pattern" "$LOGPATH"; then
+                    found=true
+                else
+                    found=false
+                fi
+
+                # use it:
+                if $found; then
+                    printf '%b\n' "${GREEN}Passed${RESET}"
+                    ((TESTS_PASSED++))
+                else
+                    printf '%b\n' "${RED}Failed${RESET}"
+                    ((TESTS_FAILED++))
+                fi
             fi
         fi
-    fi
 
-done < <(sed -e 's/\r$//' -e 's/#.*$//' "$input_file" | tail -n +2)
+    done < <(sed -e 's/\r$//' -e 's/#.*$//' "$input_file" | tail -n +2)
+done
 
 printf '%s\n' "--- Summary of Test Results in '${output_path}' ---"
 printf '%s\n' "Processed,${TESTS_TOTAL}"
