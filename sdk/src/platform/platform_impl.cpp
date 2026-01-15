@@ -269,7 +269,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
         LOG(ERROR) << "Failed to set GPIO" << gpio_name << " to 0";
         return Status::GENERIC_ERROR;
     }
-    usleep(100000); // 100ms low pulse
+    usleep(PLATFORM_RESET_PULSE_US);
 
     snprintf(cmd, sizeof(cmd), "echo 1 > /sys/class/gpio/%s%s/value",
              useNumeric ? "gpio" : "", gpio_name);
@@ -288,7 +288,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
         }
         LOG(INFO) << "Waited: " << secondsWaited << " seconds";
     } else {
-        usleep(2000000); // 2 second default delay
+        usleep(PLATFORM_RESET_DELAY_US);
     }
 
     LOG(INFO) << "Sensor reset complete via GPIO" << gpio_name;
@@ -310,7 +310,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
                        << " to 0";
             return Status::GENERIC_ERROR;
         }
-        usleep(100000);
+        usleep(PLATFORM_RESET_PULSE_US);
 
         snprintf(cmd, sizeof(cmd), "echo 1 > /sys/class/gpio/%s/value",
                  PLATFORM_RESET_GPIO_NAME);
@@ -330,7 +330,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
             }
             LOG(INFO) << "Waited: " << secondsWaited << " seconds";
         } else {
-            usleep(10000000); // 10 second default delay
+            usleep(PLATFORM_RESET_DELAY_US);
         }
     } else {
         // Fall back to gpiochip character device
@@ -362,7 +362,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
         LOG(ERROR) << "Failed to set GPIO" << gpio_name << " to 0";
         return Status::GENERIC_ERROR;
     }
-    usleep(1000000); // 1 second
+    usleep(PLATFORM_RESET_PULSE_US);
 
     snprintf(cmd, sizeof(cmd), "echo 1 > /sys/class/gpio/%s%s/value",
              useNumeric ? "gpio" : "", gpio_name);
@@ -381,7 +381,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
         }
         LOG(INFO) << "Waited: " << secondsWaited << " seconds";
     } else {
-        usleep(7000000); // 7 second default delay
+        usleep(PLATFORM_RESET_DELAY_US);
     }
 
     LOG(INFO) << "Sensor reset complete via GPIO" << gpio_name;

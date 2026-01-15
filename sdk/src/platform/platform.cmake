@@ -10,6 +10,8 @@ if(NVIDIA)
     set(PLATFORM_MEDIA_CONTROLLER "/dev/media")
     set(PLATFORM_RESET_GPIO_NAME "PAC.00")
     set(PLATFORM_RESET_GPIO_PIN 0)  # Not used for NVIDIA (uses named GPIO)
+    set(PLATFORM_RESET_PULSE_US 100000)   # 100ms low pulse
+    set(PLATFORM_RESET_DELAY_US 10000000) # 10s default delay
     message(STATUS "Configured for NVIDIA Jetson platform")
     
 elseif(RPI)
@@ -19,10 +21,23 @@ elseif(RPI)
     set(PLATFORM_MEDIA_CONTROLLER "/dev/media")
     set(PLATFORM_RESET_GPIO_NAME "")  # Empty - will be resolved dynamically from debugfs
     set(PLATFORM_RESET_GPIO_PIN 34)   # Physical pin number for debugfs lookup
+    set(PLATFORM_RESET_PULSE_US 100000)  # 100ms low pulse
+    set(PLATFORM_RESET_DELAY_US 2000000) # 2s default delay
     message(STATUS "Configured for Raspberry Pi platform, GPIO Pin=${PLATFORM_RESET_GPIO_PIN}")
     
+elseif(NXP)
+    set(PLATFORM_NAME "NXP i.MX 8")
+    set(PLATFORM_CAPTURE_DEVICE "mxc_isi")
+    set(PLATFORM_VIDEO_PREFIX "mxc_isi")
+    set(PLATFORM_MEDIA_CONTROLLER "/dev/media")
+    set(PLATFORM_RESET_GPIO_NAME "gpio64") 
+    set(PLATFORM_RESET_GPIO_PIN 0)    # Configure with actual GPIO number
+    set(PLATFORM_RESET_PULSE_US 1000000) # 1s low pulse
+    set(PLATFORM_RESET_DELAY_US 7000000) # 7s default delay
+    message(STATUS "Configured for NXP i.MX platform, GPIO Pin=${PLATFORM_RESET_GPIO_PIN}")
+    
 else()
-    message(FATAL_ERROR "No platform defined! Use -DNVIDIA=ON or -DRPI=ON")
+    message(FATAL_ERROR "No platform defined! Use -DNVIDIA=ON, -DRPI=ON, or -DNXP=ON")
 endif()
 
 # Generate platform_config.h from template
