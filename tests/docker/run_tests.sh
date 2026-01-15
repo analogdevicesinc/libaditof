@@ -27,7 +27,8 @@ fi
 
 print_usage() {
     printf '%b\n' "${WHITE}Usage:${RESET} $0 [-f FILE|--file FILE] [FILE]"
-    printf '%b\n' "  -f, --file FILE    Path to TSV file to process (default: test_list.tsv)"
+    printf '%b\n' "  -f, --file FILE    Path to CSV file to process (default: test_list.csv)"
+    printf '%b\n' "  -o, --output PATH  Local path for results"
     printf '%b\n' "  -h, --help         Show this help message and exit"
     printf '\n'
     printf '%b\n' "Expect a TSV with header line, e.g.:"
@@ -37,6 +38,7 @@ print_usage() {
 
 # Default input file
 input_file=""
+output_path=""
 
 # If the user provided no arguments at all, show help and exit.
 # This avoids silently using the default file and makes the script usage explicit.
@@ -58,6 +60,16 @@ while [[ $# -gt 0 ]]; do
                 shift 2
             else
                 printf '%b\n' "${RED}Error:${RESET} --file requires a non-empty argument."
+                print_usage
+                exit 2
+            fi
+            ;;
+        -o|--output)
+            if [[ -n "${2-}" && "${2:0:1}" != "-" ]]; then
+                output_path="$2"
+                shift 2
+            else
+                printf '%b\n' "${RED}Error:${RESET} --output requires a non-empty argument."
                 print_usage
                 exit 2
             fi
@@ -118,17 +130,17 @@ while IFS=$',' read -r testid execute testname testparameters || \
         printf '%b\n' "${ORANGE}Skipped${RESET}"
         ((TESTS_SKIPPED++))
     else
-        mkdir -p "./out/test_${testid}"
+        mkdir -p "${output_path}/test_${testid}"
 
         REMOTE_FOLDER="/out/test_${testid}"
-        LOCAL_DIR="$(pwd)/out/test_${testid}"
-        LOCAL_FOLDER="${LOCAL_DIR}:${REMOTE_FOLDER}"
+        LOCAL_DIR="${output_path}/test_${testid}"
+        FOLDER_MAPPING="${LOCAL_DIR}:${REMOTE_FOLDER}"
         LOGPATH="${LOCAL_DIR}/result.log"
 
         # Prevent docker-compose from reading the loop's stdin by redirecting it from /dev/null.
         # Capture exit code so the script doesn't unexpectedly exit if you have set -e.
         docker-compose run --rm -T \
-            -v "$LOCAL_FOLDER" \
+            -v "$FOLDER_MAPPING" \
             -w "$REMOTE_FOLDER" \
             aditof /workspace/libaditof/build/tests/sdk/bin/"$testname" $testparameters \
             > "$LOGPATH" 2>&1 < /dev/null
