@@ -174,7 +174,7 @@ for i in $(seq 1 "$repeat_count"); do
             rc=$?
             if [[ $rc -ne 0 ]]; then
                 # Print a clear message using printf (use %b if you want colors interpreted)
-                printf '%b\n' "${RED}docker-compose exited with code ${rc} for TestID ${testid}${RESET}"
+                printf '%b\n' "${RED}Failed: docker-compose exited with code ${rc} for TestID ${testid}${RESET}"
             else
                 # docker-compose succeeded — print success on the same line
                 pattern='PASSED'
