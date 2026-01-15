@@ -3,6 +3,21 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY bin)
 # Include GoogleTest module
 include(GoogleTest)
 
+# Build the test utilities library
+add_library(aditof_test_utils STATIC
+    src/aditof_test_utils.cpp
+)
+
+target_include_directories(aditof_test_utils
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(aditof_test_utils
+    PUBLIC
+        gtest
+)
+
 # Include shared test utilities
 include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AditofTest.cmake)
 
