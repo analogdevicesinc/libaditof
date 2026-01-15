@@ -34,6 +34,8 @@ print_usage() {
     printf '%b\n' "Expect a TSV with header line, e.g.:"
     printf '%b\n' "  TestID<TAB>Execute<TAB>TestName<TAB>TestParameters"
     printf '%b\n' "The script ignores the header and starts processing from the second line."
+    printf '%b\n' "Lines may include comments starting with '#'; anything after '#' is ignored."
+    printf '%b\n' "If --output is provided, a UTC timestamp (YYYYMMDD_HHMMSS) is appended to the path."
 }
 
 # Default input file
@@ -108,6 +110,12 @@ if [[ ! -f "$input_file" ]]; then
     exit 1
 fi
 
+# Append UTC timestamp to output_path if provided
+if [[ -n "$output_path" ]]; then
+    ts=$(date -u +%Y%m%d_%H%M%S)
+    output_path="${output_path}_${ts}"
+fi
+
 TESTS_TOTAL=0
 TESTS_SKIPPED=0
 TESTS_PASSED=0
@@ -170,9 +178,9 @@ while IFS=$',' read -r testid execute testname testparameters || \
         fi
     fi
 
-done < <(sed 's/\r$//' "$input_file" | tail -n +2)
+done < <(sed -e 's/\r$//' -e 's/#.*$//' "$input_file" | tail -n +2)
 
-printf '%s\n' "--- Summary of Test Results ---"
+printf '%s\n' "--- Summary of Test Results in '${output_path}' ---"
 printf '%s\n' "Processed,${TESTS_TOTAL}"
 printf '%s\n' "Skipped,${TESTS_SKIPPED}"
 printf '%s\n' "Passed,${TESTS_PASSED}"
