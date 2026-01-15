@@ -57,10 +57,14 @@ public:
     // Get timestamp
     std::string getTimestamp() const { return timestamp_; }
     
+    // Get executable directory path
+    std::string getExecutablePath() const { return executablePath_; }
+    
 private:
     std::string programName_;
     std::string execName_;
     std::string timestamp_;
+    std::string executablePath_;
     std::vector<CustomArg> customArgs_;
     std::vector<std::pair<std::string, std::string>> propertiesToRecord_;
     bool helpRequested_;
