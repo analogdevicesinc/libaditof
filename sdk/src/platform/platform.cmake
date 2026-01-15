@@ -8,7 +8,7 @@ if(NVIDIA)
     set(PLATFORM_CAPTURE_DEVICE "vi-output, adsd3500")
     set(PLATFORM_VIDEO_PREFIX "vi-output")
     set(PLATFORM_MEDIA_CONTROLLER "/dev/media")
-    set(PLATFORM_RESET_GPIO_NAME "PAC.00")
+    set(PLATFORM_RESET_GPIO "PAC.00")
     set(PLATFORM_RESET_GPIO_PIN 0)  # Not used for NVIDIA (uses named GPIO)
     set(PLATFORM_RESET_PULSE_US 100000)   # 100ms low pulse
     set(PLATFORM_RESET_DELAY_US 10000000) # 10s default delay
@@ -19,7 +19,7 @@ elseif(RPI)
     set(PLATFORM_CAPTURE_DEVICE "rp1-cfe")
     set(PLATFORM_VIDEO_PREFIX "rp1-cfe")
     set(PLATFORM_MEDIA_CONTROLLER "/dev/media")
-    set(PLATFORM_RESET_GPIO_NAME "")  # Empty - will be resolved dynamically from debugfs
+    set(PLATFORM_RESET_GPIO "")  # Empty - will be resolved dynamically from debugfs
     set(PLATFORM_RESET_GPIO_PIN 34)   # Physical pin number for debugfs lookup
     set(PLATFORM_RESET_PULSE_US 100000)  # 100ms low pulse
     set(PLATFORM_RESET_DELAY_US 2000000) # 2s default delay
@@ -30,8 +30,8 @@ elseif(NXP)
     set(PLATFORM_CAPTURE_DEVICE "mxc_isi")
     set(PLATFORM_VIDEO_PREFIX "mxc_isi")
     set(PLATFORM_MEDIA_CONTROLLER "/dev/media")
-    set(PLATFORM_RESET_GPIO_NAME "gpio64") 
-    set(PLATFORM_RESET_GPIO_PIN 0)    # Configure with actual GPIO number
+    set(PLATFORM_RESET_GPIO "gpio64") 
+    set(PLATFORM_RESET_GPIO_PIN 0)    # Not used for NXP
     set(PLATFORM_RESET_PULSE_US 1000000) # 1s low pulse
     set(PLATFORM_RESET_DELAY_US 7000000) # 7s default delay
     message(STATUS "Configured for NXP i.MX platform ")

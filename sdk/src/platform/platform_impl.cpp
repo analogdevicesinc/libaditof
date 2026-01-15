@@ -230,9 +230,9 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
     char gpio_name[32] = {0};
     bool useNumeric = true;
 
-    if (strlen(PLATFORM_RESET_GPIO_NAME) > 0) {
+    if (strlen(PLATFORM_RESET_GPIO) > 0) {
         // Use provided GPIO name
-        strncpy(gpio_name, PLATFORM_RESET_GPIO_NAME, sizeof(gpio_name) - 1);
+        strncpy(gpio_name, PLATFORM_RESET_GPIO, sizeof(gpio_name) - 1);
         useNumeric = false;
     } else {
         // Use debugfs to find actual GPIO number
@@ -298,24 +298,24 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
     struct stat st;
     char gpio_sysfs_path[256];
     snprintf(gpio_sysfs_path, sizeof(gpio_sysfs_path),
-             "/sys/class/gpio/%s/value", PLATFORM_RESET_GPIO_NAME);
+             "/sys/class/gpio/%s/value", PLATFORM_RESET_GPIO);
 
     if (stat(gpio_sysfs_path, &st) == 0) {
         // Use sysfs named GPIO
         char cmd[256];
         snprintf(cmd, sizeof(cmd), "echo 0 > /sys/class/gpio/%s/value",
-                 PLATFORM_RESET_GPIO_NAME);
+                 PLATFORM_RESET_GPIO);
         if (system(cmd) != 0) {
-            LOG(ERROR) << "Failed to set GPIO " << PLATFORM_RESET_GPIO_NAME
+            LOG(ERROR) << "Failed to set GPIO " << PLATFORM_RESET_GPIO
                        << " to 0";
             return Status::GENERIC_ERROR;
         }
         usleep(PLATFORM_RESET_PULSE_US);
 
         snprintf(cmd, sizeof(cmd), "echo 1 > /sys/class/gpio/%s/value",
-                 PLATFORM_RESET_GPIO_NAME);
+                 PLATFORM_RESET_GPIO);
         if (system(cmd) != 0) {
-            LOG(ERROR) << "Failed to set GPIO " << PLATFORM_RESET_GPIO_NAME
+            LOG(ERROR) << "Failed to set GPIO " << PLATFORM_RESET_GPIO
                        << " to 1";
             return Status::GENERIC_ERROR;
         }
@@ -334,7 +334,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
         }
     } else {
         // Fall back to gpiochip character device
-        // Note: Requires numeric GPIO offset; PLATFORM_RESET_GPIO_NAME must be defined
+        // Note: Requires numeric GPIO offset; PLATFORM_RESET_GPIO must be defined
         LOG(ERROR)
             << "NVIDIA sysfs GPIO not found and no numeric fallback available";
         return Status::GENERIC_ERROR;
@@ -346,12 +346,12 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
     // NXP: Use sysfs GPIO (named or numeric)
     char gpio_name[32];
     bool useNumeric = false;
-    if (strlen(PLATFORM_RESET_GPIO_NAME) > 0) {
-        snprintf(gpio_name, sizeof(gpio_name), "%s", PLATFORM_RESET_GPIO_NAME);
+    if (strlen(PLATFORM_RESET_GPIO) > 0) {
+        snprintf(gpio_name, sizeof(gpio_name), "%s", PLATFORM_RESET_GPIO);
         // Check if it's a numeric string or named GPIO
         useNumeric = (gpio_name[0] >= '0' && gpio_name[0] <= '9');
     } else {
-        LOG(ERROR) << "PLATFORM_RESET_GPIO_NAME not defined for NXP";
+        LOG(ERROR) << "PLATFORM_RESET_GPIO not defined for NXP";
         return Status::GENERIC_ERROR;
     }
 
