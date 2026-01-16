@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# process_tsv_printf.sh
-# Usage: process_tsv_printf.sh [-f FILE] [FILE]
-#        process_tsv_printf.sh -h | --help
+# run_tests.sh
+# Usage: run_tests.sh [-f FILE] [FILE]
+#        run_tests.sh -h | --help
 #
-# Reads a TSV with header: TestID<TAB>Execute<TAB>TestName<TAB>TestParameters
+# Reads a CSV with header: TestID,Execute,TestName,TestParameters
 # Processes each row and runs docker-compose per-test when Execute is Y/y.
 #
 
@@ -32,8 +32,8 @@ print_usage() {
     printf '%b\n' "  -n, --repeat N     Run all executable tests N times (default: 1)"
     printf '%b\n' "  -h, --help         Show this help message and exit"
     printf '\n'
-    printf '%b\n' "Expect a TSV with header line, e.g.:"
-    printf '%b\n' "  TestID<TAB>Execute<TAB>TestName<TAB>TestParameters"
+    printf '%b\n' "Expect a CSV with header line, e.g.:"
+    printf '%b\n' "  TestID,Execute,TestName,TestParameters"
     printf '%b\n' "The script ignores the header and starts processing from the second line."
     printf '%b\n' "Lines may include comments starting with '#'; anything after '#' is ignored."
     printf '%b\n' "If --output is provided, a UTC timestamp (YYYYMMDD_HHMMSS) is appended to the path."
@@ -128,6 +128,15 @@ if [[ -n "$output_path" ]]; then
     output_path="${output_path}_${ts}"
 fi
 
+# Create output directory and setup logging
+if [[ -n "$output_path" ]]; then
+    mkdir -p "$output_path"
+    script_log="${output_path}/test_summary.log"
+    # Redirect all output (stdout and stderr) to both file and screen
+    exec > >(tee -a "$script_log")
+    exec 2>&1
+fi
+
 TESTS_TOTAL=0
 TESTS_SKIPPED=0
 TESTS_PASSED=0
@@ -175,6 +184,7 @@ for i in $(seq 1 "$repeat_count"); do
             if [[ $rc -ne 0 ]]; then
                 # Print a clear message using printf (use %b if you want colors interpreted)
                 printf '%b\n' "${RED}Failed: docker-compose exited with code ${rc} for TestID ${testid}${RESET}"
+                ((TESTS_FAILED++))
             else
                 # docker-compose succeeded — print success on the same line
                 pattern='PASSED'
