@@ -2,6 +2,7 @@
 #include <aditof/version.h>
 #include <aditof/system.h>
 #include <aditof_test_utils.h>
+#include <aditof/frame_handler.h>
 #include <iostream>
 #include <vector>
 #include <aditof/camera.h>
@@ -124,29 +125,12 @@ TEST_F(CameraTestFixture, CameraDetailsAccessible) {
 }
 
 #include <fstream>
-Status save_frame(aditof::Frame &frame, std::string frameType,
+Status save_frames(aditof::Frame &frame,
                   const int &mode_num) {
 
-    uint16_t *data1;
-    FrameDataDetails fDetails;
-    Status status = Status::OK;
-    status = frame.getData(frameType, &data1);
-    if (status != Status::OK) {
-        return status;
-    }
-
-    if (!data1) {
-        return status;
-    }
-
-    std::ofstream g("out_" + frameType + "_" + fDetails.type + "mode_" +
-                        std::to_string(mode_num) + "_" + g_timestamp + ".bin",
-                    std::ios::binary);
-    frame.getDataDetails(frameType, fDetails);
-    g.write((char *)data1, fDetails.width * fDetails.height * sizeof(uint16_t));
-    g.close();
-
-    return status;
+    const std::string filename = "frame_mode_" + std::to_string(mode_num);
+    FrameHandler fh;
+    return fh.SnapShotFrames(filename.c_str(), &frame, nullptr, nullptr);
 }
 
 TEST_F(CameraTestFixture, CameraGetFrames) {
@@ -221,8 +205,7 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
         ASSERT_TRUE(status == Status::OK);
 
         if (g_savelastframe && framesReceived > 0) {
-            status = save_frame(frame, "ab", g_mode);
-            status = save_frame(frame, "depth", g_mode);
+            status = save_frames(frame, g_mode);
             ASSERT_TRUE(status == Status::OK);
         }
 
@@ -258,7 +241,7 @@ int main(int argc, char** argv) {
         return initResult;  // Help was shown or error occurred
     }
     
-    // Set timestamp for save_frame function
+    // Set timestamp for save_frames function
     g_timestamp = runner.getTimestamp();
     
     // Run tests
