@@ -37,9 +37,10 @@
 #define ADITOF_API_VERSION_MAJOR "@ADITOF_VERSION_MAJOR@"
 #define ADITOF_API_VERSION_MINOR "@ADITOF_VERSION_MINOR@"
 #define ADITOF_API_VERSION_PATCH "@ADITOF_VERSION_PATCH@"
+#define ADITOF_API_VERSION_QUALTY "@ADITOF_VERSION_QUALITY@"
 #define ADITOF_API_VERSION                                                     \
     (ADITOF_API_VERSION_MAJOR "." ADITOF_API_VERSION_MINOR                     \
-                              "." ADITOF_API_VERSION_PATCH)
+                              "." ADITOF_API_VERSION_PATCH " " ADITOF_API_VERSION_QUALTY)
 
 namespace aditof {
     static inline const std::string getApiVersion() { return std::string(ADITOF_API_VERSION); }
