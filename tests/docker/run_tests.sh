@@ -189,8 +189,8 @@ for i in $(seq 1 "$repeat_count"); do
                 # docker-compose succeeded — print success on the same line
                 pattern='PASSED'
 
-                # Check the generated log for the pattern
-                if grep -q -- "$pattern" "$LOGPATH"; then
+                # Check the generated log for the pattern (only the last line)
+                if tail -n 1 "$LOGPATH" | grep -q -- "$pattern"; then
                     found=true
                 else
                     found=false
