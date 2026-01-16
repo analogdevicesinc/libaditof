@@ -320,8 +320,8 @@ protected:
         // No explicit cleanup needed - cameras will be cleaned up automatically
         cameras.clear();
         camera.reset();
-        std::remove(jsonFilePath.c_str());
-        std::remove(jsonFilePath2.c_str());
+        std::remove(jsonFilePathWorking.c_str());
+        std::remove(jsonFilePathReference.c_str());
     }
 
     std::unique_ptr<System> system;
@@ -329,8 +329,8 @@ protected:
     std::shared_ptr<Camera> camera;
     bool has_camera = false;
     aditof::SensorInterruptCallback callback;
-    const std::string jsonFilePath = "/tmp/depth_params.json";
-    const std::string jsonFilePath2 = "/tmp/depth_params2.json";
+    const std::string jsonFilePathWorking = "/tmp/depth_params_working.json";
+    const std::string jsonFilePathReference = "/tmp/depth_params_reference.json";
 };
 
 TEST_F(CameraTestFixture, SystemHasCameraListMethod) {
@@ -362,8 +362,8 @@ TEST_F(CameraTestFixture, parametercomparedefault) {
     
     if (init_status == Status::OK) {
 
-        std::remove(jsonFilePath.c_str());
-        Status status = camera->saveDepthParamsToJsonFile(jsonFilePath);
+        std::remove(jsonFilePathWorking.c_str());
+        Status status = camera->saveDepthParamsToJsonFile(jsonFilePathWorking);
         ASSERT_TRUE(status == Status::OK);
 
         std::vector<uint8_t> available_modes;
@@ -373,7 +373,7 @@ TEST_F(CameraTestFixture, parametercomparedefault) {
 
         // Compare JSON file with reference
          std::map<std::string, std::pair<double, double>> differences;
-        result = compareJsonFiles(g_moduleJSONMap.at(g_module), jsonFilePath, differences);
+        result = compareJsonFiles(g_moduleJSONMap.at(g_module), jsonFilePathWorking, differences);
         // Print differences if any
         for (const auto& diff : differences) {
             RecordProperty("Difference at '" + diff.first + "'",
@@ -398,11 +398,11 @@ TEST_F(CameraTestFixture, parameterchangevalues) {
     
     if (init_status == Status::OK) {
 
-        std::remove(jsonFilePath.c_str());
-        Status status = camera->saveDepthParamsToJsonFile(jsonFilePath);
+        std::remove(jsonFilePathWorking.c_str());
+        Status status = camera->saveDepthParamsToJsonFile(jsonFilePathWorking);
         ASSERT_TRUE(status == Status::OK);
 
-        status = camera->saveDepthParamsToJsonFile(jsonFilePath2);
+        status = camera->saveDepthParamsToJsonFile(jsonFilePathReference);
         ASSERT_TRUE(status == Status::OK);
 
         std::vector<uint8_t> available_modes;
@@ -415,7 +415,7 @@ TEST_F(CameraTestFixture, parameterchangevalues) {
         for (const auto& mode : available_modes) {
 
             values.clear();
-            result = readJsonParameter(jsonFilePath,
+            result = readJsonParameter(jsonFilePathWorking,
                         std::to_string(mode),
                         "depth-compute",
                         g_depthparams,
@@ -425,14 +425,14 @@ TEST_F(CameraTestFixture, parameterchangevalues) {
             for (auto& param : values) {
                 param.second += 1.0;
             }
-            result = changeJsonParameter(jsonFilePath,
+            result = changeJsonParameter(jsonFilePathWorking,
                         std::to_string(mode),
                         "depth-compute",
                         values);
             ASSERT_TRUE(result);
 
             values.clear();
-            result = readJsonParameter(jsonFilePath,
+            result = readJsonParameter(jsonFilePathWorking,
                         std::to_string(mode),
                         "configuration-parameters",
                         g_configurationparams,
@@ -442,7 +442,7 @@ TEST_F(CameraTestFixture, parameterchangevalues) {
             for (auto& param : values) {
                 param.second += 1.0;
             }
-            result = changeJsonParameter(jsonFilePath,
+            result = changeJsonParameter(jsonFilePathWorking,
                         std::to_string(mode),
                         "configuration-parameters",
                         values);
@@ -450,15 +450,15 @@ TEST_F(CameraTestFixture, parameterchangevalues) {
         }
 
         // Make sure changed values are not lingering in the system
-        status = camera->loadDepthParamsFromJsonFile(jsonFilePath2);
+        status = camera->loadDepthParamsFromJsonFile(jsonFilePathReference);
         ASSERT_TRUE(status == Status::OK);
 
         // Load modified parameters
-        status = camera->loadDepthParamsFromJsonFile(jsonFilePath);
+        status = camera->loadDepthParamsFromJsonFile(jsonFilePathWorking);
         ASSERT_TRUE(status == Status::OK);
 
         std::map<std::string, std::pair<double, double>> differences;
-        compareJsonFiles(jsonFilePath, jsonFilePath2, differences);
+        compareJsonFiles(jsonFilePathWorking, jsonFilePathReference, differences);
         ASSERT_TRUE(result == true);
         // Print differences if any
         for (const auto& diff : differences) {
