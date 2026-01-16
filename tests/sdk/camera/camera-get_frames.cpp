@@ -15,7 +15,8 @@
 
 using namespace aditof;
 
-std::string g_cameraipaddress = "";
+// Use the camera IP address from aditof_test library
+std::string& g_cameraipaddress = aditof_test::g_cameraipaddress;
 bool g_savelastframe = false;
 std::string g_timestamp;
 
@@ -249,7 +250,7 @@ int main(int argc, char** argv) {
     runner.addArgument({"--frames=", &g_num_frames, "Specify the number of frames to capture (default: 1)"});
     runner.addArgument({"--fps=", &g_fps, "Specify the frames per second (default: 10)"});
     runner.addArgument({"--save", &g_savelastframe, "Save the last captured frame to a binary file"});
-    runner.addArgument({"--ip=", &g_cameraipaddress, "Specify the camera IP address"});
+    // Note: --ip argument is automatically added by TestRunner
     
     // Initialize (parses args, sets up GTest output)
     int initResult = runner.initialize(argc, argv);

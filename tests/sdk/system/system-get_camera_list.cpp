@@ -15,7 +15,8 @@
 
 using namespace aditof;
 
-std::string g_cameraipaddress = "";
+// Use the camera IP address from aditof_test library
+std::string& g_cameraipaddress = aditof_test::g_cameraipaddress;
 
 // Test System class
 TEST(SystemTest, SystemInstantiation) {
@@ -54,8 +55,7 @@ int main(int argc, char** argv) {
     // Create test runner
     aditof_test::TestRunner runner(argv[0]);
     
-    // Add custom arguments
-    runner.addArgument({"--ip=", &g_cameraipaddress, "Specify the camera IP address"});
+    // Note: --ip argument is automatically added by TestRunner
     
     // Initialize (parses args, sets up GTest output)
     int initResult = runner.initialize(argc, argv);
