@@ -22,7 +22,8 @@
 
 using namespace aditof;
 
-std::string g_cameraipaddress = "";
+// Use the camera IP address from aditof_test library
+std::string& g_cameraipaddress = aditof_test::g_cameraipaddress;
 
 const std::vector<std::string> g_depthparams = {
     "bitsInPhaseOrDepth",
@@ -480,7 +481,7 @@ int main(int argc, char** argv) {
     
     // Add custom arguments
     runner.addArgument({"--module=", &g_module, "Specify the camera module (default: crosby)"});
-    runner.addArgument({"--ip=", &g_cameraipaddress, "Specify the camera IP address"});
+    // Note: --ip argument is automatically added by TestRunner
     
     // Initialize (parses args, sets up GTest output)
     int initResult = runner.initialize(argc, argv);
