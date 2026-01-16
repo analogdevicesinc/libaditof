@@ -137,7 +137,7 @@ echo "  Libs source: $LIBS_PATH"
 echo "  Dockerfile: $DOCKERFILE"
 echo ""
 
-sudo docker build \
+docker build \
     $DOCKER_OPTS \
     --build-arg BUILD_JOBS=$JOBS \
     -f $DOCKERFILE \
@@ -187,4 +187,4 @@ echo "  3. Or, get an interactive shell:"
 echo "     docker-compose run aditof /bin/bash"
 echo ""
 echo "Alternative: Run directly with docker:"
-echo "  sudo docker run -it --device /dev/media0 --device /dev/video0 $IMAGE_TAG /bin/bash"
+echo "  docker run -it --device /dev/media0 --device /dev/video0 $IMAGE_TAG /bin/bash"

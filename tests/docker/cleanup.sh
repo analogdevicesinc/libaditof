@@ -8,20 +8,20 @@ for cleanup_pass in 1 2; do
     echo "--- Cleanup Pass ${cleanup_pass} ---"
 
 # Remove the specific image if it exists
-if sudo docker images | grep -q adcam-build-test; then
+if docker images | grep -q adcam-build-test; then
     echo "Removing adcam-build-test image..."
-    sudo docker image rm adcam-build-test
+    docker image rm adcam-build-test
 fi
 
 # Remove any other custom tagged images
-for tag in $(sudo docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "^adcam-|^my-test"); do
+for tag in $(docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "^adcam-|^my-test"); do
     echo "Removing image: $tag"
-    sudo docker image rm "$tag"
+    docker image rm "$tag"
 done
 
 # Clean up dangling images and build cache
 echo "Cleaning up dangling images and build cache..."
-sudo docker system prune -f
+docker system prune -f
 
 # Remove local folders used for Docker build context
 if [ -d "./libs" ]; then
@@ -46,4 +46,4 @@ echo ""
 echo "✓ Docker cleanup complete!"
 echo ""
 echo "To see remaining images:"
-echo "  sudo docker images"
+echo "  docker images"
