@@ -1,5 +1,18 @@
 #!/bin/bash
 
+# Exit immediately if any command fails
+set -e
+
+# Trap errors and clean up
+trap 'handle_error' ERR
+
+handle_error() {
+    local line_no=$1
+    echo ""
+    echo "✗ Script failed at line $line_no"
+    exit 1
+}
+
 # Function to display help
 show_help() {
     cat << EOF
@@ -130,37 +143,48 @@ sudo docker build \
     -f $DOCKERFILE \
     -t $IMAGE_TAG . 2>&1 | tee build_output.log
 
-# Check if build succeeded
-if [ $? -eq 0 ]; then
-    echo ""
-    echo "✓ Docker image built successfully!"
-    echo "Full build log saved to: build_output.log"
-    echo ""
-    echo "To run the container with docker-compose (recommended):"
-    echo ""
-    echo "  1. Install docker-compose (if not already installed):"
-    echo "     sudo curl -L \"https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m)\" -o /usr/local/bin/docker-compose"
-    echo "     sudo chmod +x /usr/local/bin/docker-compose"
-    echo ""
-    echo "  2. Run a command in the container with device access:"
-    echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/libaditof/build/tests/sdk/bin/camera-adsd3500_reset"
-    echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/libaditof/build/tests/sdk/bin/camera-get_frames --mode=3"
-    echo ""
-    echo "  3. Or, get an interactive shell:"
-    echo "     docker-compose run aditof /bin/bash"
-    echo ""
-    echo "Alternative: Run directly with docker:"
-    echo "  sudo docker run -it --device /dev/media0 --device /dev/video0 $IMAGE_TAG /bin/bash"
+# Capture the exit code from docker build (not from tee)
+BUILD_EXIT_CODE=${PIPESTATUS[0]}
 
-    if [ -d "./out" ]; then
-        echo ""
-        echo "Note: The ./out directory exists and can be used to share files between host and container."
-    else
-        mkdir ./out
-    fi
-else
+# Check for compilation errors in the build output
+if [ $BUILD_EXIT_CODE -ne 0 ]; then
     echo ""
-    echo "✗ Docker build failed"
-    echo "Check build_output.log for details"
+    echo "✗ Docker build failed with exit code: $BUILD_EXIT_CODE"
+    echo ""
+    echo "Compilation/Build Errors Found:"
+    echo "================================"
+    grep -i "error\|failed\|undefined reference" build_output.log | head -20 || true
+    echo ""
+    echo "Check build_output.log for full details"
+    exit $BUILD_EXIT_CODE
+fi
+
+# Additional check: scan for compiler errors even if exit code is 0
+if grep -i "error:" build_output.log > /dev/null 2>&1; then
+    echo ""
+    echo "⚠ Warning: Potential compilation errors detected in build output"
+    echo "================================"
+    grep -i "error:" build_output.log | head -10 || true
     exit 1
 fi
+
+# Build succeeded
+echo ""
+echo "✓ Docker image built successfully!"
+echo "Full build log saved to: build_output.log"
+echo ""
+echo "To run the container with docker-compose (recommended):"
+echo ""
+echo "  1. Install docker-compose (if not already installed):"
+echo "     sudo curl -L \"https://github.com/docker/compose/releases/latest/download/docker-compose-\$(uname -s)-\$(uname -m)\" -o /usr/local/bin/docker-compose"
+echo "     sudo chmod +x /usr/local/bin/docker-compose"
+echo ""
+echo "  2. Run a command in the container with device access:"
+echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/libaditof/build/tests/sdk/bin/camera-adsd3500_reset"
+echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/libaditof/build/tests/sdk/bin/camera-get_frames --mode=3"
+echo ""
+echo "  3. Or, get an interactive shell:"
+echo "     docker-compose run aditof /bin/bash"
+echo ""
+echo "Alternative: Run directly with docker:"
+echo "  sudo docker run -it --device /dev/media0 --device /dev/video0 $IMAGE_TAG /bin/bash"
