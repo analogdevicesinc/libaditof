@@ -5,9 +5,6 @@
 #include <iostream>
 #include <vector>
 #include <map>
-#include <functional>
-#include <cstdlib>
-#include <climits>
 #include <aditof/camera.h>
 #include <aditof/frame.h>
 #include <aditof/camera_definitions.h>
@@ -16,9 +13,7 @@
 #include <array>
 #include <cmath>
 #include <thread>
-#include <json.h>
 #include <cstdlib>
-#include <limits.h>
 
 using namespace aditof;
 
@@ -55,205 +50,6 @@ std::map<std::string, std::string> g_moduleJSONMap = {
     {"tembinv2", "depth_params_tembinv2.json"},
     {"mystic", "depth_params_mystic.json"}
 };
-
-// Function to compare two JSON files
-// Parameters:
-//   jsonFile1: Path to the first JSON file
-//   jsonFile2: Path to the second JSON file
-//   differences: Map to store differences found (key -> pair of values from file1 and file2)
-// Returns: true if files are identical, false if differences are found
-bool compareJsonFiles(const std::string& jsonFile1,
-                     const std::string& jsonFile2,
-                     std::map<std::string, std::pair<double, double>>& differences) {
-    
-    differences.clear();
-
-    // Parse both JSON files
-    struct json_object *root1 = json_object_from_file(jsonFile1.c_str());
-    if (!root1) {
-        std::cerr << "Failed to parse JSON file: " << jsonFile1 << std::endl;
-        return false;
-    }
-
-    struct json_object *root2 = json_object_from_file(jsonFile2.c_str());
-    if (!root2) {
-        std::cerr << "Failed to parse JSON file: " << jsonFile2 << std::endl;
-        json_object_put(root1);
-        return false;
-    }
-
-    // Recursively compare all numeric values in the JSON structures
-    // Helper lambda to recursively traverse and compare
-    std::function<void(struct json_object*, struct json_object*, const std::string&)> 
-    compareObjects = [&](struct json_object* obj1, struct json_object* obj2, const std::string& path) {
-        if (!obj1 || !obj2) return;
-
-        json_object_object_foreach(obj1, key, val) {
-            std::string newPath = path.empty() ? key : path + "->" + key;
-            
-            struct json_object *val2 = nullptr;
-            if (!json_object_object_get_ex(obj2, key, &val2)) {
-                std::cerr << "Key '" << newPath << "' not found in second file" << std::endl;
-                differences[newPath] = {std::nan(""), std::nan("")};
-                continue;
-            }
-
-            // Check if both are objects - recurse
-            if (json_object_is_type(val, json_type_object) && 
-                json_object_is_type(val2, json_type_object)) {
-                compareObjects(val, val2, newPath);
-            }
-            // Check if both are doubles/numbers
-            else if (json_object_is_type(val, json_type_double) || 
-                     json_object_is_type(val, json_type_int)) {
-                double val1_double = json_object_get_double(val);
-                double val2_double = json_object_get_double(val2);
-                
-                // Compare with small epsilon for floating point
-                if (std::abs(val1_double - val2_double) > 1e-9) {
-                    differences[newPath] = {val1_double, val2_double};
-                }
-            }
-            // For other types (strings, arrays, etc.), convert to string and compare
-            else {
-                const char* str1 = json_object_to_json_string(val);
-                const char* str2 = json_object_to_json_string(val2);
-                if (std::string(str1) != std::string(str2)) {
-                    differences[newPath] = {std::nan(""), std::nan("")};
-                }
-            }
-        }
-    };
-
-    compareObjects(root1, root2, "");
-
-    bool isIdentical = differences.empty();
-
-    json_object_put(root1);
-    json_object_put(root2);
-    return isIdentical;
-}
-
-// Function to change multiple parameters in a JSON file
-// Parameters:
-//   jsonFilePath: Path to the JSON file
-//   sectionKey: The numbered key (e.g., "0", "1", "3")
-//   subsectionKey: The subsection name (e.g., "depth-compute", "configuration-parameters")
-//   parameters: Map of parameter names to their new values
-// Returns: true on success, false on failure
-bool changeJsonParameter(const std::string& jsonFilePath, 
-                        const std::string& sectionKey,
-                        const std::string& subsectionKey,
-                        const std::map<std::string, double>& parameters) {
-    
-    if (parameters.empty()) {
-        return false;
-    }
-
-    // Read JSON from file
-    FILE *fp = fopen(jsonFilePath.c_str(), "r");
-    if (!fp) {
-        return false;
-    }
-
-    // Parse JSON
-    struct json_object *root = json_object_from_file(jsonFilePath.c_str());
-    if (!root) {
-        fclose(fp);
-        return false;
-    }
-    fclose(fp);
-
-    // Get the section object (e.g., "0", "1", "3")
-    struct json_object *section = nullptr;
-    if (!json_object_object_get_ex(root, sectionKey.c_str(), &section)) {
-        json_object_put(root);
-        return false;
-    }
-
-    // Get the subsection object (e.g., "depth-compute", "configuration-parameters")
-    struct json_object *subsection = nullptr;
-    if (!json_object_object_get_ex(section, subsectionKey.c_str(), &subsection)) {
-        json_object_put(root);
-        return false;
-    }
-
-    // Update all parameters
-    for (const auto& param : parameters) {
-        // Create a new double object with the value
-        struct json_object *newValue = json_object_new_double(param.second);
-        
-        // Update the parameter
-        json_object_object_add(subsection, param.first.c_str(), newValue);
-    }
-
-    // Write the modified JSON back to file
-    if (json_object_to_file_ext(jsonFilePath.c_str(), root, JSON_C_TO_STRING_PRETTY) < 0) {
-        json_object_put(root);
-        return false;
-    }
-
-    json_object_put(root);
-    return true;
-}
-
-// Function to read multiple parameters from a JSON file
-// Parameters:
-//   jsonFilePath: Path to the JSON file
-//   sectionKey: The numbered key (e.g., "0", "1", "3")
-//   subsectionKey: The subsection name (e.g., "depth-compute", "configuration-parameters")
-//   parameterKeys: Vector of parameter names to read
-//   values: Map to store the read parameter name-value pairs
-// Returns: true on success (all parameters found), false on failure
-bool readJsonParameter(const std::string& jsonFilePath,
-                      const std::string& sectionKey,
-                      const std::string& subsectionKey,
-                      const std::vector<std::string>& parameterKeys,
-                      std::map<std::string, double>& values) {
-    
-    if (parameterKeys.empty()) {
-        return false;
-    }
-
-    values.clear();
-
-    // Parse JSON from file
-    struct json_object *root = json_object_from_file(jsonFilePath.c_str());
-    if (!root) {
-        return false;
-    }
-
-    // Get the section object (e.g., "0", "1", "3")
-    struct json_object *section = nullptr;
-    if (!json_object_object_get_ex(root, sectionKey.c_str(), &section)) {
-        json_object_put(root);
-        return false;
-    }
-
-    // Get the subsection object (e.g., "depth-compute", "configuration-parameters")
-    struct json_object *subsection = nullptr;
-    if (!json_object_object_get_ex(section, subsectionKey.c_str(), &subsection)) {
-        json_object_put(root);
-        return false;
-    }
-
-    // Read all parameters
-    bool allFound = true;
-    for (const auto& paramKey : parameterKeys) {
-        struct json_object *paramObj = nullptr;
-        if (!json_object_object_get_ex(subsection, paramKey.c_str(), &paramObj)) {
-            allFound = false;
-            continue;
-        }
-
-        // Extract the value
-        double value = json_object_get_double(paramObj);
-        values[paramKey] = value;
-    }
-
-    json_object_put(root);
-    return allFound;
-}
 
 // Test System class
 TEST(SystemTest, SystemInstantiation) {
@@ -373,7 +169,7 @@ TEST_F(CameraTestFixture, parametercomparedefault) {
 
         // Compare JSON file with reference
          std::map<std::string, std::pair<double, double>> differences;
-        result = compareJsonFiles(g_moduleJSONMap.at(g_module), jsonFilePathWorking, differences);
+        result = aditof_test::compareJsonFiles(g_moduleJSONMap.at(g_module), jsonFilePathWorking, differences);
         // Print differences if any
         for (const auto& diff : differences) {
             RecordProperty("Difference at '" + diff.first + "'",
@@ -415,7 +211,7 @@ TEST_F(CameraTestFixture, parameterchangevalues) {
         for (const auto& mode : available_modes) {
 
             values.clear();
-            result = readJsonParameter(jsonFilePathWorking,
+            result = aditof_test::readJsonParameter(jsonFilePathWorking,
                         std::to_string(mode),
                         "depth-compute",
                         g_depthparams,
@@ -425,14 +221,14 @@ TEST_F(CameraTestFixture, parameterchangevalues) {
             for (auto& param : values) {
                 param.second += 1.0;
             }
-            result = changeJsonParameter(jsonFilePathWorking,
+            result = aditof_test::changeJsonParameter(jsonFilePathWorking,
                         std::to_string(mode),
                         "depth-compute",
                         values);
             ASSERT_TRUE(result);
 
             values.clear();
-            result = readJsonParameter(jsonFilePathWorking,
+            result = aditof_test::readJsonParameter(jsonFilePathWorking,
                         std::to_string(mode),
                         "configuration-parameters",
                         g_configurationparams,
@@ -442,7 +238,7 @@ TEST_F(CameraTestFixture, parameterchangevalues) {
             for (auto& param : values) {
                 param.second += 1.0;
             }
-            result = changeJsonParameter(jsonFilePathWorking,
+            result = aditof_test::changeJsonParameter(jsonFilePathWorking,
                         std::to_string(mode),
                         "configuration-parameters",
                         values);
@@ -458,7 +254,7 @@ TEST_F(CameraTestFixture, parameterchangevalues) {
         ASSERT_TRUE(status == Status::OK);
 
         std::map<std::string, std::pair<double, double>> differences;
-        compareJsonFiles(jsonFilePathWorking, jsonFilePathReference, differences);
+        aditof_test::compareJsonFiles(jsonFilePathWorking, jsonFilePathReference, differences);
         ASSERT_TRUE(result == true);
         // Print differences if any
         for (const auto& diff : differences) {

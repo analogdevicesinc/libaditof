@@ -6,6 +6,9 @@
 #include <ctime>
 #include <cstdlib>
 #include <climits>
+#include <json.h>
+#include <cmath>
+#include <functional>
 
 namespace aditof_test {
 
@@ -177,6 +180,186 @@ int TestRunner::runTests() {
     }
     
     return RUN_ALL_TESTS();
+}
+
+// JSON utility function implementations
+
+bool compareJsonFiles(const std::string& jsonFile1,
+                     const std::string& jsonFile2,
+                     std::map<std::string, std::pair<double, double>>& differences) {
+    
+    differences.clear();
+
+    // Parse both JSON files
+    struct json_object *root1 = json_object_from_file(jsonFile1.c_str());
+    if (!root1) {
+        std::cerr << "Failed to parse JSON file: " << jsonFile1 << std::endl;
+        return false;
+    }
+
+    struct json_object *root2 = json_object_from_file(jsonFile2.c_str());
+    if (!root2) {
+        std::cerr << "Failed to parse JSON file: " << jsonFile2 << std::endl;
+        json_object_put(root1);
+        return false;
+    }
+
+    // Recursively compare all numeric values in the JSON structures
+    // Helper lambda to recursively traverse and compare
+    std::function<void(struct json_object*, struct json_object*, const std::string&)> 
+    compareObjects = [&](struct json_object* obj1, struct json_object* obj2, const std::string& path) {
+        if (!obj1 || !obj2) return;
+
+        json_object_object_foreach(obj1, key, val) {
+            std::string newPath = path.empty() ? key : path + "->" + key;
+            
+            struct json_object *val2 = nullptr;
+            if (!json_object_object_get_ex(obj2, key, &val2)) {
+                std::cerr << "Key '" << newPath << "' not found in second file" << std::endl;
+                differences[newPath] = {std::nan(""), std::nan("")};
+                continue;
+            }
+
+            // Check if both are objects - recurse
+            if (json_object_is_type(val, json_type_object) && 
+                json_object_is_type(val2, json_type_object)) {
+                compareObjects(val, val2, newPath);
+            }
+            // Check if both are doubles/numbers
+            else if (json_object_is_type(val, json_type_double) || 
+                     json_object_is_type(val, json_type_int)) {
+                double val1_double = json_object_get_double(val);
+                double val2_double = json_object_get_double(val2);
+                
+                // Compare with small epsilon for floating point
+                if (std::abs(val1_double - val2_double) > 1e-9) {
+                    differences[newPath] = {val1_double, val2_double};
+                }
+            }
+            // For other types (strings, arrays, etc.), convert to string and compare
+            else {
+                const char* str1 = json_object_to_json_string(val);
+                const char* str2 = json_object_to_json_string(val2);
+                if (std::string(str1) != std::string(str2)) {
+                    differences[newPath] = {std::nan(""), std::nan("")};
+                }
+            }
+        }
+    };
+
+    compareObjects(root1, root2, "");
+
+    bool isIdentical = differences.empty();
+
+    json_object_put(root1);
+    json_object_put(root2);
+    return isIdentical;
+}
+
+bool changeJsonParameter(const std::string& jsonFilePath, 
+                        const std::string& sectionKey,
+                        const std::string& subsectionKey,
+                        const std::map<std::string, double>& parameters) {
+    
+    if (parameters.empty()) {
+        return false;
+    }
+
+    // Read JSON from file
+    FILE *fp = fopen(jsonFilePath.c_str(), "r");
+    if (!fp) {
+        return false;
+    }
+
+    // Parse JSON
+    struct json_object *root = json_object_from_file(jsonFilePath.c_str());
+    if (!root) {
+        fclose(fp);
+        return false;
+    }
+    fclose(fp);
+
+    // Get the section object (e.g., "0", "1", "3")
+    struct json_object *section = nullptr;
+    if (!json_object_object_get_ex(root, sectionKey.c_str(), &section)) {
+        json_object_put(root);
+        return false;
+    }
+
+    // Get the subsection object (e.g., "depth-compute", "configuration-parameters")
+    struct json_object *subsection = nullptr;
+    if (!json_object_object_get_ex(section, subsectionKey.c_str(), &subsection)) {
+        json_object_put(root);
+        return false;
+    }
+
+    // Update all parameters
+    for (const auto& param : parameters) {
+        // Create a new double object with the value
+        struct json_object *newValue = json_object_new_double(param.second);
+        
+        // Update the parameter
+        json_object_object_add(subsection, param.first.c_str(), newValue);
+    }
+
+    // Write the modified JSON back to file
+    if (json_object_to_file_ext(jsonFilePath.c_str(), root, JSON_C_TO_STRING_PRETTY) < 0) {
+        json_object_put(root);
+        return false;
+    }
+
+    json_object_put(root);
+    return true;
+}
+
+bool readJsonParameter(const std::string& jsonFilePath,
+                      const std::string& sectionKey,
+                      const std::string& subsectionKey,
+                      const std::vector<std::string>& parameterKeys,
+                      std::map<std::string, double>& values) {
+    
+    if (parameterKeys.empty()) {
+        return false;
+    }
+
+    values.clear();
+
+    // Parse JSON from file
+    struct json_object *root = json_object_from_file(jsonFilePath.c_str());
+    if (!root) {
+        return false;
+    }
+
+    // Get the section object (e.g., "0", "1", "3")
+    struct json_object *section = nullptr;
+    if (!json_object_object_get_ex(root, sectionKey.c_str(), &section)) {
+        json_object_put(root);
+        return false;
+    }
+
+    // Get the subsection object (e.g., "depth-compute", "configuration-parameters")
+    struct json_object *subsection = nullptr;
+    if (!json_object_object_get_ex(section, subsectionKey.c_str(), &subsection)) {
+        json_object_put(root);
+        return false;
+    }
+
+    // Read all parameters
+    bool allFound = true;
+    for (const auto& paramKey : parameterKeys) {
+        struct json_object *paramObj = nullptr;
+        if (!json_object_object_get_ex(subsection, paramKey.c_str(), &paramObj)) {
+            allFound = false;
+            continue;
+        }
+
+        // Extract the value
+        double value = json_object_get_double(paramObj);
+        values[paramKey] = value;
+    }
+
+    json_object_put(root);
+    return allFound;
 }
 
 } // namespace aditof_test
