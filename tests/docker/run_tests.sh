@@ -122,19 +122,9 @@ if [[ ! -f "$input_file" ]]; then
     exit 1
 fi
 
-# Append UTC timestamp to output_path if provided
-if [[ -n "$output_path" ]]; then
-    ts=$(date -u +%Y%m%d_%H%M%S)
-    output_path="${output_path}_${ts}"
-fi
-
 # Create output directory and setup logging
 if [[ -n "$output_path" ]]; then
     mkdir -p "$output_path"
-    script_log="${output_path}/test_summary.log"
-    # Redirect all output (stdout and stderr) to both file and screen
-    exec > >(tee -a "$script_log")
-    exec 2>&1
 fi
 
 TESTS_TOTAL=0
