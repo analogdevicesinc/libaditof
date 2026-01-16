@@ -2,6 +2,11 @@
 
 echo "Cleaning up Docker artifacts from ADCAM build tests..."
 
+# Run cleanup twice to ensure thorough removal
+for cleanup_pass in 1 2; do
+    echo ""
+    echo "--- Cleanup Pass ${cleanup_pass} ---"
+
 # Remove the specific image if it exists
 if sudo docker images | grep -q adcam-build-test; then
     echo "Removing adcam-build-test image..."
@@ -34,6 +39,8 @@ if [ -f "./build_output.log" ]; then
     echo "Removing build_output.log..."
     rm -f ./build_output.log
 fi
+
+done
 
 echo ""
 echo "✓ Docker cleanup complete!"
