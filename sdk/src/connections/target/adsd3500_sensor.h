@@ -212,7 +212,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
         m_interruptCallbackMap;
     std::vector<aditof::DepthSensorModeDetails> m_availableModes;
     std::vector<IniTableEntry> m_ccbmINIContent;
-    BufferProcessor *m_bufferProcessor;
+    std::unique_ptr<BufferProcessor> m_bufferProcessor;
     bool m_depthComputeOnTarget;
     int m_chipStatus;
     int m_imagerStatus;

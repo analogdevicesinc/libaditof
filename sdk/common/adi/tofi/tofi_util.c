@@ -77,7 +77,14 @@ FileData LoadFileContents(char *filename) {
 
     if (f) {
         if (0 == fseek(f, 0L, SEEK_END)) {
-            size = ftell(f);
+            long file_size = ftell(f);
+            if (file_size < 0) {
+                fprintf(stderr, "Failed to get file size for %s.\n", filename);
+                fclose(f);
+                FileData ret_val = {NULL, 0};
+                return ret_val;
+            }
+            size = (size_t)file_size;
             rewind(f);
 #ifdef HEXAGON
             p = (unsigned char *)rpcmem_alloc(ION_HEAP_ID_SYSTEM,
@@ -86,16 +93,21 @@ FileData LoadFileContents(char *filename) {
             p = (unsigned char *)malloc(size);
 #endif
             if (p) {
-                if (1 != fread((void *)p, size, 1, f) || size == 0) {
+                if (size > 0 && 1 != fread((void *)p, size, 1, f)) {
                     fprintf(stderr, "Failed to read data file %s.\n", filename);
+#ifdef HEXAGON
+                    rpcmem_free((void *)p);
+#else
                     free((void *)p);
-                    p = 0;
+#endif
+                    p = NULL;
                     size = 0;
                 }
             } else {
                 fprintf(stderr,
                         "Failed to allocate memory for reading data file %s.\n",
                         filename);
+                size = 0;
             }
         } else {
             fprintf(stderr, "Failed to seek in data file %s.\n", filename);

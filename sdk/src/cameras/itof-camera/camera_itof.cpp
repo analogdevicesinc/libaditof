@@ -51,9 +51,6 @@
 #include <thread>
 #include <vector>
 
-#undef NDEBUG
-#include <cassert>
-
 static const int skMetaDataBytesCount = 128;
 
 CameraItof::CameraItof(
@@ -611,7 +608,9 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
             aditof::Status localStatus;
             localStatus = m_depthSensor->initTargetDepthCompute(
-                (uint8_t *)s.c_str(), dataSize, (uint8_t *)m_xyz_dealias_data,
+                const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(s.c_str())), 
+                dataSize, 
+                reinterpret_cast<uint8_t *>(m_xyz_dealias_data),
                 sizeof(TofiXYZDealiasData) * 10);
             if (localStatus != aditof::Status::OK) {
                 LOG(ERROR) << "Failed to initialize depth compute on target!";
@@ -686,7 +685,10 @@ CameraItof::getFrameProcessParams(std::map<std::string, std::string> &params) {
 
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "getFrameProcessParams not supported in offline mode";
+        return aditof::Status::UNAVAILABLE;
+    }
 
     //params = m_depth_params_map[m_details.mode]; Should really be this
 
@@ -917,7 +919,10 @@ aditof::Status CameraItof::stopRecording() {
 aditof::Status CameraItof::adsd3500ResetIniParamsForMode(const uint16_t mode) {
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500ResetIniParamsForMode not supported in offline mode";
+        return aditof::Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x40, mode);
 
@@ -1096,7 +1101,10 @@ aditof::Status CameraItof::setControl(const std::string &control,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "setControl not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     if (m_controls.count(control) > 0) {
         if (value == "call") {
@@ -1117,7 +1125,10 @@ aditof::Status CameraItof::getControl(const std::string &control,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "getControl not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     if (m_controls.count(control) > 0) {
         value = m_controls.at(control);
@@ -1134,7 +1145,10 @@ aditof::Status CameraItof::readSerialNumber(std::string &serialNumber,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "readSerialNumber not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     if (m_adsd3500FwVersionInt < 4710) {
         LOG(WARNING) << "Serial read is not supported in this firmware!";
@@ -1169,7 +1183,10 @@ aditof::Status CameraItof::saveModuleCCB(const std::string &filepath) {
     aditof::Status status =
         aditof::Status::GENERIC_ERROR; //Defining with error for ccb read
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "saveModuleCCB not supported in offline mode";
+        return aditof::Status::UNAVAILABLE;
+    }
 
     if (filepath.empty()) {
         LOG(ERROR) << "File path where CCB should be written is empty.";
@@ -1197,7 +1214,10 @@ aditof::Status CameraItof::saveModuleCCB(const std::string &filepath) {
 
 aditof::Status CameraItof::saveModuleCFG(const std::string &filepath) const {
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "saveModuleCFG not supported in offline mode";
+        return aditof::Status::UNAVAILABLE;
+    }
 
     if (filepath.empty()) {
         LOG(ERROR) << "File path where CFG should be written is empty.";
@@ -1240,7 +1260,10 @@ CameraItof::adsd3500UpdateFirmware(const std::string &fwFilePath) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500UpdateFirmware not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     m_fwUpdated = false;
     m_adsd3500Status = Adsd3500Status::OK;
@@ -1383,7 +1406,10 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "readAdsd3500CCB not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     uint8_t ccbHeader[16] = {0};
     ccbHeader[0] = 1;
@@ -1406,11 +1432,11 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     memcpy(&crcOfCCB, ccbHeader + 12, 4);
 
     numOfChunks = ccbFileSize / chunkSize;
-    uint8_t *ccbContent = new uint8_t[ccbFileSize];
+    auto ccbContent = std::make_unique<uint8_t[]>(ccbFileSize);
 
     for (int i = 0; i < numOfChunks; i++) {
         status = m_depthSensor->adsd3500_read_payload(
-            ccbContent + i * chunkSize, chunkSize);
+            ccbContent.get() + i * chunkSize, chunkSize);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to read chunk number " << i << " out of "
                        << numOfChunks + 1 << " chunks for adsd3500!";
@@ -1426,7 +1452,7 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     //read last chunk. smaller size than the rest
     if (ccbFileSize % chunkSize != 0) {
         status = m_depthSensor->adsd3500_read_payload(
-            ccbContent + numOfChunks * chunkSize, ccbFileSize % chunkSize);
+            ccbContent.get() + numOfChunks * chunkSize, ccbFileSize % chunkSize);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to read chunk number " << numOfChunks + 1
                        << " out of " << numOfChunks + 1
@@ -1448,7 +1474,7 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     LOG(INFO) << "Succesfully read ccb from adsd3500. Checking crc...";
 
     uint32_t computedCrc =
-        crcFast(ccbContent, ccbFileSize - 4, true) ^ 0xFFFFFFFF;
+        crcFast(ccbContent.get(), ccbFileSize - 4, true) ^ 0xFFFFFFFF;
 
     if (crcOfCCB != ~computedCrc) {
         LOG(ERROR) << "Invalid crc for ccb read from memory!";
@@ -1461,9 +1487,7 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     std::string fileName = "temp_ccb.ccb";
 
     //remove the trailling 4 bytes containing the crc
-    ccb = std::string((char *)ccbContent, ccbFileSize - 4);
-
-    delete[] ccbContent;
+    ccb = std::string(reinterpret_cast<char*>(ccbContent.get()), ccbFileSize - 4);
 
     return status;
 }
@@ -1653,7 +1677,10 @@ aditof::Status CameraItof::retrieveDepthProcessParams() {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "retrieveDepthProcessParams not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     if (m_initConfigFilePath == "") {
 
@@ -1692,7 +1719,10 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "saveDepthParamsToJsonFile not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     json_object *rootjson = json_object_new_object();
 
@@ -1794,7 +1824,10 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "loadDepthParamsFromJsonFile not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     m_depth_params_map.clear();
 
@@ -1983,7 +2016,10 @@ bool CameraItof::isConvertibleToDouble(const std::string &str) {
 }
 
 void CameraItof::dropFirstFrame(bool dropFrame) {
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(WARNING) << "dropFirstFrame not supported in offline mode";
+        return;
+    }
     m_dropFirstFrame = dropFrame;
 }
 
@@ -1991,7 +2027,10 @@ aditof::Status
 CameraItof::setSensorConfiguration(const std::string &sensorConf) {
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "setSensorConfiguration not supported in offline mode";
+        return aditof::Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->setSensorConfiguration(sensorConf);
 
@@ -2003,7 +2042,10 @@ aditof::Status CameraItof::adsd3500SetToggleMode(int mode) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetToggleMode not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     /*mode = 2, adsd3500 fsync does not automatically toggle - Pin set as input (Slave)*/
     /*mode = 1, adsd3500 fsync automatically toggles at user specified framerate*/
@@ -2026,7 +2068,10 @@ aditof::Status CameraItof::adsd3500ToggleFsync() {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500ToggleFsync not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     if (!m_adsd3500_master) {
         LOG(ERROR) << "ADSD3500 not set as master - cannot toggle FSYNC";
@@ -2047,7 +2092,10 @@ aditof::Status CameraItof::adsd3500GetFirmwareVersion(std::string &fwVersion,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetFirmwareVersion not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     uint8_t fwData[44] = {0};
     fwData[0] = uint8_t(1);
@@ -2082,7 +2130,10 @@ aditof::Status CameraItof::adsd3500SetABinvalidationThreshold(int threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetABinvalidationThreshold not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0010, threshold);
 
@@ -2093,7 +2144,10 @@ aditof::Status CameraItof::adsd3500GetABinvalidationThreshold(int &threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetABinvalidationThreshold not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     threshold = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2107,7 +2161,10 @@ aditof::Status CameraItof::adsd3500SetConfidenceThreshold(int threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetConfidenceThreshold not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0011, threshold);
 
@@ -2133,7 +2190,10 @@ aditof::Status CameraItof::adsd3500SetJBLFfilterEnableState(bool enable) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetJBLFfilterEnableState not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0013, enable ? 1 : 0);
 
@@ -2144,7 +2204,10 @@ aditof::Status CameraItof::adsd3500GetJBLFfilterEnableState(bool &enabled) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetJBLFfilterEnableState not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     int intEnabled = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2159,7 +2222,10 @@ aditof::Status CameraItof::adsd3500SetJBLFfilterSize(int size) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetJBLFfilterSize not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0014, size);
 
@@ -2170,7 +2236,10 @@ aditof::Status CameraItof::adsd3500GetJBLFfilterSize(int &size) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetJBLFfilterSize not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     size = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2184,7 +2253,10 @@ aditof::Status CameraItof::adsd3500SetRadialThresholdMin(int threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetRadialThresholdMin not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0027, threshold);
 
@@ -2195,7 +2267,10 @@ aditof::Status CameraItof::adsd3500GetRadialThresholdMin(int &threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetRadialThresholdMin not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     threshold = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2209,7 +2284,10 @@ aditof::Status CameraItof::adsd3500SetRadialThresholdMax(int threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetRadialThresholdMax not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0029, threshold);
 
@@ -2221,7 +2299,10 @@ aditof::Status CameraItof::adsd3500GetRadialThresholdMax(int &threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetRadialThresholdMax not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     threshold = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2235,7 +2316,10 @@ aditof::Status CameraItof::adsd3500SetMIPIOutputSpeed(uint16_t speed) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetMIPIOutputSpeed not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0031, speed);
 
@@ -2247,7 +2331,10 @@ aditof::Status CameraItof::adsd3500SetEnableDeskewAtStreamOn(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetEnableDeskewAtStreamOn not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x00AB, value);
 
@@ -2259,7 +2346,10 @@ aditof::Status CameraItof::adsd3500GetMIPIOutputSpeed(uint16_t &speed) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetMIPIOutputSpeed not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_read_cmd(
         0x0034, reinterpret_cast<uint16_t *>(&speed));
@@ -2272,7 +2362,10 @@ aditof::Status CameraItof::adsd3500GetImagerErrorCode(uint16_t &errcode) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetImagerErrorCode not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_read_cmd(
         0x0038, reinterpret_cast<uint16_t *>(&errcode));
@@ -2285,7 +2378,10 @@ aditof::Status CameraItof::adsd3500SetVCSELDelay(uint16_t delay) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetVCSELDelay not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0066, delay);
 
@@ -2297,7 +2393,10 @@ aditof::Status CameraItof::adsd3500GetVCSELDelay(uint16_t &delay) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetVCSELDelay not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_read_cmd(
         0x0068, reinterpret_cast<uint16_t *>(&delay));
@@ -2310,7 +2409,10 @@ aditof::Status CameraItof::adsd3500SetJBLFMaxEdgeThreshold(uint16_t threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetJBLFMaxEdgeThreshold not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0074, threshold);
 
@@ -2322,7 +2424,10 @@ aditof::Status CameraItof::adsd3500SetJBLFABThreshold(uint16_t threshold) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetJBLFABThreshold not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0075, threshold);
 
@@ -2334,7 +2439,10 @@ aditof::Status CameraItof::adsd3500SetJBLFGaussianSigma(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetJBLFGaussianSigma not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x006B, value);
 
@@ -2346,7 +2454,10 @@ aditof::Status CameraItof::adsd3500GetJBLFGaussianSigma(uint16_t &value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetJBLFGaussianSigma not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     value = 0;
     status = m_depthSensor->adsd3500_read_cmd(
@@ -2360,7 +2471,10 @@ aditof::Status CameraItof::adsd3500SetJBLFExponentialTerm(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetJBLFExponentialTerm not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x006C, value);
 
@@ -2372,7 +2486,10 @@ aditof::Status CameraItof::adsd3500GetJBLFExponentialTerm(uint16_t &value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetJBLFExponentialTerm not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_read_cmd(
         0x006A, reinterpret_cast<uint16_t *>(&value));
@@ -2401,7 +2518,10 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetFrameRate not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     if (fps == 0) {
         fps = 10;
@@ -2424,7 +2544,10 @@ aditof::Status CameraItof::adsd3500SetEnableEdgeConfidence(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetEnableEdgeConfidence not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0062, value);
 
@@ -2437,7 +2560,10 @@ CameraItof::adsd3500GetTemperatureCompensationStatus(uint16_t &value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetTemperatureCompensationStatus not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_read_cmd(
         0x0076, reinterpret_cast<uint16_t *>(&value));
@@ -2450,7 +2576,10 @@ aditof::Status CameraItof::adsd3500SetEnablePhaseInvalidation(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetEnablePhaseInvalidation not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0072, value);
 
@@ -2463,7 +2592,10 @@ CameraItof::adsd3500SetEnableTemperatureCompensation(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetEnableTemperatureCompensation not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0021, value);
 
@@ -2475,7 +2607,10 @@ aditof::Status CameraItof::adsd3500SetEnableMetadatainAB(uint16_t value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetEnableMetadatainAB not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0036, value);
 
@@ -2487,7 +2622,10 @@ aditof::Status CameraItof::adsd3500GetEnableMetadatainAB(uint16_t &value) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetEnableMetadatainAB not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_read_cmd(
         0x0037, reinterpret_cast<uint16_t *>(&value));
@@ -2501,7 +2639,10 @@ aditof::Status CameraItof::adsd3500SetGenericTemplate(uint16_t reg,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500SetGenericTemplate not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(reg, value);
 
@@ -2514,7 +2655,10 @@ aditof::Status CameraItof::adsd3500GetGenericTemplate(uint16_t reg,
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetGenericTemplate not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_read_cmd(
         reg, reinterpret_cast<uint16_t *>(&value));
@@ -2527,7 +2671,10 @@ aditof::Status CameraItof::adsd3500DisableCCBM(bool disable) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500DisableCCBM not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->setControl("disableCCBM", std::to_string(disable));
 
@@ -2538,7 +2685,10 @@ aditof::Status CameraItof::adsd3500IsCCBMsupported(bool &supported) {
 
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500IsCCBMsupported not supported in offline mode";
+        return aditof::Status::UNAVAILABLE;
+    }
 
     std::string availableCCMB;
 
@@ -2562,7 +2712,10 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
                                              int &imagerStatus) {
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetStatus not supported in offline mode";
+        return aditof::Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_get_status(chipStatus, imagerStatus);
     if (status != aditof::Status::OK) {
@@ -2600,7 +2753,10 @@ aditof::Status CameraItof::adsd3500GetSensorTemperature(uint16_t &tmpValue) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetSensorTemperature not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     unsigned int usDelay = 0;
     if (m_cameraFps > 0) {
@@ -2619,7 +2775,10 @@ aditof::Status CameraItof::adsd3500GetLaserTemperature(uint16_t &tmpValue) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500GetLaserTemperature not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     unsigned int usDelay = 0;
     if (m_cameraFps > 0) {
@@ -2656,7 +2815,10 @@ aditof::Status CameraItof::setDepthIniParams(
 
     aditof::Status status = aditof::Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "setDepthIniParams not supported in offline mode";
+        return aditof::Status::UNAVAILABLE;
+    }
 
     auto it = iniKeyValPairs.find("abThreshMin");
     if (it != iniKeyValPairs.end()) {
@@ -2830,16 +2992,18 @@ aditof::Status CameraItof::setDepthIniParams(
 }
 
 void CameraItof::cleanupXYZtables() {
+    // Note: These are allocated by C library (TofiCompute/algorithms.cpp) with malloc
+    // and must be freed with free(). The pointers are const float* but free needs void*.
     if (m_xyzTable.p_x_table) {
-        free((void *)m_xyzTable.p_x_table);
+        free(const_cast<float*>(m_xyzTable.p_x_table));
         m_xyzTable.p_x_table = nullptr;
     }
     if (m_xyzTable.p_y_table) {
-        free((void *)m_xyzTable.p_y_table);
+        free(const_cast<float*>(m_xyzTable.p_y_table));
         m_xyzTable.p_y_table = nullptr;
     }
     if (m_xyzTable.p_z_table) {
-        free((void *)m_xyzTable.p_z_table);
+        free(const_cast<float*>(m_xyzTable.p_z_table));
         m_xyzTable.p_z_table = nullptr;
     }
 }
@@ -2855,7 +3019,10 @@ aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
     using namespace aditof;
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsd3500setEnableDynamicModeSwitching not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     status = m_depthSensor->adsd3500_write_cmd(0x0080, en ? 0x0001 : 0x0000);
 
@@ -2868,7 +3035,10 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
 
     Status status = Status::OK;
 
-    assert(!m_isOffline);
+    if (m_isOffline) {
+        LOG(ERROR) << "adsds3500setDynamicModeSwitchingSequence not supported in offline mode";
+        return Status::UNAVAILABLE;
+    }
 
     uint32_t entireSequence = 0xFFFFFFFF;
     uint32_t entireRepCount = 0x00000000;

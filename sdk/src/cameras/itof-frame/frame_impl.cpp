@@ -45,16 +45,22 @@ FrameImpl::~FrameImpl() = default;
 
 FrameImpl::FrameImpl(const FrameImpl &op) {
     allocFrameData(op.m_details);
-    memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
-           m_implData->allDataNbBytes);
+    // Bounds check: ensure source and destination buffers match
+    if (m_implData->allDataNbBytes == op.m_implData->allDataNbBytes) {
+        memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
+               m_implData->allDataNbBytes);
+    }
     m_details = op.m_details;
 }
 
 FrameImpl &FrameImpl::operator=(const FrameImpl &op) {
     if (this != &op) {
         allocFrameData(op.m_details);
-        memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
-               m_implData->allDataNbBytes);
+        // Bounds check: ensure source and destination buffers match
+        if (m_implData->allDataNbBytes == op.m_implData->allDataNbBytes) {
+            memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
+                   m_implData->allDataNbBytes);
+        }
         m_details = op.m_details;
     }
 
@@ -179,11 +185,9 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
     }
 
     //store pointers to the contents described by FrameDetails
+    // shared_ptr<T[]> automatically uses delete[], no custom deleter needed
     m_implData->m_allData = std::shared_ptr<uint16_t[]>(
-        new uint16_t[totalSize], // Allocate the array
-        [](uint16_t *p) {
-            delete[] p;
-        } // Custom deleter to ensure correct deallocation
+        new uint16_t[totalSize]() // Zero-initialize the array
     );
 
     m_implData->m_dataLocations.emplace(
@@ -207,7 +211,15 @@ aditof::Status FrameImpl::getMetadataStruct(aditof::Metadata &metadata) const {
         return aditof::Status::UNAVAILABLE;
     }
 
-    memcpy(&metadata, header, sizeof(Metadata));
+    // Bounds check: ensure metadata header is within allocated buffer
+    const auto headerOffset = header - reinterpret_cast<uint8_t*>(m_implData->m_allData.get());
+    if (headerOffset >= 0 && 
+        static_cast<size_t>(headerOffset) + sizeof(Metadata) <= m_implData->allDataNbBytes) {
+        memcpy(&metadata, header, sizeof(Metadata));
+    } else {
+        LOG(ERROR) << "getMetadataStruct: Metadata out of bounds";
+        return aditof::Status::GENERIC_ERROR;
+    }
 
     return aditof::Status::OK;
 }
