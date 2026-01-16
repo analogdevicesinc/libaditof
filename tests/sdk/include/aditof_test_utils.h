@@ -15,6 +15,41 @@ extern std::string g_cameraipaddress;
 // Generate UTC timestamp in format: YYYYMMDD_HHMMSS
 std::string getUTCTimestamp();
 
+// JSON utility functions for camera parameter testing
+
+// Compare two JSON files
+// Returns: true if files are identical, false if differences are found
+// differences: Map to store differences found (key -> pair of values from file1 and file2)
+bool compareJsonFiles(const std::string& jsonFile1,
+                     const std::string& jsonFile2,
+                     std::map<std::string, std::pair<double, double>>& differences);
+
+// Change multiple parameters in a JSON file
+// Parameters:
+//   jsonFilePath: Path to the JSON file
+//   sectionKey: The numbered key (e.g., "0", "1", "3")
+//   subsectionKey: The subsection name (e.g., "depth-compute", "configuration-parameters")
+//   parameters: Map of parameter names to their new values
+// Returns: true on success, false on failure
+bool changeJsonParameter(const std::string& jsonFilePath, 
+                        const std::string& sectionKey,
+                        const std::string& subsectionKey,
+                        const std::map<std::string, double>& parameters);
+
+// Read multiple parameters from a JSON file
+// Parameters:
+//   jsonFilePath: Path to the JSON file
+//   sectionKey: The numbered key (e.g., "0", "1", "3")
+//   subsectionKey: The subsection name (e.g., "depth-compute", "configuration-parameters")
+//   parameterKeys: Vector of parameter names to read
+//   values: Map to store the read parameter name-value pairs
+// Returns: true on success (all parameters found), false on failure
+bool readJsonParameter(const std::string& jsonFilePath,
+                      const std::string& sectionKey,
+                      const std::string& subsectionKey,
+                      const std::vector<std::string>& parameterKeys,
+                      std::map<std::string, double>& values);
+
 // Structure to define custom command-line arguments
 struct CustomArg {
     enum Type { STRING, UINT16, BOOL };

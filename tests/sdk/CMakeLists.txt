@@ -11,11 +11,13 @@ add_library(aditof_test_utils STATIC
 target_include_directories(aditof_test_utils
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_BINARY_DIR}/dependencies/third-party/json-c
 )
 
 target_link_libraries(aditof_test_utils
     PUBLIC
         gtest
+        json-c
 )
 
 # Include shared test utilities
