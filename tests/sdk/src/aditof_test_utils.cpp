@@ -9,6 +9,9 @@
 
 namespace aditof_test {
 
+// Global camera IP address
+std::string g_cameraipaddress = "";
+
 std::string getUTCTimestamp() {
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
@@ -45,6 +48,9 @@ TestRunner::TestRunner(const std::string& programName)
     }
     
     timestamp_ = getUTCTimestamp();
+    
+    // Automatically add --ip argument for camera IP address
+    addArgument(CustomArg("--ip=", &g_cameraipaddress, "Specify the camera IP address"));
 }
 
 void TestRunner::addArgument(const CustomArg& arg) {

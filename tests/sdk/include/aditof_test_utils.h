@@ -9,6 +9,9 @@
 
 namespace aditof_test {
 
+// Global camera IP address (automatically available to all tests)
+extern std::string g_cameraipaddress;
+
 // Generate UTC timestamp in format: YYYYMMDD_HHMMSS
 std::string getUTCTimestamp();
 
