@@ -13,6 +13,7 @@
 #include <map>
 #include <cmath>
 #include <fstream>
+#include <random>
 
 using namespace aditof;
 
@@ -68,7 +69,7 @@ const std::map<std::string, std::array<ModeDetails_struct, 10>> g_modeDetailsMap
 const uint16_t g_maxMode = 9;
 
 std::string g_module = "crosby";
-uint16_t g_mode = 1;
+uint16_t g_mode;
 uint16_t g_num_frames = 1;
 uint16_t g_fps = 10;
 
@@ -125,10 +126,11 @@ TEST_F(CameraTestFixture, CameraDetailsAccessible) {
 }
 
 #include <fstream>
-Status save_frames(aditof::Frame &frame,
+Status save_frames(const std::string testname,
+                  aditof::Frame &frame,
                   const int &mode_num) {
 
-    const std::string filename = "frame_mode_" + std::to_string(mode_num);
+    const std::string filename = testname + "_mode_" + std::to_string(mode_num);
     FrameHandler fh;
     return fh.SnapShotFrames(filename.c_str(), &frame, nullptr, nullptr);
 }
@@ -147,7 +149,22 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
     
     if (init_status == Status::OK) {
 
-        Status status = camera->setMode(g_mode);
+        std::vector<uint8_t> available_modes;
+        Status status = camera->getAvailableModes(available_modes);
+        ASSERT_TRUE(status == Status::OK);
+        ASSERT_FALSE(available_modes.empty());
+
+        // If g_mode is empty, randomly choose from available modes
+        if (g_mode == 0) {
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_int_distribution<> dis(0, available_modes.size() - 1);
+            g_mode = available_modes[dis(gen)];
+        }
+
+        ::testing::Test::RecordProperty("mode", g_mode);
+
+        status = camera->setMode(g_mode);
         ASSERT_TRUE(status == Status::OK);
 
         status = camera->adsd3500SetFrameRate(g_fps);
@@ -205,7 +222,7 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
         ASSERT_TRUE(status == Status::OK);
 
         if (g_savelastframe && framesReceived > 0) {
-            status = save_frames(frame, g_mode);
+            status = save_frames("CameraGetFrames", frame, g_mode);
             ASSERT_TRUE(status == Status::OK);
         }
 
@@ -218,6 +235,106 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
         }
         EXPECT_EQ(framesReceived, g_num_frames);
 
+    } else {
+        GTEST_SKIP() << "Camera initialization failed, skipping test";
+    }
+}
+
+TEST_F(CameraTestFixture, CameraGetFramesAllModes) {
+    if (!has_camera) {
+        GTEST_SKIP() << "No camera available for testing";
+    }
+
+    auto it = g_modeDetailsMap.find(g_module);
+    ASSERT_TRUE(it != g_modeDetailsMap.end());
+    std::array<ModeDetails_struct, 10> crosbyModeDetails = it->second;
+    
+    // Initialize camera first (might fail in test environment)
+    Status init_status = camera->initialize();
+    
+    if (init_status == Status::OK) {
+
+        std::vector<uint8_t> available_modes;
+        Status status = camera->getAvailableModes(available_modes);
+        ASSERT_TRUE(status == Status::OK);
+        ASSERT_FALSE(available_modes.empty());
+
+        for (const auto& mode : available_modes) {
+            g_mode = mode;
+
+            ::testing::Test::RecordProperty("mode_" + std::to_string(g_mode), g_mode);
+
+            status = camera->setMode(g_mode);
+            ASSERT_TRUE(status == Status::OK);
+
+            status = camera->adsd3500SetFrameRate(g_fps);
+            ASSERT_TRUE(status == Status::OK);
+
+            status = camera->start();
+            ASSERT_TRUE(status == Status::OK);
+
+            auto startTime = std::chrono::steady_clock::now();
+            uint16_t framesReceived = 0;
+            uint32_t frameNumber = 0;
+
+            aditof::Frame frame;
+            for (uint16_t cnt = 0; cnt < g_num_frames; cnt++) {
+                status = camera->requestFrame(&frame);
+                if (status != Status::OK) {
+                    status = camera->stop();
+                    ASSERT_TRUE(status == Status::OK);
+                }
+                if (status == Status::OK) {
+                    framesReceived++;
+                }
+                
+                FrameDataDetails fDetails;
+                uint16_t *data1;
+                status = frame.getData("ab", &data1);
+                ASSERT_TRUE(status == Status::OK);
+                frame.getDataDetails("ab", fDetails);
+                ASSERT_TRUE(fDetails.width == crosbyModeDetails[g_mode].width);
+                ASSERT_TRUE(fDetails.height == crosbyModeDetails[g_mode].height);
+
+                aditof::Metadata metadata;
+                status = frame.getMetadataStruct(metadata);
+                ASSERT_TRUE(status == Status::OK);
+
+                if (frameNumber == 0) {
+                    frameNumber = metadata.frameNumber;
+                } else {
+                    if (metadata.frameNumber != frameNumber + 1) {
+                        ADD_FAILURE() << "Expected Frame Number: " << frameNumber + 1 << " Got: " << metadata.frameNumber;
+                    }
+                    frameNumber = metadata.frameNumber;
+                }
+
+                ASSERT_TRUE(metadata.imagerMode == g_mode);
+                ASSERT_TRUE(metadata.width == crosbyModeDetails[g_mode].width);
+                ASSERT_TRUE(metadata.height == crosbyModeDetails[g_mode].height);
+            }
+
+            auto endTime = std::chrono::steady_clock::now();
+            double seconds = std::chrono::duration_cast<std::chrono::duration<double>>(endTime - startTime).count();
+            double fps = seconds > 0.0 ? static_cast<double>(framesReceived) / seconds : 0.0;
+
+            status = camera->stop();
+            ASSERT_TRUE(status == Status::OK);
+
+            if (g_savelastframe && framesReceived > 0) {
+                status = save_frames("CameraGetFramesAllModes", frame, g_mode);
+                ASSERT_TRUE(status == Status::OK);
+            }
+
+            ::testing::Test::RecordProperty("frames_received_" + std::to_string(g_mode), framesReceived);
+            ::testing::Test::RecordProperty("elapsed_seconds_" + std::to_string(g_mode), seconds);
+            ::testing::Test::RecordProperty("fps_" + std::to_string(g_mode), fps);
+            fps = std::round(fps);
+            if (g_num_frames > 10) {
+                EXPECT_FLOAT_EQ(fps, static_cast<double>(g_fps));
+            }
+            EXPECT_EQ(framesReceived, g_num_frames);
+        }
     } else {
         GTEST_SKIP() << "Camera initialization failed, skipping test";
     }
