@@ -259,6 +259,11 @@ TEST_F(CameraTestFixture, CameraGetFramesAllModes) {
         ASSERT_TRUE(status == Status::OK);
         ASSERT_FALSE(available_modes.empty());
 
+        // Shuffle modes to randomly test them without repetition
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::shuffle(available_modes.begin(), available_modes.end(), gen);
+
         for (const auto& mode : available_modes) {
             g_mode = mode;
 
