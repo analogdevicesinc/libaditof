@@ -72,6 +72,7 @@ std::string g_module = "crosby";
 uint16_t g_mode;
 uint16_t g_num_frames = 1;
 uint16_t g_fps = 10;
+uint16_t g_modeorder = 0;
 
 // Test fixture for Camera-related tests
 class CameraTestFixture : public ::testing::Test {
@@ -258,11 +259,19 @@ TEST_F(CameraTestFixture, CameraGetFramesAllModes) {
         Status status = camera->getAvailableModes(available_modes);
         ASSERT_TRUE(status == Status::OK);
         ASSERT_FALSE(available_modes.empty());
-
-        // Shuffle modes to randomly test them without repetition
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::shuffle(available_modes.begin(), available_modes.end(), gen);
+        
+        if (g_modeorder == 0) {
+            // Keep modes in ascending order
+            std::sort(available_modes.begin(), available_modes.end());
+        } else if (g_modeorder == 1) {
+            // Keep modes in descending order
+            std::sort(available_modes.begin(), available_modes.end(), std::greater<uint8_t>());
+        } else {
+            // Shuffle modes to randomly test them without repetition
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::shuffle(available_modes.begin(), available_modes.end(), gen);
+        }
 
         for (const auto& mode : available_modes) {
             g_mode = mode;
@@ -355,6 +364,7 @@ int main(int argc, char** argv) {
     runner.addArgument({"--frames=", &g_num_frames, "Specify the number of frames to capture (default: 1)"});
     runner.addArgument({"--fps=", &g_fps, "Specify the frames per second (default: 10)"});
     runner.addArgument({"--save", &g_savelastframe, "Save the last captured frame to a binary file"});
+    runner.addArgument({"--order=", &g_modeorder, "Order for modes (deftault: 0 - ascending, 1 - descending, 2 - random)"});
     // Note: --ip argument is automatically added by TestRunner
     
     // Initialize (parses args, sets up GTest output)
