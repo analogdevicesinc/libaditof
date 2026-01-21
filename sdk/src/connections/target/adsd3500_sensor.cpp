@@ -923,41 +923,11 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
 
     if (control == "fps") {
         int fps = std::stoi(value);
-#ifdef NVIDIA
-        struct v4l2_ext_control extCtrl;
-        struct v4l2_ext_controls extCtrls;
-        memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-        memset(&extCtrl, 0, sizeof(struct v4l2_ext_control));
-
-        extCtrls.count = 1;
-        extCtrls.controls = &extCtrl;
-        extCtrl.id = CTRL_SET_FRAME_RATE;
-        extCtrl.value = fps;
-
-        if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-            LOG(WARNING) << "Failed to set control:  " << control << " "
-                         << "errno: " << errno << " error: " << strerror(errno);
-            status = Status::GENERIC_ERROR;
-        }
-#else // NXP
-        struct v4l2_streamparm fpsControl;
-        memset(&fpsControl, 0, sizeof(struct v4l2_streamparm));
-
-        fpsControl.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        fpsControl.parm.capture.timeperframe.numerator = 1;
-        fpsControl.parm.capture.timeperframe.denominator = fps;
-
-        if (xioctl(dev->fd, VIDIOC_S_PARM, &fpsControl) == -1) {
-            LOG(WARNING) << "Failed to set control: " << control << " "
-                         << "errno: " << errno << " error: " << strerror(errno);
-            status = Status::GENERIC_ERROR;
-        }
-#endif
 
         m_sensorFps = fps;
-        status = this->adsd3500_write_cmd(0x22, fps);
+        status = this->adsd3500_write_cmd(0x22, m_sensorFps);
         if (status != Status::OK) {
-            LOG(ERROR) << "Failed to set fps at: " << fps
+            LOG(ERROR) << "Failed to set fps at: " << m_sensorFps
                        << "via host commands!";
             return Status::GENERIC_ERROR;
         }
