@@ -2088,9 +2088,6 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                 // Mutual exclusion: add AB only if RGB is NOT enabled
                 if (bitsInAB[modeDetails.modeNumber] != 0) {
                     if (rgbEnabledInConfig) {
-                        LOG(INFO)
-                            << "Mode " << modeDetails.modeNumber
-                            << ": RGB enabled, AB disabled (mutual exclusion)";
                         bitsInAB[modeDetails.modeNumber] =
                             0; // Force disable AB
                     } else {
@@ -2121,9 +2118,9 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             // Default to FALSE if not found (only enable if explicitly set to "1")
             bool addRGB = (rgbCfgIt != iniFile.iniKeyValPairs.end()) &&
                           (rgbCfgIt->second == "1");
-	        std::string rgbValue = (rgbCfgIt != iniFile.iniKeyValPairs.end()) ? rgbCfgIt->second : "NOT_FOUND";
-	        LOG(INFO) << __func__ << " Mode[" << i << "] modeNum=" << modeDetails.modeNumber
-	              << " rgbCameraEnable=" << rgbValue << " addRGB=" << addRGB;
+            std::string rgbValue = (rgbCfgIt != iniFile.iniKeyValPairs.end())
+                                       ? rgbCfgIt->second
+                                       : "NOT_FOUND";
             if (addRGB) {
                 modeDetails.frameContent.push_back("rgb");
             }

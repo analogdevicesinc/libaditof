@@ -714,7 +714,8 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 fDataDetails.width = 1920; // AR0234 mode 0
                 fDataDetails.height = 1200;
                 fDataDetails.subelementSize = sizeof(uint8_t);
-                fDataDetails.subelementsPerElement = 1.5;
+                fDataDetails.subelementsPerElement =
+                    3; // BGR format: 3 bytes per pixel
             }
             fDataDetails.bytesCount = fDataDetails.width * fDataDetails.height *
                                       fDataDetails.subelementSize *
@@ -1017,7 +1018,7 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
                 m_offline_parameters.fDataDetails[idx].subelementSize =
                     sizeof(uint8_t);
                 m_offline_parameters.fDataDetails[idx].subelementsPerElement =
-                    1.5;
+                    3;
             }
             m_offline_parameters.fDataDetails[idx].bytesCount =
                 m_offline_parameters.fDataDetails[idx].width *
@@ -2299,8 +2300,10 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
                             int intVal = json_object_get_int(val);
                             value = std::to_string(intVal);
                             if (std::string(key) == "rgbCameraEnable") {
-                                LOG(INFO) << "[JSON PARSE] Mode " << mode << " key=" << key
-                                         << " intVal=" << intVal << " finalValue=" << value;
+                                LOG(INFO)
+                                    << "[JSON PARSE] Mode " << mode
+                                    << " key=" << key << " intVal=" << intVal
+                                    << " finalValue=" << value;
                             }
                         }
                     }
