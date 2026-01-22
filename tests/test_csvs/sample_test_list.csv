@@ -15,7 +15,7 @@ CA001000,N,camera-get_frames,--mode=0 --fps=5 --frames=100 --save
 #CA002002,Y,camera-get_frames,--mode=1 --fps=15 --frames=100 --save
 #CA002003,Y,camera-get_frames,--mode=1 --fps=20 --frames=100 --save
 #CA002004,Y,camera-get_frames,--mode=1 --fps=25 --frames=100 --save
-CA002005,Y,camera-get_frames,--mode=1 --fps=32 --frames=100 --save
+CA002005,Y,camera-get_frames,--mode=1 --fps=30 --frames=100 --save
 # Crosby Mode 2
 #CA003000,Y,camera-get_frames,--mode=2 --fps=5 --frames=100 --save
 #CA003001,Y,camera-get_frames,--mode=2 --fps=10 --frames=100 --save
