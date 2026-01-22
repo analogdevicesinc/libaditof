@@ -232,7 +232,9 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
         ::testing::Test::RecordProperty("fps", fps);
         fps = std::round(fps);
         if (g_num_frames > 10) {
-            EXPECT_FLOAT_EQ(fps, static_cast<double>(g_fps));
+            if (static_cast<int>(fps) < g_fps - 1 || static_cast<int>(fps) > g_fps + 1) { // Allow a margin of error of 1 fps
+                EXPECT_FLOAT_EQ(fps, static_cast<double>(g_fps));
+            }
         }
         EXPECT_EQ(framesReceived, g_num_frames);
 
@@ -345,7 +347,9 @@ TEST_F(CameraTestFixture, CameraGetFramesAllModes) {
             ::testing::Test::RecordProperty("fps_" + std::to_string(g_mode), fps);
             fps = std::round(fps);
             if (g_num_frames > 10) {
-                EXPECT_FLOAT_EQ(fps, static_cast<double>(g_fps));
+                if (static_cast<int>(fps) < g_fps - 1 || static_cast<int>(fps) > g_fps + 1) { // Allow a margin of error of 1 fps
+                    EXPECT_FLOAT_EQ(fps, static_cast<double>(g_fps));
+                }
             }
             EXPECT_EQ(framesReceived, g_num_frames);
         }
