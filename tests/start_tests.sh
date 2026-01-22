@@ -8,6 +8,8 @@ set -euo pipefail
 repeat_count=1
 csv_file=""
 final_test_results_path=""
+force_build=false
+force_cleanup=false
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -24,11 +26,21 @@ while [[ $# -gt 0 ]]; do
             final_test_results_path="$2"
             shift 2
             ;;
+        -b|--build)
+            force_build=true
+            shift
+            ;;
+        -c|--cleanup)
+            force_cleanup=true
+            shift
+            ;;
         -h|--help)
-            printf '%s\n' "Usage: $0 -f|--file CSV_FILE -o|--output PATH [-r|--repeat COUNT]"
+            printf '%s\n' "Usage: $0 -f|--file CSV_FILE -o|--output PATH [-r|--repeat COUNT] [-b|--build] [-c|--cleanup]"
             printf '%s\n' "  -f, --file CSV_FILE    CSV test list file (required)"
             printf '%s\n' "  -o, --output PATH      Output folder for final results script (required)"
             printf '%s\n' "  -r, --repeat COUNT     Number of times to run tests (default: 1)"
+            printf '%s\n' "  -b, --build            Force rebuild of Docker container even if it exists"
+            printf '%s\n' "  -c, --cleanup          Force cleanup of Docker container on exit"
             printf '%s\n' "  -h, --help             Show this help message"
             exit 0
             ;;
@@ -137,7 +149,7 @@ SCRIPT_EOF
 
 # Use pushd/popd to return automatically, and print results path on exit
 pushd "$script_dir/docker" > /dev/null
-trap 'exec 1>&3 2>&4;print_results_path;./cleanup.sh > /dev/null; popd > /dev/null;' EXIT
+trap 'exec 1>&3 2>&4;print_results_path;[[ "$force_cleanup" == "true" ]] && ./cleanup.sh > /dev/null; popd > /dev/null;' EXIT
 
 # Save original stdout and stderr
 exec 3>&1 4>&2
@@ -145,14 +157,25 @@ exec 3>&1 4>&2
 # Redirect to docker log for cleanup and build
 exec > >(tee -a "$script_log_docker") 2>&1
 
-# Cleanup previous artifacts
-./cleanup.sh
+# Check if Docker image already exists
+IMAGE_TAG="adcam-build-test"
+if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 || [[ "$force_build" == "true" ]]; then
+	# Image doesn't exist or force build requested, so cleanup and build
+	if [[ "$force_build" == "true" ]]; then
+		printf '%s\n' "Force build requested, rebuilding Docker container..."
+	fi
+	# Cleanup previous artifacts
+	./cleanup.sh
 
-# Build the container (compilation happens inside build.sh)
-set +e
-./build.sh -l ~/dev/libs/
-BUILD_RC=$?
-set -e
+	# Build the container (compilation happens inside build.sh)
+	set +e
+	./build.sh -l ~/dev/libs/
+	BUILD_RC=$?
+	set -e
+else
+	printf '%s\n' "Docker image '$IMAGE_TAG' already exists, skipping build."
+	BUILD_RC=0
+fi
 
 # If build returned error code 1, exit the script
 if [[ "$BUILD_RC" -eq 1 ]]; then
