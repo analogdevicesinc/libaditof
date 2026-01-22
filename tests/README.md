@@ -1,15 +1,18 @@
-### Setting Up for testing the SDK using GoogleTests
+# Setting Up for testing the SDK using GoogleTests
 
-In the *libaditof* folder:
+## Developing a test:
+
+### Building the repo
 ```
 git submodule update --init gtest
 mkdir build && cd build
-cmake -DBUILD_TESTING=ON -DNVIDIA=1 ..
-cmake --build . --config RELEASE -j 6
+cmake -DBUILD_TESTING=ON -DNVIDIA=1 -DWITH_NETWORK=OFF -DWITH_SUBMODULES=OFF ..
+make -j6
 ```
 
-Running a test:
+### Running a test from the build folder
 ```
+$ cd build/tests/sdk/bin
 $ ./generic-sdk_version_test --gtest_output=json:generic-sdk_version_test.json
 [==========] Running 2 tests from 1 test suite.
 [----------] Global test environment set-up.
@@ -143,4 +146,35 @@ alue of: version == g_expectedVersion\n  Actual: false\nExpected: true\n",
     }
   ]
 } 
+```
+
+## Using the test environment
+
+### Using start_tests.sh
+
+For example:
+```
+$ cd tests
+$ ./start_tests.sh -f test_csvs/sample_test_list.csv -o ~/Documents/
+$ cd ~/Documents
+$ ls
+results_sample_test_list_20260122_110837.sh
+$ ./results_sample_test_list_20260122_110837.sh
+Test executing: ./run_tests.sh -f /media/analog/43a17749-484a-4b16-8532-036d47fe816f/home/astraker/dev/ADCAM.gtest/libaditof/tests/test_csvs/sample_test_list.csv -o /tmp/results_sample_test_list_20260122_110837 -n 1
+
+--- Processing ---
+GE000000,generic-sdk_version_test,,run_1,Passed
+CA000000,camera-adsd3500_reset,,run_1,Passed
+CA002000,camera-parameters,--module=crosby,run_1,Passed
+--- Summary of Test Results in '/tmp/results_sample_test_list_20260122_110837' ---
+Processed,3
+Skipped,0
+Passed,3
+Failed,0
+$ ./results_sample_test_list_20260122_110837.sh -x
+Extracted to results_sample_test_list_20260122_110837.tar.gz
+Unarchived to results_sample_test_list_20260122_110837
+$ cd results_sample_test_list_20260122_110837
+$ ls
+docker_summary.log  libaditof_summary.log  test_CA000000  test_CA002000  test_GE000000
 ```
