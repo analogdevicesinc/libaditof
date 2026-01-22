@@ -99,7 +99,7 @@ if [[ "$1" == "--extract" ]] || [[ "$1" == "-x" ]]; then
     # Unarchive the tgz file
     extract_dir="${output_file%.tar.gz}"
     mkdir -p "$extract_dir"
-    tar -xzf "$output_file" -C "$extract_dir"
+    tar -xzf "$output_file"
     echo "Unarchived to $extract_dir"
     
     # Remove the tar.gz file after extraction
