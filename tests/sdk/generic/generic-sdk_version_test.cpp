@@ -14,7 +14,7 @@
 using namespace aditof;
 
 // Global variable to store the expected version from command line
-std::string g_expectedVersion = "6.2.0";
+std::string g_expectedVersion = "7.0.0 a-1";
 
 // Test version information
 TEST(VersionTest, VersionMacrosAreDefined) {
@@ -34,6 +34,8 @@ TEST(VersionTest, ApiVersionReturnsNonEmptyString) {
     // Version should contain dots
     EXPECT_NE(version.find('.'), std::string::npos);
 
+    ::testing::Test::RecordProperty("Expected Version: ", g_expectedVersion);
+    ::testing::Test::RecordProperty("Read Version: ", version);
     EXPECT_TRUE(version == g_expectedVersion);
 }
 
