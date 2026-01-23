@@ -603,7 +603,8 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
             auto iniParamsMode = m_depth_params_map.find(mode);
             if (iniParamsMode == m_depth_params_map.end()) {
-                LOG(ERROR) << "Mode " << (int)mode << " not found in depth params map";
+                LOG(ERROR) << "Mode " << (int)mode
+                           << " not found in depth params map";
                 return Status::INVALID_ARGUMENT;
             }
             // Create a string from the ini parameters
