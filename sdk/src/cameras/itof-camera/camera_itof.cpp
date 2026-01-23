@@ -358,6 +358,32 @@ CameraItof::getDepthParamtersMap(uint16_t mode,
     return Status::INVALID_ARGUMENT;
 }
 
+/**
+ * @brief Set the camera operating mode (offline or online path).
+ *
+ * In offline mode, this initializes the camera state and internal caches
+ * from the playback file header obtained via the sensor interface. The
+ * input parameter is ignored by design in offline mode, as the recorded
+ * file fully specifies the mode and frame layout.
+ *
+ * In online mode, this validates the requested mode against the list of
+ * available sensor modes, applies the corresponding depth-compute INI
+ * parameters, commands the ADSD3500 to switch modes, refreshes the
+ * `m_modeDetailsCache`, prepares depth/AB/conf output layout in
+ * `m_details.frameType`, and (for non-PCM modes) initializes target depth
+ * compute and regenerates XYZ tables if enabled.
+ *
+ * @param mode Requested mode number (used only in online mode).
+ * @return Status::OK on success;
+ *         Status::INVALID_ARGUMENT if the mode is not supported (online);
+ *         other error codes if sensor or compute configuration fails.
+ *
+ * @note This function updates internal flags (`m_depthEnabled`,
+ *       `m_abEnabled`, `m_confEnabled`, `m_xyzEnabled`) via
+ *       configureSensorModeDetails(), and may allocate/free XYZ tables.
+ *       It also updates `m_details.mode` and `m_details.frameType` to
+ *       reflect the active configuration.
+ */
 aditof::Status CameraItof::setMode(const uint8_t &mode) {
     using namespace aditof;
     Status status = Status::OK;
