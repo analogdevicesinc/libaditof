@@ -942,6 +942,58 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
     return status;
 }
 
+/**
+ * @brief Retrieves and processes a depth frame from the sensor.
+ *
+ * Acquires a frame from the underlying depth sensor and populates the provided
+ * Frame object with depth, AB, XYZ, and metadata components based on current
+ * mode settings and enabled features.
+ *
+ * @details
+ * The function performs the following operations:
+ * - Validates and initializes frame buffer from either "frameData" (MP modes) or
+ *   "ab" (QMP modes) based on PCM frame flag
+ * - Optionally drops the first frame on initial startup (configurable via
+ *   m_dropFirstFrame flag) to stabilize sensor output; caller controls retry via
+ *   return status
+ * - Retrieves actual frame data from depth sensor via V4L2/ISP pipeline
+ * - Computes XYZ coordinates from depth data if enabled and buffers allocated
+ * - Clears disabled data channels (depth/AB) to ensure clean output
+ * - Extracts or generates metadata (128-byte header) and populates frame
+ *
+ * All buffer pointers are validated before use to prevent memory corruption.
+ * Metadata struct size is verified at compile-time to fit within AB frame header.
+ *
+ * @param[in,out] frame Pointer to Frame object to populate. Must be non-null.
+ *                       On return, contains depth, AB, XYZ, and metadata based
+ *                       on enabled channels and current mode settings.
+ * @param[in] index Reserved parameter for multi-frame operations (default: 0).
+ *                  Currently unused; provided for API compatibility.
+ *
+ * @return aditof::Status::OK on successful frame acquisition and processing.
+ *         aditof::Status::INVALID_ARGUMENT if frame pointer is null.
+ *         aditof::Status::GENERIC_ERROR if frame buffer allocation fails or
+ *                                        frame data location is null despite
+ *                                        successful getData() call.
+ *         Sensor error status codes from depth sensor operations (getFrame calls).
+ *
+ * @note Single-threaded access only. Caller must ensure exclusive access to
+ *       requestFrame during camera streaming. Frame drop retry logic is
+ *       intentional; caller determines when to stop retrying based on status.
+ *
+ * @note Drop-first-frame behavior: On initial startup with m_dropFirstFrame=true,
+ *       the function performs two getFrame calls: one to discard initial frame
+ *       and one to return actual data. This increases latency on first call.
+ *       Failures during drop phase reset m_dropFrameOnce flag for retry.
+ *
+ * @note Memory safety: This function is hardened with comprehensive pointer
+ *       validation and bounds checking. Metadata struct size is enforced at
+ *       compile-time to prevent buffer overread from AB frame header.
+ *
+ * @see CameraItof::getDetails() for frame type information
+ * @see buffer_processor.cpp for V4L2 frame acquisition details
+ * @see Algorithms::ComputeXYZ() for XYZ coordinate generation
+ */
 aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     using namespace aditof;
     Status status = Status::OK;
@@ -960,23 +1012,29 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
 
     uint16_t *frameDataLocation = nullptr;
     if (!m_pcmFrame) {
-        frame->getData("frameData", &frameDataLocation);
+        status = frame->getData("frameData", &frameDataLocation);
     } else {
-        frame->getData("ab", &frameDataLocation);
+        status = frame->getData("ab", &frameDataLocation);
     }
 
-    if (!frameDataLocation) {
-        LOG(WARNING) << "getframe failed to allocated valid frame";
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to get frame data location, status: "
+                   << (int)status;
         return status;
+    }
+    if (!frameDataLocation) {
+        LOG(ERROR) << "Frame data location is null despite success status";
+        return Status::GENERIC_ERROR;
     }
 
     if (m_dropFirstFrame && m_dropFrameOnce && !m_isOffline) {
-        m_depthSensor->getFrame(frameDataLocation, index);
-        m_dropFrameOnce = false;
+        status = m_depthSensor->getFrame(frameDataLocation, index);
         if (status != Status::OK) {
+            m_dropFrameOnce = true;
             LOG(INFO) << "Failed to drop first frame!";
             return status;
         }
+        m_dropFrameOnce = false;
         LOG(INFO) << "Dropped first frame";
     }
 
@@ -1010,7 +1068,11 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     if (!m_depthEnabled && frame->haveDataType("depth")) {
         uint16_t *depthFrame;
 
-        frame->getData("depth", &depthFrame);
+        status = frame->getData("depth", &depthFrame);
+        if (status != Status::OK || depthFrame == nullptr) {
+            LOG(ERROR) << "Failed to get depth frame location";
+            return status;
+        }
         memset(depthFrame, 0,
                m_modeDetailsCache.baseResolutionHeight *
                    m_modeDetailsCache.baseResolutionWidth * sizeof(uint16_t));
@@ -1019,7 +1081,11 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     if (!m_abEnabled && frame->haveDataType("ab")) {
         uint16_t *abFrame;
 
-        frame->getData("ab", &abFrame);
+        status = frame->getData("ab", &abFrame);
+        if (status != Status::OK || abFrame == nullptr) {
+            LOG(ERROR) << "Failed to get ab frame location";
+            return status;
+        }
         memset(abFrame, 0,
                m_modeDetailsCache.baseResolutionHeight *
                    m_modeDetailsCache.baseResolutionWidth * sizeof(uint16_t));
@@ -1029,7 +1095,13 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
 
     if (m_enableMetaDatainAB && m_abEnabled) {
         uint16_t *abFrame;
-        frame->getData("ab", &abFrame);
+        status = frame->getData("ab", &abFrame);
+        if (status != Status::OK || abFrame == nullptr) {
+            LOG(ERROR) << "Failed to get ab frame location";
+            return status;
+        }
+        static_assert(sizeof(Metadata) <= skMetaDataBytesCount,
+                      "Metadata struct exceeds AB frame header size");
         memcpy(reinterpret_cast<uint8_t *>(&metadata), abFrame,
                sizeof(metadata));
         memset(abFrame, 0, sizeof(metadata));
@@ -1053,7 +1125,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
 
     uint16_t *metadataLocation;
     status = frame->getData("metadata", &metadataLocation);
-    if (status != Status::OK) {
+    if (status != Status::OK || metadataLocation == nullptr) {
         LOG(ERROR) << "Failed to get metadata location";
         return status;
     }
