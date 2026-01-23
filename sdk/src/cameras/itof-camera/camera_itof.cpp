@@ -602,6 +602,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             std::string s;
 
             auto iniParamsMode = m_depth_params_map.find(mode);
+            if (iniParamsMode == m_depth_params_map.end()) {
+                LOG(ERROR) << "Mode " << (int)mode << " not found in depth params map";
+                return Status::INVALID_ARGUMENT;
+            }
             // Create a string from the ini parameters
             for (auto &param : iniParamsMode->second) {
                 s += param.first + "=" + param.second + "\n";
@@ -638,10 +642,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         // If we compute XYZ then prepare the XYZ tables which depend on the mode
         if (m_xyzEnabled && !m_pcmFrame) {
-            uint8_t mode = m_modeDetailsCache.modeNumber;
+            uint8_t _mode = m_modeDetailsCache.modeNumber;
 
             const int GEN_XYZ_ITERATIONS = 20;
-            TofiXYZDealiasData *pDealias = &m_xyz_dealias_data[mode];
+            TofiXYZDealiasData *pDealias = &m_xyz_dealias_data[_mode];
 
             cleanupXYZtables();
             int ret = Algorithms::GenerateXYZTables(
