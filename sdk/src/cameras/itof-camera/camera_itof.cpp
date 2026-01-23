@@ -1399,18 +1399,25 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     uint16_t chunkSize;
     uint32_t ccbFileSize;
     uint32_t crcOfCCB;
-    uint16_t numOfChunks;
 
     memcpy(&chunkSize, ccbHeader + 1, 2);
     memcpy(&ccbFileSize, ccbHeader + 4, 4);
     memcpy(&crcOfCCB, ccbHeader + 12, 4);
 
-    numOfChunks = ccbFileSize / chunkSize;
-    uint8_t *ccbContent = new uint8_t[ccbFileSize];
+    // Validate header values to prevent division by zero and unbounded allocation
+    const uint32_t MAX_CCB_FILE_SIZE = 10 * 1024 * 1024;  // 10 MB safety limit
+    if (chunkSize == 0 || ccbFileSize == 0 || ccbFileSize > MAX_CCB_FILE_SIZE) {
+        LOG(ERROR) << "Invalid CCB header: chunkSize=" << chunkSize
+                   << " fileSize=" << ccbFileSize;
+        return Status::GENERIC_ERROR;
+    }
+
+    uint16_t numOfChunks = ccbFileSize / chunkSize;
+    std::vector<uint8_t> ccbContent(ccbFileSize);  // RAII: automatic cleanup
 
     for (int i = 0; i < numOfChunks; i++) {
         status = m_depthSensor->adsd3500_read_payload(
-            ccbContent + i * chunkSize, chunkSize);
+            ccbContent.data() + i * chunkSize, chunkSize);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to read chunk number " << i << " out of "
                        << numOfChunks + 1 << " chunks for adsd3500!";
@@ -1426,7 +1433,7 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     //read last chunk. smaller size than the rest
     if (ccbFileSize % chunkSize != 0) {
         status = m_depthSensor->adsd3500_read_payload(
-            ccbContent + numOfChunks * chunkSize, ccbFileSize % chunkSize);
+            ccbContent.data() + numOfChunks * chunkSize, ccbFileSize % chunkSize);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to read chunk number " << numOfChunks + 1
                        << " out of " << numOfChunks + 1
@@ -1448,7 +1455,7 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     LOG(INFO) << "Succesfully read ccb from adsd3500. Checking crc...";
 
     uint32_t computedCrc =
-        crcFast(ccbContent, ccbFileSize - 4, true) ^ 0xFFFFFFFF;
+        crcFast(ccbContent.data(), ccbFileSize - 4, true) ^ 0xFFFFFFFF;
 
     if (crcOfCCB != ~computedCrc) {
         LOG(ERROR) << "Invalid crc for ccb read from memory!";
@@ -1457,13 +1464,8 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
         LOG(INFO) << "Crc of ccb is valid.";
     }
 
-    std::ofstream tempFile;
-    std::string fileName = "temp_ccb.ccb";
-
     //remove the trailling 4 bytes containing the crc
-    ccb = std::string((char *)ccbContent, ccbFileSize - 4);
-
-    delete[] ccbContent;
+    ccb = std::string(reinterpret_cast<char *>(ccbContent.data()), ccbFileSize - 4);
 
     return status;
 }
