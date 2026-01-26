@@ -80,9 +80,11 @@
 
 // ADSD3500 Burst Protocol Packet Structure Offsets
 // Burst command packet: [Header(3B)][Marker(1B)][Cmd(3B)][Pad(4B)][Checksum(4B)][Payload...]
-#define ADSD3500_BURST_CMD_HEADER_SIZE 15  // Size of command header before payload data
+#define ADSD3500_BURST_CMD_HEADER_SIZE                                         \
+    15 // Size of command header before payload data
 // Burst response packet: [Header(3B)][Payload...]
-#define ADSD3500_BURST_RESPONSE_HEADER_SIZE 3  // Size of response header before payload data
+#define ADSD3500_BURST_RESPONSE_HEADER_SIZE                                    \
+    3 // Size of response header before payload data
 
 // Can be moved to target_definitions in "camera"/"platform"
 #define TEMP_SENSOR_DEV_PATH "/dev/i2c-1"
@@ -328,22 +330,23 @@ aditof::Status Adsd3500Sensor::open() {
     }
 
     m_implData->numVideoDevs = driverSubPaths.size();
-    
+
     // Validate all configuration vectors have matching sizes
-    if (driverPaths.size() != driverSubPaths.size() || 
+    if (driverPaths.size() != driverSubPaths.size() ||
         cards.size() != driverSubPaths.size()) {
-        LOG(ERROR) << "Driver paths, sub-paths, and card names must have same size. "
-                   << "Paths: " << driverPaths.size() 
-                   << ", SubPaths: " << driverSubPaths.size()
-                   << ", Cards: " << cards.size();
+        LOG(ERROR)
+            << "Driver paths, sub-paths, and card names must have same size. "
+            << "Paths: " << driverPaths.size()
+            << ", SubPaths: " << driverSubPaths.size()
+            << ", Cards: " << cards.size();
         return Status::GENERIC_ERROR;
     }
-    
+
     // Close file descriptors and delete any existing videoDevs to prevent leaks on repeated open() calls
     if (m_implData->videoDevs) {
         for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
             struct VideoDev *oldDev = &m_implData->videoDevs[i];
-            
+
             // Close file descriptors before deleting
             if (oldDev->fd != -1) {
                 close(oldDev->fd);
@@ -353,13 +356,13 @@ aditof::Status Adsd3500Sensor::open() {
                 close(oldDev->sfd);
                 oldDev->sfd = -1;
             }
-            
+
             // Free video buffers if still allocated
             if (oldDev->videoBuffers) {
                 for (unsigned int j = 0; j < oldDev->nVideoBuffers; j++) {
-                    if (oldDev->videoBuffers[j].start && 
+                    if (oldDev->videoBuffers[j].start &&
                         oldDev->videoBuffers[j].start != MAP_FAILED) {
-                        munmap(oldDev->videoBuffers[j].start, 
+                        munmap(oldDev->videoBuffers[j].start,
                                oldDev->videoBuffers[j].length);
                     }
                 }
@@ -370,11 +373,12 @@ aditof::Status Adsd3500Sensor::open() {
         delete[] m_implData->videoDevs;
         m_implData->videoDevs = nullptr;
     }
-    
-    m_implData->videoDevs = new (std::nothrow) VideoDev[m_implData->numVideoDevs];
+
+    m_implData->videoDevs =
+        new (std::nothrow) VideoDev[m_implData->numVideoDevs];
     if (!m_implData->videoDevs) {
-        LOG(ERROR) << "Failed to allocate memory for " << m_implData->numVideoDevs 
-                   << " video devices";
+        LOG(ERROR) << "Failed to allocate memory for "
+                   << m_implData->numVideoDevs << " video devices";
         return Status::GENERIC_ERROR;
     }
 
@@ -763,7 +767,7 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
         // Validate file descriptors are still valid after stop()
         if (dev->fd == -1 || dev->sfd == -1) {
-            LOG(ERROR) << "File descriptors invalid after stop (fd=" << dev->fd 
+            LOG(ERROR) << "File descriptors invalid after stop (fd=" << dev->fd
                        << ", sfd=" << dev->sfd << ")";
             status = Status::GENERIC_ERROR;
             goto cleanup_on_error;
@@ -797,7 +801,7 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
                 status = Status::GENERIC_ERROR;
                 goto cleanup_on_error;
             }
-            
+
             for (unsigned int j = 0; j < dev->nVideoBuffers; j++) {
                 if (munmap(dev->videoBuffers[j].start,
                            dev->videoBuffers[j].length) == -1) {
@@ -932,7 +936,7 @@ cleanup_on_error:
     if (m_implData && m_implData->videoDevs) {
         for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
             dev = &m_implData->videoDevs[i];
-            
+
             // Unmap and free video buffers
             if (dev->videoBuffers) {
                 for (unsigned int j = 0; j < dev->nVideoBuffers; j++) {
@@ -946,34 +950,34 @@ cleanup_on_error:
                 dev->videoBuffers = nullptr;
                 dev->nVideoBuffers = 0;
             }
-            
+
             // Close file descriptors
             if (dev->fd != -1) {
                 if (close(dev->fd) == -1) {
-                    LOG(WARNING) << "Error closing fd in cleanup: "
-                                 << "errno: " << errno 
-                                 << " error: " << strerror(errno);
+                    LOG(WARNING)
+                        << "Error closing fd in cleanup: "
+                        << "errno: " << errno << " error: " << strerror(errno);
                 }
                 dev->fd = -1;
             }
-            
+
             if (dev->sfd != -1) {
                 if (close(dev->sfd) == -1) {
-                    LOG(WARNING) << "Error closing sfd in cleanup: "
-                                 << "errno: " << errno 
-                                 << " error: " << strerror(errno);
+                    LOG(WARNING)
+                        << "Error closing sfd in cleanup: "
+                        << "errno: " << errno << " error: " << strerror(errno);
                 }
                 dev->sfd = -1;
             }
-            
+
             // Reset state flags
             dev->started = false;
         }
     }
-    
+
     // Mark sensor as closed since it's in an inconsistent state
     m_isOpen = false;
-    
+
     LOG(ERROR) << "Mode change failed, sensor may need to be reopened";
     return status;
 }
@@ -1092,20 +1096,20 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
                                           "12", "14", "16"};
 
     // Validate and convert bit depth control values
-    if (control == "phaseDepthBits" || control == "abBits" || 
+    if (control == "phaseDepthBits" || control == "abBits" ||
         control == "confidenceBits") {
         int bitIndex;
         try {
             bitIndex = std::stoi(value);
-        } catch (const std::exception& e) {
-            LOG(ERROR) << "Invalid bit depth value for " << control << ": " 
+        } catch (const std::exception &e) {
+            LOG(ERROR) << "Invalid bit depth value for " << control << ": "
                        << value << " (not a valid integer)";
             return Status::INVALID_ARGUMENT;
         }
 
         if (bitIndex < 0 || bitIndex >= static_cast<int>(convertor.size())) {
-            LOG(ERROR) << "Bit depth index out of range for " << control 
-                       << ": " << bitIndex << " (must be 0-6)";
+            LOG(ERROR) << "Bit depth index out of range for " << control << ": "
+                       << bitIndex << " (must be 0-6)";
             return Status::INVALID_ARGUMENT;
         }
 
@@ -1117,7 +1121,7 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
             m_modeSelector.setControl("confBits", convertor[bitIndex]);
         }
     }
-    
+
     if (control == "inputFormat") {
         m_modeSelector.setControl("inputFormat", value);
         return Status::OK;
@@ -1358,9 +1362,11 @@ aditof::Status Adsd3500Sensor::adsd3500_read_payload_cmd(uint32_t cmd,
 
     // Validate the actual payload length that will be read back fits in response packet
     // Response packet structure: 3 byte header + payload data
-    if (payload_len > ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
+    if (payload_len >
+        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
         LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE);
+                   << (ADSD3500_CTRL_PACKET_SIZE -
+                       ADSD3500_BURST_RESPONSE_HEADER_SIZE);
         return Status::INVALID_ARGUMENT;
     }
 
@@ -1404,14 +1410,17 @@ aditof::Status Adsd3500Sensor::adsd3500_read_payload_cmd(uint32_t cmd,
         return Status::GENERIC_ERROR;
     }
 
-    if (payload_len > ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
+    if (payload_len >
+        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
         LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE);
+                   << (ADSD3500_CTRL_PACKET_SIZE -
+                       ADSD3500_BURST_RESPONSE_HEADER_SIZE);
         return Status::INVALID_ARGUMENT;
     }
 
     // Extract payload from response packet (skip 3-byte header)
-    memcpy(readback_data, extCtrl.p_u8 + ADSD3500_BURST_RESPONSE_HEADER_SIZE, payload_len);
+    memcpy(readback_data, extCtrl.p_u8 + ADSD3500_BURST_RESPONSE_HEADER_SIZE,
+           payload_len);
 
     //If we use the read ccb command we need to keep adsd3500 in burst mode
     if (cmd == 0x13) {
@@ -1480,13 +1489,16 @@ aditof::Status Adsd3500Sensor::adsd3500_read_payload(uint8_t *payload,
         return Status::GENERIC_ERROR;
     }
 
-    if (payload_len > ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
+    if (payload_len >
+        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
         LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE);
+                   << (ADSD3500_CTRL_PACKET_SIZE -
+                       ADSD3500_BURST_RESPONSE_HEADER_SIZE);
         return Status::INVALID_ARGUMENT;
     }
 
-    memcpy(payload, extCtrl.p_u8 + ADSD3500_BURST_RESPONSE_HEADER_SIZE, payload_len);
+    memcpy(payload, extCtrl.p_u8 + ADSD3500_BURST_RESPONSE_HEADER_SIZE,
+           payload_len);
 
     return status;
 }
@@ -1536,9 +1548,11 @@ Adsd3500Sensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
     memcpy(buf + 11, &checksum, 4);
 
     // Validate payload fits in command packet after header
-    if (payload_len > ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_CMD_HEADER_SIZE) {
+    if (payload_len >
+        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_CMD_HEADER_SIZE) {
         LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_CMD_HEADER_SIZE);
+                   << (ADSD3500_CTRL_PACKET_SIZE -
+                       ADSD3500_BURST_CMD_HEADER_SIZE);
         return Status::INVALID_ARGUMENT;
     }
 
@@ -1595,9 +1609,11 @@ aditof::Status Adsd3500Sensor::adsd3500_write_payload(uint8_t *payload,
     buf[2] = uint8_t(payload_len & 0xFF);
 
     // Validate payload fits after response header
-    if (payload_len > ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
+    if (payload_len >
+        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
         LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE);
+                   << (ADSD3500_CTRL_PACKET_SIZE -
+                       ADSD3500_BURST_RESPONSE_HEADER_SIZE);
         return Status::INVALID_ARGUMENT;
     }
 
