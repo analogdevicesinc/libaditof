@@ -1,9 +1,9 @@
 TestID,Execute,TestName,TestParameters
 GE000000,Y,generic-sdk_version_test
 CA000000,Y,camera-adsd3500_reset
-puCA002000,Y,camera-parameters,--module=crosby
+CA002000,Y,camera-parameters,--module=crosby
 # Crosby Mode 0
-CA001000,N,camera-get_frames,--mode=0 --fps=5 --frames=100 --save
+CA001000,Y,camera-get_frames,--mode=0 --fps=5 --frames=100 --save
 CA001001,Y,camera-get_frames,--mode=0 --fps=10 --frames=100 --save
 CA001002,Y,camera-get_frames,--mode=0 --fps=15 --frames=100 --save
 CA001003,Y,camera-get_frames,--mode=0 --fps=20 --frames=100 --save
@@ -33,4 +33,4 @@ CA004003,Y,camera-get_frames,--mode=3 --fps=20 --frames=100 --save
 CA004004,Y,camera-get_frames,--mode=3 --fps=25 --frames=100 --save
 CA004005,Y,camera-get_frames,--mode=3 --fps=30 --frames=100 --save
 CA004006,Y,camera-get_frames,--mode=3 --fps=35 --frames=100 --save
-CA004007,Y,camera-get_frames,--mode=3 --fps=0 --frames=100 --save
+CA004007,Y,camera-get_frames,--mode=3 --fps=40 --frames=100 --save
