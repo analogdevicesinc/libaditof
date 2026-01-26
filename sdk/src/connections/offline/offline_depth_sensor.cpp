@@ -190,16 +190,6 @@ aditof::Status OfflineDepthSensor::getName(std::string &name) const {
     return status;
 }
 
-aditof::Status
-OfflineDepthSensor::setHostConnectionType(std::string &connectionType) {
-
-    using namespace aditof;
-
-    Status status = Status::OK;
-
-    return status;
-}
-
 aditof::Status OfflineDepthSensor::adsd3500_read_cmd(uint16_t cmd,
                                                      uint16_t *data,
                                                      unsigned int usDelay) {

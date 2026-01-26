@@ -110,8 +110,6 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     getDetails(aditof::SensorDetails &details) const override;
     virtual aditof::Status getHandle(void **handle) override;
     virtual aditof::Status getName(std::string &name) const override;
-    virtual aditof::Status
-    setHostConnectionType(std::string &connectionType) override;
 
     virtual aditof::Status adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
                                              unsigned int usDelay = 0) override;
@@ -198,7 +196,6 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::string m_sensorName;
     aditof::SensorDetails m_sensorDetails;
     bool m_interruptAvailable;
-    aditof::ConnectionType m_hostConnectionType;
     std::string m_driverPath;
     std::string m_driverSubPath;
     std::string m_captureDev;
@@ -221,11 +218,11 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::vector<iniFileStruct> m_iniFileStructList;
     aditof::Adsd3500ModeSelector m_modeSelector;
     std::string m_sensorConfiguration;
-    bool isOpen;
+    bool m_isOpen;
     bool m_ccbmEnabled;
-    bool first_reset;
-    std::vector<uint8_t> bitsInAB;
-    std::vector<uint8_t> bitsInConf;
+    std::vector<uint8_t> m_bitsInAB;
+    std::vector<uint8_t> m_bitsInConf;
+    uint16_t m_chipId;
 
   public:
     // Stream record and playback support
