@@ -816,9 +816,6 @@ PYBIND11_MODULE(aditofpython, m) {
             },
             py::arg("handle"))
         .def("getName", &aditof::DepthSensorInterface::getName, py::arg("name"))
-        .def("setHostConnectionType",
-             &aditof::DepthSensorInterface::setHostConnectionType,
-             py::arg("connectionType"))
         .def(
             "initTargetDepthCompute",
             [](aditof::DepthSensorInterface &device,
