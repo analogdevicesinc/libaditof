@@ -6,6 +6,7 @@ git config --global --add safe.directory /libaditof/protobuf/third_party/benchma
 git config --global --add safe.directory /libaditof/protobuf/third_party/googletest
 git config --global --add safe.directory /libaditof/libzmq
 git config --global --add safe.directory /libaditof/cppzmq
+git config --global --add safe.directory /libaditof/dependencies/third-party/gtest
 
 project_dir=$1
 pushd ${project_dir}
