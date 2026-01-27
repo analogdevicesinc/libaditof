@@ -795,7 +795,8 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
         //End of set mode in chip
 
-        if (type.modeNumber != m_implData->modeDetails.modeNumber && dev->videoBuffers) {
+        if (type.modeNumber != m_implData->modeDetails.modeNumber &&
+            dev->videoBuffers) {
 
             for (unsigned int j = 0; j < dev->nVideoBuffers; j++) {
                 if (munmap(dev->videoBuffers[j].start,
