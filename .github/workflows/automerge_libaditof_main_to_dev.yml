@@ -25,7 +25,7 @@ jobs:
         run: |
           if git ls-remote --exit-code --heads origin dev-7.0.0-a-1; then
             echo "Branch exists on remote"
-            git fetch origin dev-7.0.0-a-1-
+            git fetch origin dev-7.0.0-a-1
             git checkout dev-7.0.0-a-1
           else
             echo "Branch does not exist, creating it"
