@@ -445,11 +445,10 @@ aditof::Status FrameHandlerImpl::SaveRGBAsJPEG(const char *filename,
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
 
-aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(
-    const char *filename,
-    const uint16_t *data,
-    uint32_t width,
-    uint32_t height) {
+aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char *filename,
+                                                         const uint16_t *data,
+                                                         uint32_t width,
+                                                         uint32_t height) {
 
     if (!data) {
         return aditof::Status::GENERIC_ERROR;
@@ -464,14 +463,15 @@ aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(
     const uint32_t num_points = width * height;
 
     // PLY header: 3 floats per vertex
-    std::string header =
-        "ply\n"
-        "format binary_little_endian 1.0\n"
-        "element vertex " + std::to_string(num_points) + "\n"
-        "property float x\n"
-        "property float y\n"
-        "property float z\n"
-        "end_header\n";
+    std::string header = "ply\n"
+                         "format binary_little_endian 1.0\n"
+                         "element vertex " +
+                         std::to_string(num_points) +
+                         "\n"
+                         "property float x\n"
+                         "property float y\n"
+                         "property float z\n"
+                         "end_header\n";
 
     file.write(header.c_str(), header.size());
 
