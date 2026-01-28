@@ -37,7 +37,6 @@
 #include <cstring>
 #include <fstream>
 #include <json.h>
-#include <omp.h>
 #include <sstream>
 
 #include <aditof/log.h>
@@ -116,8 +115,6 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
     if (m_isOffline) {
 
         LOG(INFO) << "Initializing camera: Offline";
-
-        return status;
 
     } else {
 
@@ -310,9 +307,9 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         }
 
         LOG(INFO) << "Camera initialized";
-
-        return status;
     }
+
+    return status;
 }
 
 aditof::Status CameraItof::start() {
@@ -333,6 +330,9 @@ aditof::Status CameraItof::stop() {
 
     if (m_isOffline) {
         status = m_depthSensor->stopPlayback();
+        if (status != aditof::Status::OK) {
+            LOG(INFO) << "Failed to stop playback of offline file!";
+        }
     }
 
     status = m_depthSensor->stop();
@@ -1203,13 +1203,13 @@ aditof::Status CameraItof::setControl(const std::string &control,
 
     if (m_controls.count(control) > 0) {
         if (value == "call") {
-            return m_noArgCallables.at(control)();
+            status = m_noArgCallables.at(control)();
         } else {
             m_controls[control] = value;
         }
     } else {
         LOG(WARNING) << "Unsupported control";
-        return Status::INVALID_ARGUMENT;
+        status = Status::INVALID_ARGUMENT;
     }
 
     return status;
@@ -1245,12 +1245,12 @@ aditof::Status CameraItof::readSerialNumber(std::string &serialNumber,
     }
 
     if (useCacheValue) {
-        if (!m_details.serialNumber.empty()) {
-            serialNumber = m_details.serialNumber;
-            return status;
-        } else {
+        if (m_details.serialNumber.empty()) {
             LOG(INFO)
                 << "No serial number stored in cache. Reading from memory.";
+        } else {
+            serialNumber = m_details.serialNumber;
+            return status;
         }
     }
 
@@ -1561,11 +1561,11 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     uint32_t computedCrc =
         crcFast(ccbContent.data(), ccbFileSize - 4, true) ^ 0xFFFFFFFF;
 
-    if (crcOfCCB != ~computedCrc) {
+    if (crcOfCCB == ~computedCrc) {
+        LOG(INFO) << "Crc of ccb is valid.";
+    } else {
         LOG(ERROR) << "Invalid crc for ccb read from memory!";
         return Status::GENERIC_ERROR;
-    } else {
-        LOG(INFO) << "Crc of ccb is valid.";
     }
 
     //remove the trailling 4 bytes containing the crc
