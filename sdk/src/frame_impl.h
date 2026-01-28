@@ -58,6 +58,16 @@ class FrameImpl {
     struct ImplData;
     aditof::FrameDetails m_details;
     std::unique_ptr<ImplData> m_implData;
+
+    /**
+     * @brief Tracks whether Frame has been configured with setDetails()
+     * 
+     * Used to detect when a Frame object is being reused across mode changes
+     * with incompatible details. Set to true on first setDetails() call, 
+     * triggers warning if Frame is reused with different dimensions.
+     */
+    bool m_detailsConfigured;
+
     aditof::FrameDataDetails
     getFrameDetailByName(const aditof::FrameDetails &details,
                          const std::string name);

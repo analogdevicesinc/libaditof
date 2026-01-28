@@ -182,6 +182,21 @@ aditof::Status BufferProcessor::setVideoProperties(
         stopThreads();
     }
 
+    // Clear the buffer pool before reallocating the buffer
+    {
+        std::shared_ptr<uint8_t> clr_buffer;
+        while (m_v4l2_input_buffer_Q.pop(clr_buffer)) {
+            // Buffer deallocation via shared_ptr
+        }
+    }
+
+    {
+        std::shared_ptr<uint16_t> clr_buffer;
+        while (m_tofi_io_Buffer_Q.pop(clr_buffer)) {
+            // Buffer deallocation via shared_ptr
+        }
+    }
+
     using namespace aditof;
     Status status = Status::OK;
     m_vidPropSet = true;
