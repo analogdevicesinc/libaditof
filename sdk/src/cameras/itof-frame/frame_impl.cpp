@@ -40,7 +40,9 @@ struct FrameImpl::ImplData {
     size_t allDataNbBytes;
 };
 
-FrameImpl::FrameImpl() : m_implData(std::make_unique<FrameImpl::ImplData>()){};
+FrameImpl::FrameImpl()
+    : m_implData(std::make_unique<FrameImpl::ImplData>()),
+      m_detailsConfigured(false){};
 FrameImpl::~FrameImpl() = default;
 
 FrameImpl::FrameImpl(const FrameImpl &op) {
@@ -48,6 +50,7 @@ FrameImpl::FrameImpl(const FrameImpl &op) {
     memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
            m_implData->allDataNbBytes);
     m_details = op.m_details;
+    m_detailsConfigured = op.m_detailsConfigured;
 }
 
 FrameImpl &FrameImpl::operator=(const FrameImpl &op) {
@@ -56,6 +59,7 @@ FrameImpl &FrameImpl::operator=(const FrameImpl &op) {
         memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
                m_implData->allDataNbBytes);
         m_details = op.m_details;
+        m_detailsConfigured = op.m_detailsConfigured;
     }
 
     return *this;
@@ -72,8 +76,18 @@ aditof::Status FrameImpl::setDetails(const aditof::FrameDetails &details,
         return status;
     }
 
+    // Warn if Frame is being reused with different details (mode change)
+    if (m_detailsConfigured && m_details.width > 0) {
+        LOG(WARNING) << "Frame object is being reused across mode changes! "
+                     << "Old: " << m_details.width << "x" << m_details.height
+                     << ", New: " << details.width << "x" << details.height
+                     << ". Consider using 'frame = aditof::Frame();' to create "
+                        "a fresh Frame object.";
+    }
+
     allocFrameData(details);
     m_details = details;
+    m_detailsConfigured = true;
 
     return status;
 }
