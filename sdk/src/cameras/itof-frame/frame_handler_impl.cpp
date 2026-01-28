@@ -445,12 +445,13 @@ aditof::Status FrameHandlerImpl::SaveRGBAsJPEG(const char *filename,
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
 
-aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char *filename,
-                                                         const uint16_t *data,
-                                                         uint32_t width,
-                                                         uint32_t height) {
+aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(
+    const char *filename,
+    const uint16_t *data,
+    uint32_t width,
+    uint32_t height) {
 
-    if (data == nullptr) {
+    if (!data) {
         return aditof::Status::GENERIC_ERROR;
     }
 
@@ -460,29 +461,39 @@ aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char *filename,
         return aditof::Status::GENERIC_ERROR;
     }
 
-    uint32_t num_points = width * height;
+    const uint32_t num_points = width * height;
 
-    // Write the PLY header
-    std::string header = "ply\n"
-                         "format binary_little_endian 1.0\n"
-                         "element vertex " +
-                         std::to_string(num_points) +
-                         "\n"
-                         "property float x\n"
-                         "property float y\n"
-                         "property float z\n"
-                         "end_header\n";
+    // PLY header: 3 floats per vertex
+    std::string header =
+        "ply\n"
+        "format binary_little_endian 1.0\n"
+        "element vertex " + std::to_string(num_points) + "\n"
+        "property float x\n"
+        "property float y\n"
+        "property float z\n"
+        "end_header\n";
 
     file.write(header.c_str(), header.size());
 
-    // Write binary float data: 3 floats per point
-    file.write(reinterpret_cast<const char *>(data),
-               num_points * 3 * sizeof(uint16_t));
+    // Cast data to int16_t* since XYZ data is stored as 3 int16_t values per pixel
+    const int16_t *xyz_data = reinterpret_cast<const int16_t *>(data);
+    const float scale = 0.001f; // Convert from millimeters to meters
+
+    // Write XYZ coordinates as floats
+    // XYZ data layout: each pixel has [X, Y, Z] as int16_t values
+    for (uint32_t i = 0; i < num_points; ++i) {
+        float x = static_cast<float>(xyz_data[3 * i + 0]) * scale;
+        float y = static_cast<float>(xyz_data[3 * i + 1]) * scale;
+        float z = static_cast<float>(xyz_data[3 * i + 2]) * scale;
+
+        file.write(reinterpret_cast<const char *>(&x), sizeof(float));
+        file.write(reinterpret_cast<const char *>(&y), sizeof(float));
+        file.write(reinterpret_cast<const char *>(&z), sizeof(float));
+    }
 
     file.close();
 
     LOG(INFO) << __func__ << ":  " << filename;
-
     return aditof::Status::OK;
 }
 
