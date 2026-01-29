@@ -37,12 +37,14 @@
 #define ADCAM_API_VERSION_MAJOR "0"
 #define ADCAM_API_VERSION_MINOR "2"
 #define ADCAM_API_VERSION_PATCH "0"
-#define ADCAM_API_VERSION                                                     \
-    (ADCAM_API_VERSION_MAJOR "." ADCAM_API_VERSION_MINOR                     \
-                              "." ADCAM_API_VERSION_PATCH)
+#define ADCAM_API_VERSION                                                      \
+    (ADCAM_API_VERSION_MAJOR "." ADCAM_API_VERSION_MINOR                       \
+                             "." ADCAM_API_VERSION_PATCH)
 
 namespace aditof {
-    static inline const std::string getKitVersion() { return std::string(ADCAM_API_VERSION); }
+static inline const std::string getKitVersion() {
+    return std::string(ADCAM_API_VERSION);
+}
 } // namespace aditof
 
 #endif // VERSION_KIT_H
