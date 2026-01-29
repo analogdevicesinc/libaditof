@@ -754,6 +754,50 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         }
     }
 
+    for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
+        dev = &m_implData->videoDevs[i];
+
+        for (unsigned int i = 0; i < dev->nVideoBuffers; i++) {
+            if (munmap(dev->videoBuffers[i].start,
+                       dev->videoBuffers[i].length) == -1) {
+                LOG(WARNING)
+                    << "munmap error "
+                    << "errno: " << errno << " error: " << strerror(errno);
+            }
+        }
+        free(dev->videoBuffers);
+
+        if (dev->fd != -1) {
+            if (close(dev->fd) == -1) {
+                LOG(WARNING)
+                    << "close m_implData->fd error "
+                    << "errno: " << errno << " error: " << strerror(errno);
+            }
+        }
+
+        if (dev->sfd != -1) {
+            if (close(dev->sfd) == -1) {
+                LOG(WARNING)
+                    << "close m_implData->sfd error "
+                    << "errno: " << errno << " error: " << strerror(errno);
+            }
+        }
+    }
+
+    if (m_isOpen) { // open the device if it's been closed
+        // free the allocated new buffer
+        if (m_implData->videoDevs) {
+            delete[] m_implData->videoDevs;
+            m_implData->videoDevs = nullptr;
+        }
+        m_isOpen = false;
+        status = open();
+        if (status != aditof::Status::OK) {
+            LOG(INFO) << "Failed to open sensor!";
+            return status;
+        }
+    }
+
     m_capturesPerFrame = 1;
 
     // Validate m_implData and videoDevs are still valid after stop()
