@@ -3,7 +3,10 @@
 We have opted to use clang-tidy with the LLVM option for our coding style.
 
 1. sudo apt install clang-tidy
-2. Build the code (see the instructions on the main page). This can be either the camera kit code or libaditof.
+2. Build the code (see the instructions on the main page). This can be either the camera kit code or libaditof. Add the following to the cmake command:
+```
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+```
 3. Scan all SDK code:
 ```
 run-clang-tidy libaditof/sdk/ -p build -checks=llvm-* 2>&1 | tee clang-tidy.log
