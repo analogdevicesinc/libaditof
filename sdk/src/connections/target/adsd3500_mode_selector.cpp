@@ -45,14 +45,16 @@ Adsd3500ModeSelector::Adsd3500ModeSelector() : m_configuration("standard") {
 //functions to set which table configuration to use
 aditof::Status
 Adsd3500ModeSelector::setConfiguration(const std::string &configuration) {
+    aditof::Status status = aditof::Status::OK;
     if (std::find(m_availableConfigurations.begin(),
                   m_availableConfigurations.end(),
                   configuration) != m_availableConfigurations.end()) {
         m_configuration = configuration;
-        return aditof::Status::OK;
+        status = aditof::Status::OK;
     } else {
-        return aditof::Status::INVALID_ARGUMENT;
+        status = aditof::Status::INVALID_ARGUMENT;
     }
+    return status;
 }
 
 aditof::Status Adsd3500ModeSelector::getAvailableModeDetails(

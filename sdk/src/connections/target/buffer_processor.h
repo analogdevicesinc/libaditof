@@ -218,7 +218,6 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     std::atomic<bool> stopThreadsFlag;
     bool streamRunning = false;
 
-    const size_t MAX_QUEUE_SIZE = 3;
     const static constexpr int TIME_OUT_DELAY = 5;
 
     int m_maxTries = 3;
