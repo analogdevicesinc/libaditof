@@ -246,14 +246,18 @@ Adsd3500Sensor::~Adsd3500Sensor() {
         return;
     }
 
-    for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
+    // Extract count to make analyzer understand m_implData is definitely non-null
+    unsigned int numVideoDevs = m_implData->numVideoDevs;
+
+    for (unsigned int i = 0; i < numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
         if (dev->started) {
-            stop();
+            // NOLINTNEXTLINE(clang-analyzer-optin.cplusplus.VirtualCall)
+            Adsd3500Sensor::stop();
         }
     }
 
-    for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
+    for (unsigned int i = 0; i < numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
 
         if (dev->videoBuffers) {
@@ -547,6 +551,10 @@ aditof::Status Adsd3500Sensor::open() {
 
     if (!m_adsd3500Queried) {
         status = queryAdsd3500();
+        if (status != Status::OK) {
+            LOG(ERROR) << "Failed to query ADSD3500 sensor!";
+            goto cleanup_on_open_error;
+        }
         m_adsd3500Queried = true;
     }
 
@@ -654,7 +662,7 @@ aditof::Status Adsd3500Sensor::stop() {
             dev->started = false;
         }
     }
-    status = adsd3500_getInterruptandReset();
+    status = Adsd3500Sensor::adsd3500_getInterruptandReset();
     return status;
 }
 
@@ -1778,7 +1786,8 @@ aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
     };
 
     // Register the callback
-    status = adsd3500_register_interrupt_callback(cb);
+    // NOLINTNEXTLINE(clang-analyzer-optin.cplusplus.VirtualCall)
+    status = Adsd3500Sensor::adsd3500_register_interrupt_callback(cb);
 
     // Wait for 2 sec for interrupt
     LOG(INFO) << "Waiting for interrupt.";
@@ -1839,12 +1848,20 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
     ABThresholdsParams ab_params;
     int type = 3;
     status = getIniParamsImpl(&ab_params, type, config->p_tofi_cal_config);
+    if (status != aditof::Status::OK) {
+        LOG(ERROR) << "Failed to get depth compute AB thresholds params!";
+        return status;
+    }
     params["abThreshMin"] = std::to_string(ab_params.ab_thresh_min);
     params["abSumThresh"] = std::to_string(ab_params.ab_sum_thresh);
 
     DepthRangeParams dr_params;
     type = 4;
     status = getIniParamsImpl(&dr_params, type, config->p_tofi_cal_config);
+    if (status != aditof::Status::OK) {
+        LOG(ERROR) << "Failed to get depth compute range params!";
+        return status;
+    }
     params["confThresh"] = std::to_string(dr_params.conf_thresh);
     params["radialThreshMin"] = std::to_string(dr_params.radial_thresh_min);
     params["radialThreshMax"] = std::to_string(dr_params.radial_thresh_max);
@@ -1852,6 +1869,10 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
     JBLFConfigParams jblf_params;
     type = 2;
     status = getIniParamsImpl(&jblf_params, type, config->p_tofi_cal_config);
+    if (status != aditof::Status::OK) {
+        LOG(ERROR) << "Failed to get depth compute JBLF params!";
+        return status;
+    }
     params["jblfApplyFlag"] =
         std::to_string(static_cast<float>(jblf_params.jblf_apply_flag));
     params["jblfWindowSize"] =
@@ -1866,6 +1887,10 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
     InputRawDataParams ir_params;
     type = 1;
     status = getIniParamsImpl(&ir_params, type, config->p_tofi_cal_config);
+    if (status != aditof::Status::OK) {
+        LOG(ERROR) << "Failed to get depth compute input raw data params!";
+        return status;
+    }
     params["headerSize"] =
         std::to_string(static_cast<float>(ir_params.headerSize));
 
@@ -1882,6 +1907,10 @@ aditof::Status Adsd3500Sensor::setDepthComputeParams(
     ab_params.ab_thresh_min = std::stof(params.at("abThreshMin"));
     ab_params.ab_sum_thresh = std::stof(params.at("abSumThresh"));
     status = setIniParamsImpl(&ab_params, type, config->p_tofi_cal_config);
+    if (status != aditof::Status::OK) {
+        LOG(ERROR) << "Failed to set depth compute AB thresholds params!";
+        return status;
+    }
 
     DepthRangeParams dr_params;
     type = 4;
@@ -1889,12 +1918,20 @@ aditof::Status Adsd3500Sensor::setDepthComputeParams(
     dr_params.radial_thresh_min = std::stof(params.at("radialThreshMin"));
     dr_params.radial_thresh_max = std::stof(params.at("radialThreshMax"));
     status = setIniParamsImpl(&dr_params, type, config->p_tofi_cal_config);
+    if (status != aditof::Status::OK) {
+        LOG(ERROR) << "Failed to set depth compute range params!";
+        return status;
+    }
 
     JBLFConfigParams jblf_params;
     type = 2;
     status = getIniParamsImpl(
         &jblf_params, type,
         config->p_tofi_cal_config); // get any original non-customizable value
+    if (status != aditof::Status::OK) {
+        LOG(ERROR) << "Failed to get depth compute JBLF params!";
+        return status;
+    }
     jblf_params.jblf_apply_flag =
         static_cast<int>(std::stof(params.at("jblfApplyFlag")));
     jblf_params.jblf_window_size =
@@ -1925,15 +1962,16 @@ aditof::Status Adsd3500Sensor::waitForBufferPrivate(struct VideoDev *dev) {
 
     r = select(dev->fd + 1, &fds, NULL, NULL, &tv);
 
+    aditof::Status status = aditof::Status::OK;
     if (r == -1) {
         LOG(WARNING) << "select error "
                      << "errno: " << errno << " error: " << strerror(errno);
-        return aditof::Status::GENERIC_ERROR;
+        status = aditof::Status::GENERIC_ERROR;
     } else if (r == 0) {
         LOG(WARNING) << "select timeout";
-        return aditof::Status::GENERIC_ERROR;
+        status = aditof::Status::GENERIC_ERROR;
     }
-    return aditof ::Status::OK;
+    return status;
 }
 
 aditof::Status
@@ -2113,7 +2151,6 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             }
             } // switch (imager_version)
         } else {
-            status = Status::OK;
             LOG(ERROR) << "Failed to read imager type and CCB version (command "
                           "0x0032). Possibly command is not implemented on the "
                           "current adsd3500 firmware.";
@@ -2125,9 +2162,10 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
         if (m_implData->ccbVersion == CCBVersion::CCB_VERSION0) {
             LOG(ERROR) << "Old modes are no longer supported!";
             return Status::GENERIC_ERROR;
-        } else if (m_implData->ccbVersion == CCBVersion::CCB_VERSION3 ||
-                   (m_implData->ccbVersion == CCBVersion::CCB_VERSION2 &&
-                    m_controls["disableCCBM"] == "0")) {
+        }
+        if (m_implData->ccbVersion == CCBVersion::CCB_VERSION3 ||
+            (m_implData->ccbVersion == CCBVersion::CCB_VERSION2 &&
+             m_controls["disableCCBM"] == "0")) {
 
             uint16_t data;
             status = adsd3500_read_cmd(0x39, &data);

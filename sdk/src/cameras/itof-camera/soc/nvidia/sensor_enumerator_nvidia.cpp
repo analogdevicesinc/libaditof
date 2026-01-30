@@ -28,7 +28,6 @@
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -71,17 +70,18 @@ aditof::Status findDevicePathsAtVideo(const std::string &video,
 
     size_t pos = str.find("vi-output, adsd3500");
     if (pos != string::npos) {
-        dev_path = str.substr(pos + strlen("vi-output, adsd3500") + 9,
-                              strlen("/dev/mediaX"));
+        std::string str1("vi-output, adsd3500");
+        std::string str2("/dev/mediaX");
+        dev_path = str.substr(pos + str1.length() + 9, str2.length());
     } else {
         return Status::GENERIC_ERROR;
     }
 
     if (str.find("adsd3500") != string::npos) {
+        std::string str1("/dev/v4l-subdevX");
         device_name = "adsd3500";
         pos = str.find("adsd3500");
-        subdev_path = str.substr(pos + strlen("adsd3500") + 9,
-                                 strlen("/dev/v4l-subdevX"));
+        subdev_path = str.substr(pos + device_name.length() + 9, str1.length());
     } else {
         return Status::GENERIC_ERROR;
     }
@@ -104,9 +104,10 @@ Status TargetSensorEnumerator::searchSensors() {
     DIR *dirp = opendir(videoDirPath.c_str());
     struct dirent *dp;
     while ((dp = readdir(dirp))) {
-        if (!strncmp(dp->d_name, videoBaseName.c_str(),
-                     videoBaseName.length())) {
-            std::string fullvideoPath = videoDirPath + std::string(dp->d_name);
+        std::string currentEntry(dp->d_name);
+        if (currentEntry.compare(0, videoBaseName.length(), videoBaseName) ==
+            0) {
+            std::string fullvideoPath = videoDirPath + currentEntry;
             videoPaths.emplace_back(fullvideoPath);
         }
     }

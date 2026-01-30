@@ -49,7 +49,7 @@ class Frame {
     /**
      * @brief Destructor
      */
-    SDK_API ~Frame();
+    SDK_API virtual ~Frame();
 
     /**
      * @brief Copy constructor

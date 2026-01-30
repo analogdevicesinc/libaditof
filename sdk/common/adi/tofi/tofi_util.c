@@ -25,7 +25,8 @@
  * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-*******************************************************************************/#include "tofi_util.h"
+*******************************************************************************/
+#include "tofi_util.h"
 
 #include <math.h>
 
@@ -45,9 +46,10 @@
 #define rpcmem_alloc(a, b, c) memalign(VLEN * 2, (c))
 #endif
 
-uint32_t TransformationXyzToZ(uint32_t n_rows, uint32_t n_cols,
-                              const Point3I *p_xyz_image_data,
-                              uint16_t *p_zdepth_image_data) {
+    uint32_t
+    TransformationXyzToZ(uint32_t n_rows, uint32_t n_cols,
+                         const Point3I *p_xyz_image_data,
+                         uint16_t *p_zdepth_image_data) {
     if (p_xyz_image_data == NULL || p_zdepth_image_data == NULL ||
         n_rows == 0 || n_cols == 0)
         return ADI_TOFI_NULL_ARGUMENT;
@@ -138,7 +140,12 @@ uint32_t GetProcessPath(char *process_path, uint32_t path_size) {
     if (status == 0 || status == path_size)
         return ADI_TOFI_ERROR;
     char *last_slash = strrchr(path, '\\');
-    strncpy(process_path, path, last_slash - path + 1);
+    uint32_t copy_len = last_slash - path + 1;
+    if (copy_len + 1 > path_size) // +1 for null terminator
+        return ADI_TOFI_ERROR;
+    // NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+    memcpy(process_path, path, copy_len);
+    process_path[copy_len] = '\0';
 #elif __unix
     uint32_t status = 0;
     char path[MAX_PATH_SIZE];
@@ -146,7 +153,12 @@ uint32_t GetProcessPath(char *process_path, uint32_t path_size) {
     if (status == 0 || status == path_size)
         return ADI_TOFI_ERROR;
     char *last_slash = strrchr(path, '/');
-    strncpy(process_path, path, last_slash - path + 1);
+    uint32_t copy_len = last_slash - path + 1;
+    if (copy_len + 1 > path_size) // +1 for null terminator
+        return ADI_TOFI_ERROR;
+    // NOLINTNEXTLINE(clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling)
+    memcpy(process_path, path, copy_len);
+    process_path[copy_len] = '\0';
 #endif
     return ADI_TOFI_SUCCESS;
 }

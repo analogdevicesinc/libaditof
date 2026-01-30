@@ -160,32 +160,24 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
     unsigned long int totalSize = 0;
     unsigned long int pos = 0;
     uint16_t embed_hdr_length = skMetaDataBytesCount;
-    uint8_t total_captures = 0;
 
-    auto getSubframeSize = [embed_hdr_length,
-                            total_captures](FrameDataDetails frameDetail) {
+    auto getSubframeSize = [embed_hdr_length](FrameDataDetails frameDetail) {
+        unsigned long int sz;
+
         if (frameDetail.type == "metadata") {
-            unsigned long int sz =
-                (unsigned long int)(embed_hdr_length / sizeof(uint16_t));
-            return sz;
+            sz = (unsigned long int)(embed_hdr_length / sizeof(uint16_t));
         } else if (frameDetail.type == "xyz") {
-            unsigned long int sz =
+            sz =
                 (unsigned long int)(frameDetail.height * frameDetail.width * 3);
-            return sz;
         } else if (frameDetail.type == "conf") {
-            unsigned long int sz =
-                (unsigned long int)(frameDetail.height * frameDetail.width *
-                                    sizeof(float) / sizeof(uint16_t));
-            return sz;
+            sz = (unsigned long int)(frameDetail.height * frameDetail.width *
+                                     sizeof(float) / sizeof(uint16_t));
         } else if (frameDetail.type == "ab") {
-            unsigned long int sz =
-                (unsigned long int)(frameDetail.height * frameDetail.width);
-            return sz;
+            sz = (unsigned long int)(frameDetail.height * frameDetail.width);
         } else {
-            unsigned long int sz =
-                (unsigned long int)(frameDetail.height * frameDetail.width);
-            return sz;
+            sz = (unsigned long int)(frameDetail.height * frameDetail.width);
         }
+        return sz;
     };
 
     for (FrameDataDetails frameDetail : details.dataDetails) {
