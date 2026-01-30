@@ -574,9 +574,9 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
 
 aditof::Status OfflineDepthSensor::automaticStop() {
     if (m_state == ST_PLAYBACK) {
-        stopPlayback();
+        OfflineDepthSensor::stopPlayback();
     } else if (m_state == ST_RECORD) {
-        stopRecording();
+        OfflineDepthSensor::stopRecording();
     }
 
     return aditof::Status::OK;

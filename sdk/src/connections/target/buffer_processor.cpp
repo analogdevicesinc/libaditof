@@ -42,13 +42,14 @@
 
 #include "buffer_processor.h"
 
+const size_t MAX_QUEUE_SIZE = 3;
+
 uint8_t depthComputeOpenSourceEnabled = 0;
 
 // Named constants for configuration
 namespace {
 constexpr int MAX_RETRIES = 3;
 constexpr std::chrono::milliseconds RETRY_DELAY{10};
-constexpr std::chrono::milliseconds QUEUE_TIMEOUT{1100};
 constexpr int SELECT_TIMEOUT_SEC = 20;
 constexpr int THREAD_PRIORITY = 20;
 } // namespace
@@ -66,10 +67,9 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 }
 
 BufferProcessor::BufferProcessor()
-    : m_v4l2_input_buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
-      m_capture_to_process_Q(BufferProcessor::MAX_QUEUE_SIZE),
-      m_tofi_io_Buffer_Q(BufferProcessor::MAX_QUEUE_SIZE),
-      m_process_done_Q(BufferProcessor::MAX_QUEUE_SIZE) {
+    : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE),
+      m_capture_to_process_Q(MAX_QUEUE_SIZE),
+      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE) {
 
     m_outputVideoDev = new VideoDev();
     m_outputFrameWidth = 0;
@@ -82,10 +82,10 @@ BufferProcessor::BufferProcessor()
     m_tofiConfig = nullptr;
     m_tofiComputeContext = nullptr;
     m_inputVideoDev = nullptr;
-    m_v4l2_input_buffer_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
-    m_capture_to_process_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
-    m_tofi_io_Buffer_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
-    m_process_done_Q.set_max_size(BufferProcessor::MAX_QUEUE_SIZE);
+    m_v4l2_input_buffer_Q.set_max_size(MAX_QUEUE_SIZE);
+    m_capture_to_process_Q.set_max_size(MAX_QUEUE_SIZE);
+    m_tofi_io_Buffer_Q.set_max_size(MAX_QUEUE_SIZE);
+    m_process_done_Q.set_max_size(MAX_QUEUE_SIZE);
     LOG(INFO) << "BufferProcessor initialized";
 }
 
@@ -213,14 +213,12 @@ aditof::Status BufferProcessor::setVideoProperties(
     m_rawFrameBufferSize = static_cast<size_t>(WidthInBytes) * HeightInBytes;
 #endif
     {
-        LOG(INFO) << __func__ << ": Allocating "
-                  << BufferProcessor::MAX_QUEUE_SIZE
+        LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE
                   << " raw frame buffers, each of size " << m_rawFrameBufferSize
                   << " bytes (total: "
-                  << (BufferProcessor::MAX_QUEUE_SIZE * m_rawFrameBufferSize) /
-                         (1024.0 * 1024.0)
+                  << (MAX_QUEUE_SIZE * m_rawFrameBufferSize) / (1024.0 * 1024.0)
                   << " MB)";
-        for (int i = 0; i < (int)BufferProcessor::MAX_QUEUE_SIZE; ++i) {
+        for (int i = 0; i < (int)MAX_QUEUE_SIZE; ++i) {
             auto buffer =
                 std::shared_ptr<uint8_t>(new uint8_t[m_rawFrameBufferSize],
                                          std::default_delete<uint8_t[]>());
@@ -234,14 +232,13 @@ aditof::Status BufferProcessor::setVideoProperties(
 
     calculateFrameSize(bitsInAB, bitsInConf);
 
-    LOG(INFO) << __func__ << ": Allocating " << BufferProcessor::MAX_QUEUE_SIZE
+    LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE
               << " ToFi buffers, each of size "
               << m_tofiBufferSize * sizeof(uint16_t) << " bytes (total: "
-              << (BufferProcessor::MAX_QUEUE_SIZE * m_tofiBufferSize *
-                  sizeof(uint16_t)) /
+              << (MAX_QUEUE_SIZE * m_tofiBufferSize * sizeof(uint16_t)) /
                      (1024.0 * 1024.0)
               << " MB)";
-    for (int i = 0; i < (int)BufferProcessor::MAX_QUEUE_SIZE; ++i) {
+    for (int i = 0; i < (int)MAX_QUEUE_SIZE; ++i) {
         auto buffer = std::shared_ptr<uint16_t>(
             new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
         if (!buffer) {
@@ -340,8 +337,8 @@ aditof::Status BufferProcessor::setProcessorProperties(
             (status != ADI_TOFI_SUCCESS)) {
             LOG(ERROR) << "InitTofiConfig failed";
             return aditof::Status::GENERIC_ERROR;
-
-        } else {
+        }
+        if (m_tofiComputeContext == NULL || status != ADI_TOFI_SUCCESS) {
             m_tofiComputeContext =
                 InitTofiCompute(m_tofiConfig->p_tofi_cal_config, &status);
             if (m_tofiComputeContext == NULL || status != ADI_TOFI_SUCCESS) {
@@ -365,8 +362,10 @@ aditof::Status BufferProcessor::setProcessorProperties(
  * the captured data into a target buffer, and pushes it to a shared buffer pool.
  */
 void BufferProcessor::captureFrameThread() {
+#ifdef DBG_MEASURE_TIME
     long long totalCaptureTime = 0;
     int totalV4L2Captured = 0;
+#endif //DBG_MEASURE_TIME
 
     while (!stopThreadsFlag.load(std::memory_order_acquire)) {
         aditof::Status status;
@@ -388,7 +387,9 @@ void BufferProcessor::captureFrameThread() {
             continue;
         }
 
+#ifdef DBG_MEASURE_TIME
         auto captureStart = std::chrono::high_resolution_clock::now();
+#endif //DBG_MEASURE_TIME
 
         status = waitForBufferPrivate(dev);
         if (status != aditof::Status::OK) {
@@ -435,13 +436,13 @@ void BufferProcessor::captureFrameThread() {
             continue;
         }
 
+#ifdef DBG_MEASURE_TIME
         auto captureEnd = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double, std::milli> captureTime =
             captureEnd - captureStart;
         totalCaptureTime += static_cast<long long>(captureTime.count());
-
         totalV4L2Captured++;
-
+#endif //DBG_MEASURE_TIME
         Tofi_v4l2_buffer v4l2_frame;
         v4l2_frame.data = v4l2_frame_holder;
         v4l2_frame.size = buf_data_len;
@@ -686,6 +687,7 @@ void BufferProcessor::processThread() {
  */
 aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     Tofi_v4l2_buffer tof_processed_frame;
+    aditof::Status status = aditof::Status::OK;
 
     // Loop for MAX_RETRIES attempts. 'attempt' counts from 0 to MAX_RETRIES - 1.
     for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
@@ -700,13 +702,13 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                 m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
                 m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
 
-                return aditof::Status::OK; // Success, exit function
+                status = aditof::Status::OK; // Success, exit function
             } else {
                 // Pop succeeded, but the frame data itself was invalid.
                 LOG(ERROR) << "processBuffer: Pop succeeded but frame data is "
                               "invalid (buffer/tofiBuffer/size). "
                            << "Returning error immediately.\n";
-                return aditof::Status::GENERIC_ERROR;
+                status = aditof::Status::GENERIC_ERROR;
             }
         } else {
             if (attempt < MAX_RETRIES - 1) {
@@ -721,7 +723,7 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                            << MAX_RETRIES << " attempts. "
                            << "m_process_done_Q size: "
                            << m_process_done_Q.size() << "\n";
-                return aditof::Status::
+                status = aditof::Status::
                     GENERIC_ERROR; // Indicate final failure to the caller
             }
         }
@@ -730,7 +732,7 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     // This line should technically not be reached if MAX_RETRIES > 0,
     // as the loop will either return OK or GENERIC_ERROR.
     // Included as a safeguard.
-    return aditof::Status::GENERIC_ERROR;
+    return status;
 }
 
 aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
@@ -751,15 +753,16 @@ aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
 
     r = select(dev->fd + 1, &fds, NULL, NULL, &tv);
 
+    aditof::Status status = aditof::Status::OK;
     if (r == -1) {
         LOG(WARNING) << "select error "
                      << "errno: " << errno << " error: " << strerror(errno);
-        return aditof::Status::GENERIC_ERROR;
+        status = aditof::Status::GENERIC_ERROR;
     } else if (r == 0) {
         LOG(WARNING) << "select timeout";
-        return aditof::Status::GENERIC_ERROR;
+        status = aditof::Status::GENERIC_ERROR;
     }
-    return aditof ::Status::OK;
+    return status;
 }
 
 aditof::Status
@@ -1026,11 +1029,13 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
 }
 
 aditof::Status BufferProcessor::automaticStop() {
+    aditof::Status status = aditof::Status::OK;
     if (m_state == ST_PLAYBACK) {
-        return aditof::Status::GENERIC_ERROR;
-    } else if (m_state == ST_RECORD) {
-        stopRecording();
+        status = aditof::Status::GENERIC_ERROR;
+    }
+    if (m_state == ST_RECORD) {
+        status = stopRecording();
     }
 
-    return aditof::Status::OK;
+    return status;
 }

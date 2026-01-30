@@ -38,6 +38,13 @@ Repos using libaditof:
 
 ## Build libaditof SDK
 
+Note: all code must be formatted by clang-format and issues via clang-tidy must be addressed.
+
+See the documents:
+
+* [code-formatting.md](doc/code-formatting.md)
+* [code-style.md](doc/code-style.md)
+
 ### Linux Build
 
 #### Dependencies

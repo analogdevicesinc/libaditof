@@ -125,9 +125,6 @@ uint32_t Algorithms::GenerateXYZTables(
         }
     }
 
-    // Add a 2 pixel buffer
-    r_min -= 2;
-
     float *p_xfull = p_xp;
     float *p_yfull = p_yp;
     float *p_zfull = p_z;

@@ -392,7 +392,11 @@ aditof::Status FrameHandlerImpl::SaveFloatAsJPEG(const char *filename,
     auto result =
         stbi_write_jpg(filename, width, height, 1, img_8bit.data(), 100);
 
-    LOG(INFO) << __func__ << ":  " << result << " " << filename;
+    if (result) {
+        LOG(INFO) << __func__ << ":  " << filename;
+    } else {
+        LOG(ERROR) << __func__ << ":  Failed to save JPEG " << filename;
+    }
 
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
@@ -422,7 +426,11 @@ aditof::Status FrameHandlerImpl::SaveUint16AsJPEG(const char *filename,
     auto result =
         stbi_write_jpg(filename, width, height, 1, img_8bit.data(), 100);
 
-    LOG(INFO) << __func__ << ":  " << result << " " << filename;
+    if (result) {
+        LOG(INFO) << __func__ << ":  " << filename;
+    } else {
+        LOG(ERROR) << __func__ << ":  Failed to save JPEG " << filename;
+    }
 
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
@@ -440,7 +448,11 @@ aditof::Status FrameHandlerImpl::SaveRGBAsJPEG(const char *filename,
 
     auto result = stbi_write_jpg(filename, width, height, 3, data, 100);
 
-    LOG(INFO) << __func__ << ":  " << result << " " << filename;
+    if (result) {
+        LOG(INFO) << __func__ << ":  " << filename;
+    } else {
+        LOG(ERROR) << __func__ << ":  Failed to save JPEG " << filename;
+    }
 
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
@@ -456,7 +468,7 @@ aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char *filename,
 
     std::ofstream file(filename, std::ios::binary);
     if (!file.is_open()) {
-        LOG(ERROR) << "Failed to open file: " << filename;
+        LOG(ERROR) << "Failed to create file: " << filename;
         return aditof::Status::GENERIC_ERROR;
     }
 
@@ -632,36 +644,34 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
                                std::to_string(metadata.frameNumber) +
                                "_conf.jpg";
 
-    status = SaveMetaAsTxt(metadataFileName.c_str(), &metadata);
+    SaveMetaAsTxt(metadataFileName.c_str(), &metadata);
 
     if (xyzFrame != nullptr) {
-        status =
-            SavePointCloudPLYBinary(xyzFileName.c_str(), xyzFrame,
-                                    frameDetails.width, frameDetails.height);
+        SavePointCloudPLYBinary(xyzFileName.c_str(), xyzFrame,
+                                frameDetails.width, frameDetails.height);
     }
 
-    status = SaveUint16AsJPEG(depthFileName.c_str(), depthFrame,
-                              frameDetails.width, frameDetails.height);
+    SaveUint16AsJPEG(depthFileName.c_str(), depthFrame, frameDetails.width,
+                     frameDetails.height);
     if (depth != nullptr) {
-        status = SaveRGBAsJPEG(depthProcessedFileName.c_str(), depth,
-                               frameDetails.width, frameDetails.height);
+        SaveRGBAsJPEG(depthProcessedFileName.c_str(), depth, frameDetails.width,
+                      frameDetails.height);
     }
 
-    status = SaveUint16AsJPEG(abFileName.c_str(), abFrame, frameDetails.width,
-                              frameDetails.height);
+    SaveUint16AsJPEG(abFileName.c_str(), abFrame, frameDetails.width,
+                     frameDetails.height);
     if (ab != nullptr) {
-        status = SaveRGBAsJPEG(abProcessedFileName.c_str(), ab,
-                               frameDetails.width, frameDetails.height);
+        SaveRGBAsJPEG(abProcessedFileName.c_str(), ab, frameDetails.width,
+                      frameDetails.height);
     }
 
     if (confFrame != nullptr) {
         if (frameDetails.width == 1024 && frameDetails.height == 1024) {
-            status = SaveFloatAsJPEG(confFileName.c_str(), confFrame,
-                                     frameDetails.width, frameDetails.height);
+            SaveFloatAsJPEG(confFileName.c_str(), confFrame, frameDetails.width,
+                            frameDetails.height);
         } else {
-            status =
-                SaveUint16AsJPEG(confFileName.c_str(), (uint16_t *)confFrame,
-                                 frameDetails.width, frameDetails.height);
+            SaveUint16AsJPEG(confFileName.c_str(), (uint16_t *)confFrame,
+                             frameDetails.width, frameDetails.height);
         }
     }
 
