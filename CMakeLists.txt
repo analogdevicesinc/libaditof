@@ -35,6 +35,7 @@ set(SOM_TYPE "Dual" CACHE STRING "Which SoM SDK is building for?")
 ######################### Target based Options ################################
 option(NXP "Set to ON when building on NXP" OFF)
 option(NVIDIA "Set to ON when building on NVIDIA" OFF)
+option(RPI "Set to ON when building on Raspberry Pi" OFF)
 option(WITH_PROTOBUF_DEPENDENCY "Build with PROTOBUF dependency?" ON)
 option(USE_DEPTH_COMPUTE_OPENSOURCE "Use an open source implementation?" OFF)
 
@@ -93,7 +94,7 @@ endif()
 
 # Check whether we configure things for remote or we're on target
 set(SELECTED_PLATFORMS 0)
-set(ALL_PLATFORMS NXP;NVIDIA)
+set(ALL_PLATFORMS NXP;NVIDIA;RPI)
 foreach(platform IN LISTS ALL_PLATFORMS)
     if(${platform})
         math(EXPR SELECTED_PLATFORMS "${SELECTED_PLATFORMS}+1")
