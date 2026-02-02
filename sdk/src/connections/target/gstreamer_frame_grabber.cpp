@@ -8,10 +8,10 @@
 
 #if defined(HAS_RGB_CAMERA) && defined(HAS_GSTREAMER_BACKEND)
 
+#include <chrono>
+#include <cstring>
 #include <iostream>
 #include <sstream>
-#include <cstring>
-#include <chrono>
 #include <thread>
 
 #include <aditof/log.h>
@@ -23,16 +23,9 @@ static bool s_gstreamerInitialized = false;
 static std::mutex s_gstInitMutex;
 
 GStreamerFrameGrabber::GStreamerFrameGrabber()
-    : m_pipeline(nullptr)
-    , m_source(nullptr)
-    , m_converter(nullptr)
-    , m_appsink(nullptr)
-    , m_bus(nullptr)
-    , m_isRunning(false)
-    , m_shouldExit(false)
-    , m_frameCount(0)
-{
-}
+    : m_pipeline(nullptr), m_source(nullptr), m_converter(nullptr),
+      m_appsink(nullptr), m_bus(nullptr), m_isRunning(false),
+      m_shouldExit(false), m_frameCount(0) {}
 
 GStreamerFrameGrabber::~GStreamerFrameGrabber() {
     if (m_isRunning) {
@@ -43,12 +36,12 @@ GStreamerFrameGrabber::~GStreamerFrameGrabber() {
 
 Status GStreamerFrameGrabber::initializeGStreamer() {
     std::lock_guard<std::mutex> lock(s_gstInitMutex);
-    
+
     if (s_gstreamerInitialized) {
         return Status::OK;
     }
 
-    GError* error = nullptr;
+    GError *error = nullptr;
     if (!gst_init_check(nullptr, nullptr, &error)) {
         if (error) {
             LOG(ERROR) << "Failed to initialize GStreamer: " << error->message;
@@ -58,13 +51,13 @@ Status GStreamerFrameGrabber::initializeGStreamer() {
     }
 
     s_gstreamerInitialized = true;
-    
+
     LOG(INFO) << "GStreamer initialized successfully";
-    
+
     return Status::OK;
 }
 
-Status GStreamerFrameGrabber::createPipeline(const GStreamerConfig& config) {
+Status GStreamerFrameGrabber::createPipeline(const GStreamerConfig &config) {
     if (m_pipeline) {
         destroyPipeline();
     }
@@ -89,36 +82,36 @@ Status GStreamerFrameGrabber::createPipeline(const GStreamerConfig& config) {
     }
 
     // Configure nvarguscamerasrc
-    g_object_set(G_OBJECT(m_source),
-                 "sensor-id", config.sensorId,
-                 "sensor-mode", config.mode,
-                 nullptr);
+    g_object_set(G_OBJECT(m_source), "sensor-id", config.sensorId,
+                 "sensor-mode", config.mode, nullptr);
 
     // Configure appsink for PULL model (not callback/signal model)
     // This eliminates condition variable overhead and allows direct frame pulling
-    g_object_set(G_OBJECT(m_appsink),
-                 "emit-signals", FALSE,     // Disable callbacks - use pull model instead
-                 "max-buffers", 10,         // Increase buffer pool to prevent frame drops
-                 "drop", FALSE,             // Don't drop frames
-                 "sync", FALSE,              // Don't throttle to real-time (capture as fast as possible)
-                 nullptr);
-
+    g_object_set(
+        G_OBJECT(m_appsink), "emit-signals",
+        FALSE,             // Disable callbacks - use pull model instead
+        "max-buffers", 10, // Increase buffer pool to prevent frame drops
+        "drop", FALSE,     // Don't drop frames
+        "sync",
+        FALSE, // Don't throttle to real-time (capture as fast as possible)
+        nullptr);
 
     // Set caps for source output (NVMM format from Argus)
-    std::string sourceCaps = "video/x-raw(memory:NVMM),width=" + 
-                             std::to_string(config.width) + 
-                             ",height=" + std::to_string(config.height) + 
-                             ",framerate=" + std::to_string(config.framerate) + "/1";
-    
-    GstCaps* caps1 = gst_caps_from_string(sourceCaps.c_str());
-    
+    std::string sourceCaps =
+        "video/x-raw(memory:NVMM),width=" + std::to_string(config.width) +
+        ",height=" + std::to_string(config.height) +
+        ",framerate=" + std::to_string(config.framerate) + "/1";
+
+    GstCaps *caps1 = gst_caps_from_string(sourceCaps.c_str());
+
     // Set caps for converter output (standard format)
     std::string converterCaps = "video/x-raw,format=" + config.format;
-    GstCaps* caps2 = gst_caps_from_string(converterCaps.c_str());
-    
+    GstCaps *caps2 = gst_caps_from_string(converterCaps.c_str());
+
     // Build the pipeline
-    gst_bin_add_many(GST_BIN(m_pipeline), m_source, m_converter, m_appsink, nullptr);
-    
+    gst_bin_add_many(GST_BIN(m_pipeline), m_source, m_converter, m_appsink,
+                     nullptr);
+
     // Link elements with caps
     if (!gst_element_link_filtered(m_source, m_converter, caps1)) {
         LOG(ERROR) << "Failed to link source to converter";
@@ -127,7 +120,7 @@ Status GStreamerFrameGrabber::createPipeline(const GStreamerConfig& config) {
         destroyPipeline();
         return Status::GENERIC_ERROR;
     }
-    
+
     if (!gst_element_link_filtered(m_converter, m_appsink, caps2)) {
         LOG(ERROR) << "Failed to link converter to appsink";
         gst_caps_unref(caps1);
@@ -135,7 +128,7 @@ Status GStreamerFrameGrabber::createPipeline(const GStreamerConfig& config) {
         destroyPipeline();
         return Status::GENERIC_ERROR;
     }
-    
+
     gst_caps_unref(caps1);
     gst_caps_unref(caps2);
 
@@ -145,8 +138,10 @@ Status GStreamerFrameGrabber::createPipeline(const GStreamerConfig& config) {
     // Get bus for monitoring
     m_bus = gst_element_get_bus(m_pipeline);
 
-    LOG(INFO) << "GStreamer pipeline created: " << config.width << "x" 
-              << config.height << "@" << config.framerate << "fps";
+    LOG(INFO) << "GStreamer pipeline created: " << config.width << "x"
+              << config.height << "@" << config.framerate << "fps"
+              << " (device: " << config.devicePath
+              << ", sensor-id: " << config.sensorId << ")";
 
     return Status::OK;
 }
@@ -163,7 +158,8 @@ Status GStreamerFrameGrabber::startPipeline() {
     }
 
     // Set pipeline to PLAYING state
-    GstStateChangeReturn ret = gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
+    GstStateChangeReturn ret =
+        gst_element_set_state(m_pipeline, GST_STATE_PLAYING);
     if (ret == GST_STATE_CHANGE_FAILURE) {
         LOG(ERROR) << "Failed to start pipeline";
         return Status::GENERIC_ERROR;
@@ -182,7 +178,8 @@ Status GStreamerFrameGrabber::startPipeline() {
     m_frameCount = 0;
 
     // Start bus watch thread
-    m_busWatchThread = std::thread(&GStreamerFrameGrabber::busWatchThreadFunc, this);
+    m_busWatchThread =
+        std::thread(&GStreamerFrameGrabber::busWatchThreadFunc, this);
 
     LOG(INFO) << "GStreamer pipeline started and PLAYING";
 
@@ -204,7 +201,8 @@ Status GStreamerFrameGrabber::stopPipeline() {
         GstClockTime timeout = 1 * GST_SECOND;
 
         // PLAYING → PAUSED
-        GstStateChangeReturn ret = gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
+        GstStateChangeReturn ret =
+            gst_element_set_state(m_pipeline, GST_STATE_PAUSED);
         if (ret == GST_STATE_CHANGE_FAILURE) {
             LOG(WARNING) << "Failed to pause pipeline, forcing stop";
         } else {
@@ -242,40 +240,40 @@ Status GStreamerFrameGrabber::stopPipeline() {
 
 void GStreamerFrameGrabber::busWatchThreadFunc() {
     while (!m_shouldExit && m_isRunning) {
-        GstMessage* msg = gst_bus_timed_pop_filtered(
-            m_bus, 
-            100 * GST_MSECOND,
-            (GstMessageType)(GST_MESSAGE_ERROR | GST_MESSAGE_EOS | GST_MESSAGE_WARNING)
-        );
+        GstMessage *msg = gst_bus_timed_pop_filtered(
+            m_bus, 100 * GST_MSECOND,
+            (GstMessageType)(GST_MESSAGE_ERROR | GST_MESSAGE_EOS |
+                             GST_MESSAGE_WARNING));
 
         if (msg != nullptr) {
-            GError* err;
-            gchar* debug_info;
+            GError *err;
+            gchar *debug_info;
 
             switch (GST_MESSAGE_TYPE(msg)) {
-                case GST_MESSAGE_ERROR:
-                    gst_message_parse_error(msg, &err, &debug_info);
-                    LOG(ERROR) << "GStreamer error: " << err->message;
-                    LOG(ERROR) << "Debug info: " << (debug_info ? debug_info : "none");
-                    g_error_free(err);
-                    g_free(debug_info);
-                    m_shouldExit = true;
-                    break;
+            case GST_MESSAGE_ERROR:
+                gst_message_parse_error(msg, &err, &debug_info);
+                LOG(ERROR) << "GStreamer error: " << err->message;
+                LOG(ERROR) << "Debug info: "
+                           << (debug_info ? debug_info : "none");
+                g_error_free(err);
+                g_free(debug_info);
+                m_shouldExit = true;
+                break;
 
-                case GST_MESSAGE_WARNING:
-                    gst_message_parse_warning(msg, &err, &debug_info);
-                    LOG(WARNING) << "GStreamer warning: " << err->message;
-                    g_error_free(err);
-                    g_free(debug_info);
-                    break;
+            case GST_MESSAGE_WARNING:
+                gst_message_parse_warning(msg, &err, &debug_info);
+                LOG(WARNING) << "GStreamer warning: " << err->message;
+                g_error_free(err);
+                g_free(debug_info);
+                break;
 
-                case GST_MESSAGE_EOS:
-                    LOG(INFO) << "GStreamer: End of stream";
-                    m_shouldExit = true;
-                    break;
+            case GST_MESSAGE_EOS:
+                LOG(INFO) << "GStreamer: End of stream";
+                m_shouldExit = true;
+                break;
 
-                default:
-                    break;
+            default:
+                break;
             }
 
             gst_message_unref(msg);
@@ -303,7 +301,7 @@ Status GStreamerFrameGrabber::destroyPipeline() {
 
 // AR0234Backend_Internal interface implementation
 
-bool GStreamerFrameGrabber::initialize(const RGBSensorConfig& config) {
+bool GStreamerFrameGrabber::initialize(const RGBSensorConfig &config) {
     // Convert AR0234SensorConfig to GStreamerConfig
     GStreamerConfig gstConfig;
     gstConfig.width = config.width;
@@ -311,8 +309,10 @@ bool GStreamerFrameGrabber::initialize(const RGBSensorConfig& config) {
     gstConfig.framerate = config.fps;
     gstConfig.sensorId = config.sensorId;
     gstConfig.mode = config.mode;
-    gstConfig.format = "NV12"; // Use NV12 for efficient memory (1.5 bytes/pixel)
-    
+    gstConfig.devicePath = config.devicePath;
+    gstConfig.format =
+        "NV12"; // Use NV12 for efficient memory (1.5 bytes/pixel)
+
     Status status = createPipeline(gstConfig);
     return (status == Status::OK);
 }
@@ -327,13 +327,13 @@ bool GStreamerFrameGrabber::stop() {
     return (status == Status::OK);
 }
 
-bool GStreamerFrameGrabber::getFrame(RGBFrame& frame, uint32_t timeoutMs) {
+bool GStreamerFrameGrabber::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
     // OPTIMIZED: Direct pull from appsink (no callbacks, no condition variables)
 
     if (!m_appsink || !m_isRunning) {
         return false;
     }
-    
+
     // Check pipeline state
     GstState state;
     gst_element_get_state(m_pipeline, &state, nullptr, 0);
@@ -342,17 +342,17 @@ bool GStreamerFrameGrabber::getFrame(RGBFrame& frame, uint32_t timeoutMs) {
     }
 
     // Check for EOS (end of stream)
-    GstAppSink* appSink = GST_APP_SINK(m_appsink);
+    GstAppSink *appSink = GST_APP_SINK(m_appsink);
     if (gst_app_sink_is_eos(appSink)) {
         LOG(WARNING) << "Pipeline in EOS state - no more frames available";
         return false;
     }
 
     // Check bus for errors before attempting to pull
-    GstMessage* msg = gst_bus_pop_filtered(m_bus, GST_MESSAGE_ERROR);
+    GstMessage *msg = gst_bus_pop_filtered(m_bus, GST_MESSAGE_ERROR);
     if (msg) {
-        GError* err;
-        gchar* debug_info;
+        GError *err;
+        gchar *debug_info;
         gst_message_parse_error(msg, &err, &debug_info);
         LOG(ERROR) << "GStreamer error before frame pull: " << err->message;
         if (debug_info) {
@@ -366,7 +366,7 @@ bool GStreamerFrameGrabber::getFrame(RGBFrame& frame, uint32_t timeoutMs) {
 
     // Directly pull sample from appsink with timeout (non-blocking)
     GstClockTime timeout = timeoutMs * GST_MSECOND;
-    GstSample* sample = gst_app_sink_try_pull_sample(appSink, timeout);
+    GstSample *sample = gst_app_sink_try_pull_sample(appSink, timeout);
 
     if (!sample) {
         // Timeout or no sample available
@@ -374,7 +374,7 @@ bool GStreamerFrameGrabber::getFrame(RGBFrame& frame, uint32_t timeoutMs) {
     }
 
     // Get buffer from sample
-    GstBuffer* buffer = gst_sample_get_buffer(sample);
+    GstBuffer *buffer = gst_sample_get_buffer(sample);
     if (!buffer) {
         gst_sample_unref(sample);
         return false;
@@ -409,6 +409,7 @@ std::string GStreamerFrameGrabber::getStatistics() const {
     stats << "Resolution: " << m_config.width << "x" << m_config.height << "\n";
     stats << "FPS: " << m_config.framerate << "\n";
     stats << "Format: " << m_config.format << "\n";
+    stats << "Device Path: " << m_config.devicePath << "\n";
     stats << "Sensor ID: " << m_config.sensorId << "\n";
     stats << "Total Frames: " << m_frameCount.load() << "\n";
     stats << "Running: " << (m_isRunning ? "Yes" : "No");

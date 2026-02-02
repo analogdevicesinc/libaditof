@@ -89,9 +89,10 @@ struct RGBSensorConfig {
     int width;           ///< Frame width in pixels (active_w from DTS)
     int height;          ///< Frame height in pixels (active_h from DTS)
     int fps;             ///< Target frames per second
+    std::string devicePath; ///< V4L2 device path (e.g., "/dev/video0", "/dev/video1")
     
     RGBSensorConfig() 
-        : sensorId(0), mode(0), width(1920), height(1200), fps(60) {}
+        : sensorId(0), mode(0), width(1920), height(1200), fps(60), devicePath("/dev/video0") {}
     
     /**
      * @brief Create config from predefined mode enum

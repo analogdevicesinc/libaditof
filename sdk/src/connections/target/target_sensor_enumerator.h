@@ -42,13 +42,14 @@ class TargetSensorEnumerator : public aditof::SensorEnumeratorInterface {
     getKernelVersion(std::string &kernelVersion) const override;
     virtual aditof::Status getSdVersion(std::string &sdVersion) const override;
 
-    virtual aditof::Status getRGBSensorStatus(bool &isAvailable,
-                                               std::string &devicePath) const override;
+    virtual aditof::Status
+    getRGBSensorStatus(bool &isAvailable,
+                       std::string &devicePath) const override;
 
   private:
     struct RGBSensorInfo {
-        std::string devicePath;      // e.g., "/dev/video0"
-        std::string sensorName;      // e.g., "AR0234"
+        std::string devicePath; // e.g., "/dev/video0"
+        std::string sensorName; // e.g., "AR0234"
         bool isAvailable;
     };
 

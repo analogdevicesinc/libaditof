@@ -415,12 +415,12 @@ void BufferProcessor::captureRGBFrameThread() {
                     m_totalRGBCaptured++;
 
                     // Log conversion performance occasionally
-                    if (totalRGBFramesCaptured % 100 == 0) {
-                        LOG(INFO)
-                            << "RGB Frame #" << totalRGBFramesCaptured
-                            << ": Capture=" << captureTime.count()
-                            << "ms, Convert=" << convertTime.count() << "ms";
-                    }
+                    // if (totalRGBFramesCaptured % 100 == 0) {
+                    //     LOG(INFO)
+                    //         << "RGB Frame #" << totalRGBFramesCaptured
+                    //         << ": Capture=" << captureTime.count()
+                    //         << "ms, Convert=" << convertTime.count() << "ms";
+                    // }
                 } else {
                     LOG(WARNING) << "RGB frame queue full, dropping frame";
                     m_totalRGBFailures++;

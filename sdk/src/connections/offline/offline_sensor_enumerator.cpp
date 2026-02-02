@@ -55,7 +55,7 @@ OfflineSensorEnumerator::getSdVersion(std::string &sdVersion) const {
 
 aditof::Status
 OfflineSensorEnumerator::getRGBSensorStatus(bool &isAvailable,
-                                             std::string &devicePath) const {
+                                            std::string &devicePath) const {
     isAvailable = false;
     devicePath = "";
     return aditof::Status::OK;

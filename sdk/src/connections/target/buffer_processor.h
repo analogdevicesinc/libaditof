@@ -48,11 +48,19 @@
 #define CHIP_ID_SINGLE 0x5931
 #define DEFAULT_MODE 0
 
+/**
+ * @struct buffer
+ * @brief V4L2 buffer wrapper for memory-mapped frame data
+ */
 struct buffer {
     void *start;
     size_t length;
 };
 
+/**
+ * @struct VideoDev
+ * @brief V4L2 video device descriptor with buffer management
+ */
 struct VideoDev {
     int fd;
     int sfd;
@@ -67,6 +75,11 @@ struct VideoDev {
           started(false) {}
 };
 
+/**
+ * @class ThreadSafeQueue
+ * @brief Thread-safe FIFO queue with bounded capacity and timeout support
+ * @tparam T Type of elements stored in the queue
+ */
 template <typename T>
 class ThreadSafeQueue {
   private:
@@ -77,6 +90,10 @@ class ThreadSafeQueue {
     size_t max_size_;
 
   public:
+    /**
+     * @brief Construct a thread-safe queue with maximum capacity
+     * @param[in] max_size Maximum number of elements allowed in queue
+     */
     explicit ThreadSafeQueue(size_t max_size) { max_size_ = max_size; }
 
     bool
@@ -126,23 +143,66 @@ class ThreadSafeQueue {
     }
 };
 
+/**
+ * @class BufferProcessor
+ * @brief Multi-threaded frame pipeline for V4L2 capture and ToFi depth computation
+ * 
+ * Implements a two-thread pipeline:
+ * - captureFrameThread(): Dequeues V4L2 buffers from ISP
+ * - processThread(): Processes raw frames via TofiCompute
+ */
 class BufferProcessor : public aditof::V4lBufferAccessInterface {
   public:
     BufferProcessor();
     ~BufferProcessor();
 
   public:
+    /**
+     * @brief Initialize the buffer processor
+     * @return Status of the operation
+     */
     aditof::Status open();
+    /**
+     * @brief Set the V4L2 input device for frame capture
+     * @param[in] inputVideoDev Pointer to video device descriptor
+     * @return Status of the operation
+     */
     aditof::Status setInputDevice(VideoDev *inputVideoDev);
+    /**
+     * @brief Configure video frame properties and mode-specific parameters
+     * @param[in] frameWidth Frame width in pixels
+     * @param[in] frameHeight Frame height in pixels
+     * @param[in] WidthInBytes Payload width in bytes
+     * @param[in] HeightInBytes Payload height in bytes
+     * @param[in] modeNumber Frame mode (0-6)
+     * @param[in] bitsInAB Bits per pixel for AB component
+     * @param[in] bitsInConf Bits per pixel for confidence
+     * @return Status of the operation
+     */
     aditof::Status setVideoProperties(int frameWidth, int frameHeight,
                                       int WidthInBytes, int HeightInBytes,
                                       int modeNumber, uint8_t bitsInAB,
                                       uint8_t bitsInConf);
+    /**
+     * @brief Configure ToFi processor with INI and calibration data
+     * @param[in] iniFile Pointer to INI configuration buffer
+     * @param[in] iniFileLength Size of INI buffer in bytes
+     * @param[in] calData Pointer to calibration data buffer
+     * @param[in] calDataLength Size of calibration buffer in bytes
+     * @param[in] mode Operating mode
+     * @param[in] ispEnabled Whether ISP depth computation is enabled
+     * @return Status of the operation
+     */
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
                                           uint16_t calDataLength, uint16_t mode,
                                           bool ispEnabled);
+    /**
+     * @brief Process a frame buffer (depth + AB + confidence)
+     * @param[out] buffer Output buffer for processed frame data
+     * @return Status of the operation
+     */
     aditof::Status processBuffer(uint16_t *buffer);
 #ifdef HAS_RGB_CAMERA
     aditof::Status processBuffer(uint16_t *depthBuffer,
@@ -159,7 +219,13 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status getLatestRGBFrame(aditof::RGBFrame &frame);
 #endif
 
+    /**
+     * @brief Start capture and processing worker threads
+     */
     void startThreads();
+    /**
+     * @brief Stop worker threads and clean up resources
+     */
     void stopThreads();
     static int getTimeoutDelay() { return TIME_OUT_DELAY; }
 

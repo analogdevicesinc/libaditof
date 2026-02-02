@@ -58,7 +58,8 @@ buildCameras(std::unique_ptr<SensorEnumeratorInterface> enumerator,
     // Get RGB sensor enumeration status
     bool rgbAvailable = false;
     std::string rgbDevicePath = "";
-    Status rgbStatus = enumerator->getRGBSensorStatus(rgbAvailable, rgbDevicePath);
+    Status rgbStatus =
+        enumerator->getRGBSensorStatus(rgbAvailable, rgbDevicePath);
     if (rgbStatus != Status::OK) {
         LOG(WARNING) << "Failed to query RGB sensor status";
     }

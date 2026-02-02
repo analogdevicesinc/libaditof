@@ -35,6 +35,7 @@
 #else
 #include <aditof/log.h>
 #endif
+#include <cstdlib>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -215,38 +216,58 @@ Status TargetSensorEnumerator::searchRGBSensors() {
 
     m_rgbSensorsInfo.clear();
 
-    // Check for RGB sensor at /dev/video0 (arducam-jvar/AR0234)
-    const std::string rgbDevicePath = "/dev/video0";
+    // ========================================================================
+    // RGB Sensor Auto-Discovery Strategy:
+    // Iteratively scan /dev/video0-9 for RGB sensors
+    // Filter out ADSD3500 ToF sensors by checking V4L2 card name
+    // Use first non-ToF video capture device found
+    // ========================================================================
 
-    if (isRGBSensorAvailable(rgbDevicePath)) {
-        // Get the actual sensor name from V4L2
-        int fd = open(rgbDevicePath.c_str(), O_RDWR | O_NONBLOCK);
-        std::string sensorName = "AR0234"; // Default name
+    LOG(INFO) << "Enumerating all /dev/video* devices to find RGB sensor...";
 
-        if (fd >= 0) {
-            struct v4l2_capability cap;
-            if (ioctl(fd, VIDIOC_QUERYCAP, &cap) >= 0) {
-                // Use the card name from V4L2 (will be "vi-output, arducam-jvar 10-000c")
-                sensorName = reinterpret_cast<const char *>(cap.card);
-                // Extract just the sensor name if possible
-                if (sensorName.find("arducam") != std::string::npos) {
-                    sensorName = "AR0234 (arducam-jvar)";
-                }
-            }
-            close(fd);
+    // Try video devices 0-9 (typical range on Jetson)
+    for (int videoNum = 0; videoNum < 10; ++videoNum) {
+        std::string devicePath = "/dev/video" + std::to_string(videoNum);
+
+        // Check if device exists
+        struct stat st;
+        if (stat(devicePath.c_str(), &st) != 0) {
+            continue; // Device doesn't exist
         }
 
-        RGBSensorInfo rgbInfo;
-        rgbInfo.devicePath = rgbDevicePath;
-        rgbInfo.sensorName = sensorName;
-        rgbInfo.isAvailable = true;
+        LOG(INFO) << "Checking " << devicePath << "...";
 
-        m_rgbSensorsInfo.emplace_back(rgbInfo);
-        LOG(INFO) << "Found RGB sensor: " << rgbInfo.sensorName << " at "
-                  << rgbInfo.devicePath;
-    } else {
-        LOG(INFO) << "No RGB sensor detected at " << rgbDevicePath;
+        if (isRGBSensorAvailable(devicePath)) {
+            // Found an RGB sensor - get detailed info
+            int fd = open(devicePath.c_str(), O_RDWR | O_NONBLOCK);
+            std::string sensorName = "AR0234";
+
+            if (fd >= 0) {
+                struct v4l2_capability cap;
+                if (ioctl(fd, VIDIOC_QUERYCAP, &cap) >= 0) {
+                    sensorName = reinterpret_cast<const char *>(cap.card);
+                    if (sensorName.find("arducam") != std::string::npos) {
+                        sensorName = "AR0234 (arducam-jvar)";
+                    }
+                }
+                close(fd);
+            }
+
+            RGBSensorInfo rgbInfo;
+            rgbInfo.devicePath = devicePath;
+            rgbInfo.sensorName = sensorName;
+            rgbInfo.isAvailable = true;
+
+            m_rgbSensorsInfo.emplace_back(rgbInfo);
+            LOG(INFO) << "Found RGB sensor: " << rgbInfo.sensorName << " at "
+                      << rgbInfo.devicePath;
+
+            // Found first RGB sensor - stop searching
+            return Status::OK;
+        }
     }
+
+    LOG(INFO) << "No RGB sensor detected after scanning all video devices";
 
     return Status::OK;
 }
