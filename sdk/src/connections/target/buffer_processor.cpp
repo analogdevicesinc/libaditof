@@ -702,7 +702,7 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                 m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
 
                 return aditof::Status::OK; // Success, exit function
-            } else {  // NOLINT(llvm-else-after-return)
+            } else {                       // NOLINT(llvm-else-after-return)
                 // Pop succeeded, but the frame data itself was invalid.
                 LOG(ERROR) << "processBuffer: Pop succeeded but frame data is "
                               "invalid (buffer/tofiBuffer/size). "
@@ -722,7 +722,8 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                            << MAX_RETRIES << " attempts. "
                            << "m_process_done_Q size: "
                            << m_process_done_Q.size() << "\n";
-                return aditof::Status::GENERIC_ERROR; // Indicate final failure to the caller
+                return aditof::Status::
+                    GENERIC_ERROR; // Indicate final failure to the caller
             }
         }
     }
