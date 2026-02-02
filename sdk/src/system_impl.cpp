@@ -112,7 +112,7 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
     }
 #endif
 
-#if defined(NXP) || defined(NVIDIA)
+#if defined(NXP) || defined(NVIDIA) || defined(RPI)
     sensorEnumerator = SensorEnumeratorFactory::buildTargetSensorEnumerator();
     if (!sensorEnumerator) {
         LOG(ERROR) << "Could not create TargetSensorEnumerator";

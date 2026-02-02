@@ -44,19 +44,42 @@ if ( NXP )
         add_compile_options(-march=armv8-a+simd)
     endif()
     set(OS_SPECIFIC_DIR "connections/target")
-    set(TARGET_SPECIFIC_DIR "soc/imx")
+    set(PLATFORM_DIR "platform/imx")
     add_definitions(-DNXP)
 elseif ( NVIDIA )
     set(OS_SPECIFIC_DIR "connections/target")
-    set(TARGET_SPECIFIC_DIR "soc/nvidia")
+    set(PLATFORM_DIR "platform/nvidia")
     add_definitions(-DNVIDIA)
+elseif ( RPI )
+    set(OS_SPECIFIC_DIR "connections/target")
+    set(PLATFORM_DIR "platform/raspberrypi")
+    add_definitions(-DRPI)
 else()
-    #message(FATAL_ERROR "Platform not supported")
+    message(FATAL_ERROR "Platform not supported. Use -DNVIDIA=ON, -DNXP=ON, or -DRPI=ON")
 endif()
 
 if (NOT APPLE AND NOT WIN32)
     option(RUN_LDCONFIG "Run ldconfig after install." ON)
 endif()
+
+# Platform layer sources and headers (common)
+set(PLATFORM_COMMON_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/sensor_enumerator.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_factory.cpp
+)
+set(PLATFORM_COMMON_HEADERS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/sensor_enumerator.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_factory.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_interface.h
+)
+
+# Platform-specific implementation sources
+file(GLOB PLATFORM_IMPL_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${PLATFORM_DIR}/*.cpp
+)
+file(GLOB PLATFORM_IMPL_HEADERS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${PLATFORM_DIR}/*.h
+)
 
 # Platform specific sources and headers
 file(GLOB PLATFORM_SOURCES
@@ -65,7 +88,6 @@ file(GLOB PLATFORM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/adsd3500/crc/src/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/${TARGET_SPECIFIC_DIR}/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${FRAME_DIR}/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/${COMMON_DIR}/tofi/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/${COMMON_DIR}/tofi/*.cpp
@@ -75,7 +97,6 @@ file(GLOB PLATFORM_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/sensor-tables/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/adsd3500/crc/include/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/${TARGET_SPECIFIC_DIR}/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${FRAME_DIR}/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/${COMMON_DIR}/tofi/*.h
 )
@@ -102,6 +123,10 @@ file(GLOB OFFLINE_HEADERS
 add_library(${PROJECT_NAME} SHARED
     ${HEADERS}
     ${SOURCES}
+    ${PLATFORM_COMMON_SOURCES}
+    ${PLATFORM_COMMON_HEADERS}
+    ${PLATFORM_IMPL_SOURCES}
+    ${PLATFORM_IMPL_HEADERS}
     ${PLATFORM_SOURCES}
     ${PLATFORM_HEADERS}
     $<$<BOOL:${WITH_NETWORK}>:${NETWORK_SOURCES}>
@@ -172,7 +197,7 @@ target_include_directories(${PROJECT_NAME}
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     PRIVATE
         src/
-        src/${OS_SPECIFIC_DIR}/${TARGET_SPECIFIC_DIR}
+        src/platform/
         src/${CAMERA_DIR}/
         ${COMMON_DIR}/
         ${Protobuf_INCLUDE_DIRS}

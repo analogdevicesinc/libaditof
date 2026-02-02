@@ -26,6 +26,7 @@
 
 #include "aditof/connections.h"
 
+#include <cstdint>
 #include <iostream>
 #include <string>
 #include <vector>

@@ -29,6 +29,10 @@
 #include "sensor-tables/device_parameters.h"
 #include "utils_ini.h"
 
+#ifdef RPI
+#include "platform/raspberrypi/rpi_media_config.h"
+#endif
+
 #include "tofi/tofi_config.h"
 #include <aditof/log.h>
 #include <algorithm>
@@ -65,15 +69,25 @@
 #define CTRL_PHASE_DEPTH_BITS (0x9819d2)
 #define CTRL_AB_BITS (0x9819d3)
 #define CTRL_CONFIDENCE_BITS (0x9819d4)
+#define CTRL_FSYNC_TRIGGER (0x9819d7)
 
-#ifdef NXP
+#if defined(NXP) || defined(RPI)
+#undef V4L2_CID_AD_DEV_CHIP_CONFIG
 #define V4L2_CID_AD_DEV_CHIP_CONFIG (0x9819e1)
+#undef CTRL_SET_MODE
 #define CTRL_SET_MODE (0x9819e0)
+#undef CTRL_AB_AVG
 #define CTRL_AB_AVG (0x9819e5)
+#undef CTRL_DEPTH_EN
 #define CTRL_DEPTH_EN (0x9819e6)
+#undef CTRL_PHASE_DEPTH_BITS
 #define CTRL_PHASE_DEPTH_BITS (0x9819e2)
+#undef CTRL_AB_BITS
 #define CTRL_AB_BITS (0x9819e3)
+#undef CTRL_CONFIDENCE_BITS
 #define CTRL_CONFIDENCE_BITS (0x9819e4)
+#undef CTRL_FSYNC_TRIGGER
+#define CTRL_FSYNC_TRIGGER (0x9819d7)
 #endif
 
 #define ADSD3500_CTRL_PACKET_SIZE 4099
@@ -162,8 +176,8 @@ struct Adsd3500Sensor::ImplData {
     std::array<uint8_t, ADSD3500_CTRL_PACKET_SIZE> ctrlBuf;
 
     ImplData()
-        : numVideoDevs(1),
-          videoDevs(nullptr), modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
+        : numVideoDevs(1), videoDevs(nullptr),
+          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
         ccbVersion = CCBVersion::CCB_UNKNOWN;
         imagerType = SensorImagerType::IMAGER_UNKNOWN;
     }
@@ -226,6 +240,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_controls.emplace("depthComputeOpenSource", "0");
     m_controls.emplace("disableCCBM", "0");
     m_controls.emplace("availableCCBM", "0");
+    m_controls.emplace("fsyncTrigger", "1");
 
     // Define the commands that correspond to the sensor controls
     m_implData->controlsCommands["abAveraging"] = CTRL_AB_AVG;
@@ -233,6 +248,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_implData->controlsCommands["phaseDepthBits"] = CTRL_PHASE_DEPTH_BITS;
     m_implData->controlsCommands["abBits"] = CTRL_AB_BITS;
     m_implData->controlsCommands["confidenceBits"] = CTRL_CONFIDENCE_BITS;
+    m_implData->controlsCommands["fsyncTrigger"] = CTRL_FSYNC_TRIGGER;
 
     m_bufferProcessor = new BufferProcessor();
 }
@@ -844,6 +860,32 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             status = Status::GENERIC_ERROR;
             goto cleanup_on_error;
         }
+
+#ifdef RPI
+        // Configure RP1 CFE media pipeline for RPI with actual mode parameters
+        // Use baseResolutionWidth but frameHeightInBytes (which includes all interleaved planes)
+
+        // Dynamically detect media device and sensor entity
+        std::string mediaDevice = platform::rpi::detectRpiMediaDevice();
+        std::string sensorEntity =
+            platform::rpi::detectSensorEntity(mediaDevice);
+
+        int bitDepth = (type.pixelFormatIndex == 1) ? 12 : 8;
+        bool mediaConfigured = platform::rpi::configureMediaPipeline(
+            mediaDevice,              // dynamically detected media device
+            m_driverPath,             // video device (/dev/video0)
+            sensorEntity,             // dynamically detected sensor entity
+            type.baseResolutionWidth, // sensor width (e.g., 1024)
+            type.frameHeightInBytes, // total V4L2 height with all planes (e.g., 4096 for mode 0)
+            bitDepth // bit depth based on pixel format
+        );
+
+        if (!mediaConfigured) {
+            LOG(ERROR) << "Failed to configure RP1 CFE media pipeline";
+            status = Status::GENERIC_ERROR;
+            return status;
+        }
+#endif
 
         //End of set mode in chip
 
@@ -1682,7 +1724,6 @@ aditof::Status Adsd3500Sensor::adsd3500_write_payload(uint8_t *payload,
 
 aditof::Status Adsd3500Sensor::adsd3500_reset() {
     using namespace aditof;
-    Status status = Status::OK;
 
 #if defined(NXP)
     m_chipResetDone = false;

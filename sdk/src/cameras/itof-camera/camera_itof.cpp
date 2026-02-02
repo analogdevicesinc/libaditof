@@ -1677,9 +1677,17 @@ void CameraItof::configureSensorModeDetails() {
 
         it = m_iniKeyValPairs.find("partialDepthEnable");
         if (it != m_iniKeyValPairs.end()) {
+#ifdef RPI
+            // On RPI with dual ISP, depth_enable must always be 1 because
+            // the ISP computes depth on-chip even for "raw" modes
+            m_depthSensor->setControl("depthEnable", "1");
+            // ab_averaging must be 0 to match shell script behavior for frame capture
+            m_depthSensor->setControl("abAveraging", "0");
+#else
             std::string en = (it->second == "0") ? "1" : "0";
             m_depthSensor->setControl("depthEnable", en);
             m_depthSensor->setControl("abAveraging", en);
+#endif
         } else {
             LOG(WARNING)
                 << "partialDepthEnable was not found in parameter list";

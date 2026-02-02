@@ -21,9 +21,33 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef TARGET_DEFINITIONS_H
-#define TARGET_DEFINITIONS_H
+#include "platform_factory.h"
 
-static const char *CAPTURE_DEVICE_NAME = "mxc-isi-cap";
+// Platform-specific implementations will be included based on compile flags
+#ifdef NVIDIA
+#include "nvidia/nvidia_platform.h"
+#elif defined(NXP)
+#include "imx/imx_platform.h"
+#elif defined(RPI)
+#include "raspberrypi/rpi_platform.h"
+#else
+#error "No platform defined! Use -DNVIDIA=ON, -DNXP=ON, or -DRPI=ON"
+#endif
 
-#endif // TARGET_DEFINITIONS_H
+namespace aditof {
+namespace platform {
+
+std::unique_ptr<IPlatform> PlatformFactory::create() {
+#ifdef NVIDIA
+    return std::make_unique<NvidiaPlatform>();
+#elif defined(NXP)
+    return std::make_unique<ImxPlatform>();
+#elif defined(RPI)
+    return std::make_unique<RpiPlatform>();
+#else
+#error "No platform defined! Use -DNVIDIA=ON, -DNXP=ON, or -DRPI=ON"
+#endif
+}
+
+} // namespace platform
+} // namespace aditof
