@@ -227,8 +227,8 @@ class CameraItof : public aditof::Camera {
     std::vector<std::pair<std::string, int32_t>> m_sensor_settings;
     int16_t m_cameraFps;
     int16_t m_fsyncMode;
-    uint16_t m_mipiOutputSpeed;
-    uint16_t m_isdeskewEnabled;
+    int16_t m_mipiOutputSpeed;
+    int16_t m_isdeskewEnabled;
     int16_t m_enableTempCompenstation;
     int16_t m_enableMetaDatainAB;
     int16_t m_enableEdgeConfidence;

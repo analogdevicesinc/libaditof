@@ -26,6 +26,7 @@
 #include "aditof/frame_operations.h"
 #include "utils_ini.h"
 
+#include "../../platform/platform_impl.h"
 #include "aditof/utils.h"
 #include "crc.h"
 #include "tofi/algorithms.h"
@@ -62,8 +63,9 @@ CameraItof::CameraItof(
     : m_depthSensor(depthSensor), m_devStarted(false), m_devStreaming(false),
       m_adsd3500Enabled(false), m_isOffline(false), m_xyzEnabled(true),
       m_xyzSetViaApi(false), m_cameraFps(0), m_fsyncMode(-1),
-      m_mipiOutputSpeed(1), m_isdeskewEnabled(1), m_enableTempCompenstation(-1),
-      m_enableMetaDatainAB(-1), m_enableEdgeConfidence(-1), m_modesVersion(0),
+      m_mipiOutputSpeed(-1), m_isdeskewEnabled(-1),
+      m_enableTempCompenstation(-1), m_enableMetaDatainAB(-1),
+      m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
       m_dropFrameOnce(true) {
@@ -242,37 +244,56 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             LOG(WARNING) << "fsyncMode is not being set by SDK.";
         }
 
-        // if (m_mipiOutputSpeed != 1) {
-        //     status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
-        //     if (status != Status::OK) {
-        //         LOG(ERROR) << "Failed to set mipiOutputSpeed.";
-        //         return status;
-        //     }
-        // } else {
-        //     status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
-        //     if (status != Status::OK) {
-        //         LOG(ERROR) << "Failed to set mipiOutputSpeed.";
-        //         return status;
-        //     }
-        //     LOG(WARNING)
-        //         << "mipiSpeed is not being set by SDK.Setting default 2.5Gbps";
-        // }
+        // Platform-based configuration for MIPI and deskew
+        aditof::platform::PlatformInfo platformInfo =
+            aditof::platform::Platform::getInstance().getPlatformInfo();
+        std::string platformName = platformInfo.name;
 
-        // if (!m_isdeskewEnabled) {
-        //     status = adsd3500SetEnableDeskewAtStreamOn(m_isdeskewEnabled);
-        //     if (status != Status::OK) {
-        //         LOG(ERROR) << "Failed to set Enable Deskew at stream on.";
-        //         return status;
-        //     }
-        // } else {
-        //     status = adsd3500SetEnableDeskewAtStreamOn(m_isdeskewEnabled);
-        //     if (status != Status::OK) {
-        //         LOG(ERROR) << "Failed to set Enable Deskew at stream on.";
-        //         return status;
-        //     }
-        //     LOG(WARNING)
-        //         << "deskew is not being set by SDK, Setting it by default.";
-        // }
+        // NVIDIA Jetson requires MIPI speed and deskew enabled
+        if (platformName.find("NVIDIA") != std::string::npos) {
+            if (m_mipiOutputSpeed < 0) {
+                m_mipiOutputSpeed = 1; // 2.5 Gbps for NVIDIA
+                LOG(INFO) << "Setting MIPI output speed to 1 (2.5Gbps) for "
+                             "NVIDIA platform";
+            }
+            if (m_isdeskewEnabled < 0) {
+                m_isdeskewEnabled = 1; // Enable deskew for NVIDIA
+                LOG(INFO) << "Enabling deskew for NVIDIA platform";
+            }
+        } else {
+            // NXP/RPi use hardware defaults unless config file overrides
+            if (m_mipiOutputSpeed < 0) {
+                m_mipiOutputSpeed = 0; // Use hardware default
+                LOG(INFO) << "Using hardware default MIPI output speed for "
+                          << platformName;
+            }
+            if (m_isdeskewEnabled < 0) {
+                m_isdeskewEnabled = 0; // Use hardware default
+                LOG(INFO) << "Using hardware default deskew setting for "
+                          << platformName;
+            }
+        }
+
+        // Apply MIPI output speed configuration
+        if (m_mipiOutputSpeed > 0) {
+            status = adsd3500SetMIPIOutputSpeed(m_mipiOutputSpeed);
+            if (status != Status::OK) {
+                LOG(ERROR) << "Failed to set MIPI output speed to "
+                           << m_mipiOutputSpeed;
+                return status;
+            }
+            LOG(INFO) << "MIPI output speed set to " << m_mipiOutputSpeed;
+        }
+
+        // Apply deskew configuration
+        if (m_isdeskewEnabled > 0) {
+            status = adsd3500SetEnableDeskewAtStreamOn(m_isdeskewEnabled);
+            if (status != Status::OK) {
+                LOG(ERROR) << "Failed to enable deskew at stream on";
+                return status;
+            }
+            LOG(INFO) << "Deskew enabled at stream on";
+        }
 
         if (m_enableTempCompenstation >= 0) {
             status = adsd3500SetEnableTemperatureCompensation(
