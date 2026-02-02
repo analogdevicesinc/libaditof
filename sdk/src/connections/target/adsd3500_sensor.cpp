@@ -1727,8 +1727,6 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     using namespace aditof;
     aditof::Status status = aditof::Status::OK;
 
-    first_reset = true;
-
     m_chipResetDone = false;
     m_adsd3500Status = Adsd3500Status::OK;
 

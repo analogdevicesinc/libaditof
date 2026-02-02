@@ -9,3 +9,8 @@ examples/tof-viewer/external
 examples/tof-viewer/include/stb_image.h
 examples/tof-viewer/include/linmath.h
 sdk/src/cameras/itof-camera/tofi
+sdk/src/platform/platform_config.h.in
+# CMake template files (contain @VARIABLE@ syntax)
+**/*.h.in
+**/*.cpp.in
+**/*.cmake.in
