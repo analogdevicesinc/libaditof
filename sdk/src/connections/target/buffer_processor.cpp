@@ -687,7 +687,6 @@ void BufferProcessor::processThread() {
  */
 aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     Tofi_v4l2_buffer tof_processed_frame;
-    aditof::Status status = aditof::Status::OK;
 
     // Loop for MAX_RETRIES attempts. 'attempt' counts from 0 to MAX_RETRIES - 1.
     for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
@@ -702,13 +701,13 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                 m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
                 m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
 
-                status = aditof::Status::OK; // Success, exit function
-            } else {
+                return aditof::Status::OK; // Success, exit function
+            } else {  // NOLINT(llvm-else-after-return)
                 // Pop succeeded, but the frame data itself was invalid.
                 LOG(ERROR) << "processBuffer: Pop succeeded but frame data is "
                               "invalid (buffer/tofiBuffer/size). "
                            << "Returning error immediately.\n";
-                status = aditof::Status::GENERIC_ERROR;
+                return aditof::Status::GENERIC_ERROR;
             }
         } else {
             if (attempt < MAX_RETRIES - 1) {
@@ -723,8 +722,7 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
                            << MAX_RETRIES << " attempts. "
                            << "m_process_done_Q size: "
                            << m_process_done_Q.size() << "\n";
-                status = aditof::Status::
-                    GENERIC_ERROR; // Indicate final failure to the caller
+                return aditof::Status::GENERIC_ERROR; // Indicate final failure to the caller
             }
         }
     }
@@ -732,7 +730,7 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     // This line should technically not be reached if MAX_RETRIES > 0,
     // as the loop will either return OK or GENERIC_ERROR.
     // Included as a safeguard.
-    return status;
+    return aditof::Status::GENERIC_ERROR;
 }
 
 aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
