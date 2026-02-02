@@ -25,8 +25,7 @@
 #define PLATFORM_SENSOR_ENUMERATOR_H
 
 #include "aditof/sensor_enumerator_interface.h"
-#include "platform_interface.h"
-#include <memory>
+#include "platform_impl.h"
 #include <vector>
 
 namespace aditof {
@@ -39,24 +38,25 @@ namespace aditof {
  * It bridges the SDK's sensor enumeration API with the platform layer.
  */
 class PlatformSensorEnumerator : public SensorEnumeratorInterface {
-public:
+  public:
     PlatformSensorEnumerator();
     ~PlatformSensorEnumerator() override = default;
-    
+
     // SensorEnumeratorInterface implementation
     Status searchSensors() override;
-    Status getDepthSensors(
-        std::vector<std::shared_ptr<DepthSensorInterface>>& depthSensors) override;
-    Status getUbootVersion(std::string& uBootVersion) const override;
-    Status getKernelVersion(std::string& kernelVersion) const override;
-    Status getSdVersion(std::string& sdVersion) const override;
-    
+    Status getDepthSensors(std::vector<std::shared_ptr<DepthSensorInterface>>
+                               &depthSensors) override;
+    Status getUbootVersion(std::string &uBootVersion) const override;
+    Status getKernelVersion(std::string &kernelVersion) const override;
+    Status getSdVersion(std::string &sdVersion) const override;
+
 #ifdef HAS_RGB_CAMERA
-    Status getRGBSensorStatus(bool& isAvailable, std::string& devicePath) const override;
+    Status getRGBSensorStatus(bool &isAvailable,
+                              std::string &devicePath) const override;
 #endif
 
-private:
-    std::unique_ptr<platform::IPlatform> m_platform;
+  private:
+    platform::Platform m_platform;
     std::vector<platform::SensorInfo> m_sensorsInfo;
     std::vector<platform::RGBSensorInfo> m_rgbSensorsInfo;
     std::string m_uBootVersion;

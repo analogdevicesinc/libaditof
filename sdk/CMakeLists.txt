@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.15)
 project(aditof)
 
+# Include platform configuration
+include(${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform.cmake)
+
 ########################### Version #######################################
 configure_file(../cmake/version.h.cmakein ${CMAKE_CURRENT_SOURCE_DIR}/include/aditof/version.h @ONLY)
 
@@ -62,22 +65,21 @@ if (NOT APPLE AND NOT WIN32)
     option(RUN_LDCONFIG "Run ldconfig after install." ON)
 endif()
 
-# Platform layer sources and headers (common)
+# Platform layer sources and headers (unified implementation)
 set(PLATFORM_COMMON_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/sensor_enumerator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_factory.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_impl.cpp
 )
 set(PLATFORM_COMMON_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/sensor_enumerator.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_factory.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_interface.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_impl.h
 )
 
-# Platform-specific implementation sources
-file(GLOB PLATFORM_IMPL_SOURCES
+# Platform-specific utilities (e.g., RPI media config)
+file(GLOB PLATFORM_UTIL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${PLATFORM_DIR}/*.cpp
 )
-file(GLOB PLATFORM_IMPL_HEADERS
+file(GLOB PLATFORM_UTIL_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${PLATFORM_DIR}/*.h
 )
 
@@ -125,8 +127,8 @@ add_library(${PROJECT_NAME} SHARED
     ${SOURCES}
     ${PLATFORM_COMMON_SOURCES}
     ${PLATFORM_COMMON_HEADERS}
-    ${PLATFORM_IMPL_SOURCES}
-    ${PLATFORM_IMPL_HEADERS}
+    ${PLATFORM_UTIL_SOURCES}
+    ${PLATFORM_UTIL_HEADERS}
     ${PLATFORM_SOURCES}
     ${PLATFORM_HEADERS}
     $<$<BOOL:${WITH_NETWORK}>:${NETWORK_SOURCES}>
@@ -149,6 +151,7 @@ endif()
 target_include_directories(${PROJECT_NAME} PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/json-c
     ${CMAKE_BINARY_DIR}/libaditof/dependencies/third-party/json-c
+    ${CMAKE_CURRENT_BINARY_DIR}  # Generated platform_config.h
 )
 
 if(WITH_NETWORK AND WITH_PROTOBUF_DEPENDENCY)

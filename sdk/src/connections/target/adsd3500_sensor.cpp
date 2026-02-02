@@ -26,6 +26,7 @@
 #include "aditof/utils.h"
 #include "adsd3500_interrupt_notifier.h"
 #include "gpio.h"
+#include "platform/platform_impl.h"
 #include "sensor-tables/device_parameters.h"
 #include "utils_ini.h"
 
@@ -1726,9 +1727,12 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     using namespace aditof;
     aditof::Status status = aditof::Status::OK;
 
-#if defined(NXP)
+    first_reset = true;
+
     m_chipResetDone = false;
     m_adsd3500Status = Adsd3500Status::OK;
+
+    // Register interrupt callback
     aditof::SensorInterruptCallback cb = [this](Adsd3500Status status) {
         m_adsd3500Status = status;
         m_chipResetDone = true;
@@ -1736,139 +1740,15 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     status = adsd3500_register_interrupt_callback(cb);
     bool interruptsAvailable = (status == Status::OK);
 
-#ifdef DUAL
-    system("echo 0 > /sys/class/gpio/gpio64/value");
-    usleep(ADSD3500_RESET_HOLD_TIME_US);
-    system("echo 1 > /sys/class/gpio/gpio64/value");
-#else
-    system("echo 0 > /sys/class/gpio/gpio122/value");
-    usleep(ADSD3500_RESET_HOLD_TIME_US);
-    system("echo 1 > /sys/class/gpio/gpio122/value");
-#endif
+    // Use platform-specific reset logic
+    auto &platform = aditof::platform::Platform::getInstance();
+    status = platform.resetSensor(interruptsAvailable, &m_chipResetDone, 10);
 
     if (interruptsAvailable) {
-        LOG(INFO) << "Waiting for ADSD3500 to reset.";
-        int secondsTimeout = 10;
-        int secondsWaited = 0;
-        int secondsWaitingStep = 1;
-        while (!m_chipResetDone && secondsWaited < secondsTimeout) {
-            LOG(INFO) << ".";
-            std::this_thread::sleep_for(
-                std::chrono::seconds(secondsWaitingStep));
-            secondsWaited += secondsWaitingStep;
-        }
-        LOG(INFO) << "Waited: " << secondsWaited << " seconds";
         adsd3500_unregister_interrupt_callback(cb);
-    } else {
-        usleep(ADSD3500_RESET_FALLBACK_NXP_US);
     }
-#elif defined(NVIDIA)
-    m_chipResetDone = false;
-    m_adsd3500Status = Adsd3500Status::OK;
-    aditof::SensorInterruptCallback cb = [this](Adsd3500Status status) {
-        m_adsd3500Status = status;
-        m_chipResetDone = true;
-    };
-    status = adsd3500_register_interrupt_callback(cb);
-    bool interruptsAvailable = (status == Status::OK);
-    struct stat st;
-    if (stat("/sys/class/gpio/PAC.00/value", &st) == 0) {
 
-        auto ret_system = system("echo 0 > /sys/class/gpio/PAC.00/value");
-        if (ret_system != 0) {
-            LOG(ERROR) << "Failed to set GPIO PAC.00 to 0";
-            return aditof::Status::GENERIC_ERROR;
-        }
-        usleep(ADSD3500_GPIO_SETTLE_DELAY_US);
-        ret_system = system("echo 1 > /sys/class/gpio/PAC.00/value");
-        if (ret_system != 0) {
-            LOG(ERROR) << "Failed to set GPIO PAC.00 to 1";
-            return aditof::Status::GENERIC_ERROR;
-        }
-
-        if (interruptsAvailable) {
-            LOG(INFO) << "Waiting for ADSD3500 to reset.";
-            int secondsTimeout = 10;
-            int secondsWaited = 0;
-            int secondsWaitingStep = 1;
-            while (!m_chipResetDone && secondsWaited < secondsTimeout) {
-                LOG(INFO) << ".";
-                std::this_thread::sleep_for(
-                    std::chrono::seconds(secondsWaitingStep));
-                secondsWaited += secondsWaitingStep;
-            }
-            LOG(INFO) << "Waited: " << secondsWaited << " seconds";
-        } else {
-            usleep(ADSD3500_RESET_FALLBACK_NVIDIA_US);
-        }
-    } else {
-        Gpio gpio11("/dev/gpiochip3", 11);
-        gpio11.openForWrite();
-
-        gpio11.writeValue(0);
-        usleep(ADSD3500_GPIO_SETTLE_DELAY_US);
-        gpio11.writeValue(1);
-        usleep(ADSD3500_RESET_COMPLETE_DELAY_US);
-
-        gpio11.close();
-    }
-    adsd3500_unregister_interrupt_callback(cb);
-#elif defined(RPI)
-    m_chipResetDone = false;
-    m_adsd3500Status = Adsd3500Status::OK;
-    aditof::SensorInterruptCallback cb = [this](Adsd3500Status status) {
-        m_adsd3500Status = status;
-        m_chipResetDone = true;
-    };
-    status = adsd3500_register_interrupt_callback(cb);
-    bool interruptsAvailable = (status == Status::OK);
-    // RPI: Toggle GPIO34 (ISP_RST) to reset ADSD3500
-    LOG(INFO) << "Resetting ADSD3500 via GPIO34 (ISP_RST)";
-
-    // Find GPIO34 number from sysfs
-    FILE *fp = popen("cat /sys/kernel/debug/gpio 2>/dev/null | grep -i GPIO34 "
-                     "| sed -E 's/.*gpio-([0-9]+).*/\\1/'",
-                     "r");
-    if (fp) {
-        char gpio_num[16] = {0};
-        if (fgets(gpio_num, sizeof(gpio_num), fp)) {
-            int gpio = atoi(gpio_num);
-            if (gpio > 0) {
-                char cmd[256];
-                snprintf(cmd, sizeof(cmd),
-                         "echo 0 > /sys/class/gpio/gpio%d/value", gpio);
-                system(cmd);
-                usleep(1000000); // 1 second
-                snprintf(cmd, sizeof(cmd),
-                         "echo 1 > /sys/class/gpio/gpio%d/value", gpio);
-                system(cmd);
-                if (interruptsAvailable) {
-                    LOG(INFO) << "Waiting for ADSD3500 to reset.";
-                    int secondsTimeout = 10;
-                    int secondsWaited = 0;
-                    int secondsWaitingStep = 1;
-                    while (!m_chipResetDone && secondsWaited < secondsTimeout) {
-                        LOG(INFO) << ".";
-                        std::this_thread::sleep_for(
-                            std::chrono::seconds(secondsWaitingStep));
-                        secondsWaited += secondsWaitingStep;
-                    }
-                    LOG(INFO) << "Waited: " << secondsWaited << " seconds";
-                } else {
-                    usleep(10000000);
-                }
-                LOG(INFO) << "ADSD3500 reset complete via GPIO, " << gpio;
-
-            } else {
-                LOG(WARNING) << "Could not find GPIO34, reset skipped";
-            }
-        }
-        pclose(fp);
-    } else {
-        LOG(WARNING) << "Could not access GPIO debug interface, reset skipped";
-    }
-#endif
-    return aditof::Status::OK;
+    return status;
 }
 
 aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
