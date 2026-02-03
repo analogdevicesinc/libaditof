@@ -6,3 +6,11 @@
 	path = dependencies/third-party/protobuf
 	url = https://github.com/protocolbuffers/protobuf
 	branch = 3.9.x
+[submodule "dependencies/third-party/cppzmq"]
+	path = dependencies/third-party/cppzmq
+	url = https://github.com/zeromq/cppzmq.git
+        branch = v4.11.0
+[submodule "dependencies/third-party/libzmq"]
+	path = dependencies/third-party/libzmq
+	url = https://github.com/zeromq/libzmq.git
+        branch = v4.3.5
