@@ -50,15 +50,9 @@ class PlatformSensorEnumerator : public SensorEnumeratorInterface {
     Status getKernelVersion(std::string &kernelVersion) const override;
     Status getSdVersion(std::string &sdVersion) const override;
 
-#ifdef HAS_RGB_CAMERA
-    Status getRGBSensorStatus(bool &isAvailable,
-                              std::string &devicePath) const override;
-#endif
-
   private:
     platform::Platform m_platform;
     std::vector<platform::SensorInfo> m_sensorsInfo;
-    std::vector<platform::RGBSensorInfo> m_rgbSensorsInfo;
     std::string m_uBootVersion;
     std::string m_kernelVersion;
     std::string m_sdVersion;

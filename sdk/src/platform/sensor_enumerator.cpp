@@ -50,7 +50,6 @@ Status PlatformSensorEnumerator::searchSensors() {
 
     // Clear previous results
     m_sensorsInfo.clear();
-    m_rgbSensorsInfo.clear();
 
     // Find ToF sensors
     status = m_platform.findToFSensors(m_sensorsInfo);
@@ -67,25 +66,6 @@ Status PlatformSensorEnumerator::searchSensors() {
     LOG(INFO) << "Found " << m_sensorsInfo.size() << " ToF sensor(s)";
 #else
     LOG(INFO) << "Found " << m_sensorsInfo.size() << " ToF sensor(s)";
-#endif
-
-#ifdef HAS_RGB_CAMERA
-    // Find RGB sensors
-    status = m_platform.findRGBSensors(m_rgbSensorsInfo);
-    if (status != Status::OK) {
-#ifdef USE_GLOG
-        LOG(WARNING) << "Failed to find RGB sensors";
-#else
-        LOG(WARNING) << "Failed to find RGB sensors";
-#endif
-        // RGB failure is not fatal
-    } else {
-#ifdef USE_GLOG
-        LOG(INFO) << "Found " << m_rgbSensorsInfo.size() << " RGB sensor(s)";
-#else
-        LOG(INFO) << "Found " << m_rgbSensorsInfo.size() << " RGB sensor(s)";
-#endif
-    }
 #endif
 
     // Retrieve version information
@@ -139,17 +119,3 @@ Status PlatformSensorEnumerator::getSdVersion(std::string &sdVersion) const {
     sdVersion = m_sdVersion;
     return sdVersion.empty() ? Status::GENERIC_ERROR : Status::OK;
 }
-
-#ifdef HAS_RGB_CAMERA
-Status
-PlatformSensorEnumerator::getRGBSensorStatus(bool &isAvailable,
-                                             std::string &devicePath) const {
-
-    isAvailable = !m_rgbSensorsInfo.empty();
-    if (isAvailable) {
-        devicePath = m_rgbSensorsInfo[0].devicePath;
-    }
-
-    return Status::OK;
-}
-#endif
