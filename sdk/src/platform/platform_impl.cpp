@@ -120,15 +120,6 @@ Status Platform::findToFSensors(std::vector<SensorInfo> &sensors) {
     return sensors.empty() ? Status::GENERIC_ERROR : Status::OK;
 }
 
-Status Platform::findRGBSensors(std::vector<RGBSensorInfo> &sensors) {
-    sensors.clear();
-#ifdef PLATFORM_HAS_RGB
-    // RGB sensor discovery implementation
-    // Left for future implementation
-#endif
-    return Status::OK;
-}
-
 Status Platform::parseMediaPipeline(const std::string &mediaDevice,
                                     std::string &devPath,
                                     std::string &subdevPath,

@@ -39,14 +39,6 @@ struct SensorInfo {
 };
 
 /**
- * @brief RGB sensor information structure
- */
-struct RGBSensorInfo {
-    std::string devicePath;
-    std::string sensorName;
-};
-
-/**
  * @brief Unified platform implementation (configured via CMake)
  */
 class Platform {
@@ -60,7 +52,6 @@ class Platform {
     std::string getSDCardVersion() const;
 
     Status findToFSensors(std::vector<SensorInfo> &sensors);
-    Status findRGBSensors(std::vector<RGBSensorInfo> &sensors);
 
     /**
      * @brief Reset the ToF sensor via GPIO
