@@ -2,3 +2,7 @@
 	path = dependencies/third-party/gtest
 	url = https://github.com/google/googletest.git
 	branch = v1.16.x
+[submodule "dependencies/third-party/protobuf"]
+	path = dependencies/third-party/protobuf
+	url = https://github.com/protocolbuffers/protobuf
+	branch = 3.9.x
