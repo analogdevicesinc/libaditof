@@ -10,8 +10,6 @@ sdk/include/aditof/version-kit.h
 .vs/
 
 # Ignore submodules
-libwebsockets/
-protobuf/
 
 #Ignore generated protobuf files
 buffer.pb.cc
