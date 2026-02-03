@@ -126,20 +126,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_BINARY_DIR}/libaditof/dependencies/third-party/json-c
 )
 
-if(WITH_GLOG_DEPENDENCY)
-    # Prevent macro name collisions between custom log.h and glog
-    add_definitions(-DGLOG_NO_ABBREVIATED_SEVERITIES)
-    # Check if submodule exists, and build the library
-    if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../glog/.git")
-        find_package(glog 0.3.5 REQUIRED)
-    else()
-        target_link_libraries(${PROJECT_NAME} PUBLIC glog)
-    endif()
-endif()
-
 if(WITH_NETWORK AND WITH_PROTOBUF_DEPENDENCY)
     # Check if submodule exists, and build the library
-    if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../protobuf/.git")
+    if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/protobuf/.git")
         find_package(Protobuf 3.9.0 REQUIRED)
     else()
     target_link_libraries(${PROJECT_NAME} PUBLIC libprotobuf)
@@ -153,10 +142,10 @@ if(WITH_NETWORK AND WITH_PROTOBUF_DEPENDENCY)
     if ( WITH_NETWORK )
         # Check if submodule exists, and build the library
         # Include the cppzmq to use in c++
-		set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../cppzmq")
+		set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/cppzmq")
 		
 		# Check if submodule exists, and build the library
-		if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../libzmq/.git")
+		if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/libzmq/.git")
 			find_package(ZeroMQ REQUIRED)
 		else()
 			include_directories(${CPPZMQ_INSTALL_DIR})

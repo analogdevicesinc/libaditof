@@ -25,7 +25,6 @@ option(WITH_DOC "Build documentation?" OFF)
 option(WITH_NETWORK "Build network interface?" ON)
 option(WITH_PYTHON "Build python bindings?" ON)
 option(WITH_OFFLINE "Build offline interface?" ON)
-option(WITH_GLOG_DEPENDENCY "Build with GLOG dependency to be used for logging?" OFF)
 option(CI_BUILD "Build for CI" OFF)
 option(WITH_SUBMODULES "Use submodules to build the library" ON)
 option(ENABLE_PCM "Enable the streaming of PCM frames" OFF)
@@ -42,28 +41,28 @@ option(USE_DEPTH_COMPUTE_OPENSOURCE "Use an open source implementation?" OFF)
 ################################## Git ########################################
 include(FindGit OPTIONAL)
 if (GIT_FOUND)
-	execute_process(
-		COMMAND ${GIT_EXECUTABLE} rev-parse --show-toplevel
-		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-		OUTPUT_VARIABLE ADITOFSDK_GIT_REPO
-		OUTPUT_STRIP_TRAILING_WHITESPACE
-		ERROR_QUIET
-	)
+        execute_process(
+                COMMAND ${GIT_EXECUTABLE} rev-parse --show-toplevel
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                OUTPUT_VARIABLE ADITOFSDK_GIT_REPO
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                ERROR_QUIET
+        )
 
-	if ("${ADITOFSDK_GIT_REPO}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
-		execute_process(
-			COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
-			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-			OUTPUT_VARIABLE ADITOFSDK_GIT_COMMIT
-			OUTPUT_STRIP_TRAILING_WHITESPACE
-		)
-		execute_process(
-			COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
-			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-			OUTPUT_VARIABLE ADITOFSDK_GIT_BRANCH
-			OUTPUT_STRIP_TRAILING_WHITESPACE
-		)
-	endif()
+        if ("${ADITOFSDK_GIT_REPO}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
+                execute_process(
+                        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                        OUTPUT_VARIABLE ADITOFSDK_GIT_COMMIT
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                )
+                execute_process(
+                        COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+                        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                        OUTPUT_VARIABLE ADITOFSDK_GIT_BRANCH
+                        OUTPUT_STRIP_TRAILING_WHITESPACE
+                )
+        endif()
 
         # Updating submodules if they exist
         if (WITH_SUBMODULES)
@@ -146,46 +145,24 @@ if (WITH_OFFLINE)
         add_definitions(-DHAS_OFFLINE)
 endif()
 
-if(WITH_GLOG_DEPENDENCY)
-        add_definitions(-DUSE_GLOG)
-        if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/glog/.git" )
+
+if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/third-party/libzmq/.git")
                 # Temporarily store the current compile options
                 set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
                 set(old_c_flags "${CMAKE_C_FLAGS}")
                 # Disable warnings for this subdirectory
                 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
                 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-				set(BUILD_SHARED_LIBS OFF CACHE BOOL "Disable shared libs")
-                set(WITH_GFLAGS OFF CACHE BOOL "Disable gflags")
-                set(BUILD_TESTING OFF CACHE BOOL "Disable test builds for glog lib")
+                set(BUILD_SHARED OFF CACHE BOOL "Disable shared libs")
+                set(BUILD_STATIC ON CACHE BOOL "Build Static library")
+                set(BUILD_TESTS OFF CACHE BOOL "Disable building tests for libzmq")
+                set(WITH_LIBSODIUM OFF CACHE BOOL "Disable libsodium for libzmq")
                 set(POSITION_INDEPENDENT_CODE 1)
-                # Add the subdirectory
-                add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/glog)
-                unset(WITH_GFLAGS)
+                add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/dependencies/third-party/libzmq)
                 unset(POSITION_INDEPENDENT_CODE)
                 # Restore the old compile options
                 set(CMAKE_CXX_FLAGS "${old_cxx_flags}")
                 set(CMAKE_C_FLAGS "${old_c_flags}")
-        endif()
-endif()
-
-if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/libzmq/.git")
-		# Temporarily store the current compile options
-		set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
-		set(old_c_flags "${CMAKE_C_FLAGS}")
-		# Disable warnings for this subdirectory
-		set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-		set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-		set(BUILD_SHARED OFF CACHE BOOL "Disable shared libs")
-		set(BUILD_STATIC ON CACHE BOOL "Build Static library")
-		set(BUILD_TESTS OFF CACHE BOOL "Disable building tests for libzmq")
-		set(WITH_LIBSODIUM OFF CACHE BOOL "Disable libsodium for libzmq")
-		set(POSITION_INDEPENDENT_CODE 1)
-		add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/libzmq)
-		unset(POSITION_INDEPENDENT_CODE)
-		# Restore the old compile options
-		set(CMAKE_CXX_FLAGS "${old_cxx_flags}")
-		set(CMAKE_C_FLAGS "${old_c_flags}")
 endif()
 
 if(NOT WITH_PROTOBUF_DEPENDENCY)
@@ -194,19 +171,19 @@ if(NOT WITH_PROTOBUF_DEPENDENCY)
         endif()
 else()
         add_definitions(-DUSE_PROTOBUF)
-        if(WITH_NETWORK AND WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/protobuf/.git" )
+        if(WITH_NETWORK AND WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/third-party/protobuf/.git" )
                 # Temporarily store the current compile options
                 set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
                 set(old_c_flags "${CMAKE_C_FLAGS}")
                 # Disable warnings for this subdirectory
                 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
                 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-				set(BUILD_SHARED_LIBS OFF CACHE BOOL "Disble shared libs")
+                                set(BUILD_SHARED_LIBS OFF CACHE BOOL "Disble shared libs")
                 set(protobuf_MSVC_STATIC_RUNTIME 0 CACHE BOOL "MSVC static tuntime disabled")
                 set(protobuf_BUILD_TESTS 0 CACHE BOOL "Disable tests for Protobuf")
                 set(POSITION_INDEPENDENT_CODE 1)
                 # Add the subdirectory
-                add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/protobuf/cmake)
+                add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/dependencies/third-party/protobuf/cmake)
                 unset(protobuf_BUILD_TESTS)
                 unset(POSITION_INDEPENDENT_CODE)
                 # Restore the old compile options
@@ -217,7 +194,7 @@ endif()
 
 if(${ON_TARGET})
         if(USE_DEPTH_COMPUTE_OPENSOURCE)
-	        set(LIBTOFI_LIBDIR_PATH "${CMAKE_BINARY_DIR}/sdk/common/adi/depth-compute-opensource")
+                set(LIBTOFI_LIBDIR_PATH "${CMAKE_BINARY_DIR}/sdk/common/adi/depth-compute-opensource")
         else()
                 if (NOT DEFINED LIBTOFI_LIBDIR_PATH)
                         set(LIBTOFI_LIBDIR_PATH "${CMAKE_SOURCE_DIR}/../libs")
