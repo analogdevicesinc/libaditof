@@ -3,9 +3,6 @@
 
 message(STATUS "Platform configuration: NVIDIA=${NVIDIA}, RPI=${RPI}, NXP=${NXP}")
 
-# Set ON_TARGET define for all target platforms
-set(ON_TARGET 1)
-
 if(NVIDIA)
     set(PLATFORM_NAME "NVIDIA Jetson Orin Nano")
     set(PLATFORM_CAPTURE_DEVICE "vi-output, adsd3500")
@@ -50,3 +47,6 @@ configure_file(
     ${CMAKE_CURRENT_BINARY_DIR}/platform_config.h
     @ONLY
 )
+
+# Add ADITOF_ON_TARGET compile definition for all target platforms
+add_compile_definitions(ADITOF_ON_TARGET=1)

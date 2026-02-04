@@ -18,11 +18,11 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <linux/videodev2.h>
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
 #include <fstream>
+#include <linux/videodev2.h>
 #include <sstream>
 #include <sys/stat.h>
 #include <thread>
