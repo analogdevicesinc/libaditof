@@ -22,6 +22,7 @@ Build a Docker container to test ADCAM repository build in a clean environment.
 
 Options:
     -h, --help          Show this help message
+    -r, --repo NAME     Repository name: 'adcam' or 'libaditof' (required)
     -j, --jobs N        Number of parallel build jobs (default: 6)
     -t, --tag NAME      Docker image tag name (default: adcam-build-test)
     -l, --libs PATH     Path to libs folder to copy into container (required)
@@ -29,11 +30,10 @@ Options:
     --no-cache          Build without using Docker cache
 
 Examples:
-    $0 -l /path/to/libs                     # Build with main branches
-    $0 -l /path/to/libs main main           # Explicitly specify main branches
-    $0 -l /path/to/libs feature-branch main # Test a feature branch
-    $0 -j 4 -l /path/to/libs main main      # Build with 4 parallel jobs
-    $0 --no-cache -l /path/to/libs main main # Force clean build
+    $0 -r adcam -l /path/to/libs                     # Build ADCAM repository
+    $0 -r libaditof -l /path/to/libs                 # Build libaditof repository
+    $0 -r adcam -j 4 -l /path/to/libs                # Build with 4 parallel jobs
+    $0 -r libaditof --no-cache -l /path/to/libs      # Force clean build
 
 The build output is saved to build_output.log
 EOF
@@ -41,6 +41,7 @@ EOF
 }
 
 # Default values
+REPO=""
 JOBS=6
 IMAGE_TAG="adcam-build-test"
 DOCKER_OPTS="--progress=plain"
@@ -51,6 +52,10 @@ while [[ $# -gt 0 ]]; do
     case $1 in
         -h|--help)
             show_help
+            ;;
+        -r|--repo)
+            REPO="$2"
+            shift 2
             ;;
         -j|--jobs)
             JOBS="$2"
@@ -83,6 +88,20 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Check if repo is specified
+if [ -z "$REPO" ]; then
+    echo "Error: repository name is required. Use -r or --repo to specify 'adcam' or 'libaditof'."
+    echo "Use -h or --help for usage information"
+    exit 1
+fi
+
+# Validate repo value
+if [ "$REPO" != "adcam" ] && [ "$REPO" != "libaditof" ]; then
+    echo "Error: invalid repository name '$REPO'. Must be either 'adcam' or 'libaditof'."
+    echo "Use -h or --help for usage information"
+    exit 1
+fi
+
 # Check if libs path is provided
 if [ -z "$LIBS_PATH" ]; then
     echo "Error: libs path is required. Use -l or --libs to specify the path."
@@ -108,7 +127,11 @@ cp -r "$LIBS_PATH" ./libs
 echo "Using local code from workspace..."
 
 # Get the workspace root (two levels up from this script)
-WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [ "$REPO" == "adcam" ]; then
+    WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+else
+    WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+fi
 
 # Copy local code, excluding build directories and scripts
 echo "Copying local workspace to ./local_code..."
@@ -119,12 +142,11 @@ mkdir -p ./local_code
 rsync -a -vv --exclude='build' \
             --exclude='libaditof/build' \
             --exclude='tests/docker' \
-            --exclude='.git' \
-            --exclude='.github' \
+            --exclude='libaditof/tests/docker' \
             "$WORKSPACE_ROOT/" ./local_code/
 
 echo "  Source: $WORKSPACE_ROOT"
-echo "  Excluded: build/, libaditof/build/, scripts/, .git/"
+echo "  Excluded: build/, libaditof/build/, tests/docker/, libaditof/tests/docker/"
 
 DOCKERFILE="Dockerfile.local"
 
@@ -180,8 +202,8 @@ echo "     sudo curl -L \"https://github.com/docker/compose/releases/latest/down
 echo "     sudo chmod +x /usr/local/bin/docker-compose"
 echo ""
 echo "  2. Run a command in the container with device access:"
-echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/libaditof/build/tests/sdk/bin/camera-adsd3500_reset"
-echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/libaditof/build/tests/sdk/bin/camera-get_frames --mode=3"
+echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/repo/build/tests/sdk/bin/camera-adsd3500_reset"
+echo "     docker-compose run -v "$(pwd)/out:/out" -w /out aditof /workspace/repo/build/tests/sdk/bin/camera-get_frames --mode=3"
 echo ""
 echo "  3. Or, get an interactive shell:"
 echo "     docker-compose run aditof /bin/bash"
