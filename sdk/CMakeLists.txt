@@ -58,7 +58,7 @@ elseif ( RPI )
     set(PLATFORM_DIR "platform/raspberrypi")
     add_definitions(-DRPI)
 else()
-    message(FATAL_ERROR "Platform not supported. Use -DNVIDIA=ON, -DNXP=ON, or -DRPI=ON")
+    message(FATAL_ERROR "Platform not supported.")
 endif()
 
 if (NOT APPLE AND NOT WIN32)
