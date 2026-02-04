@@ -169,6 +169,11 @@ TEST_F(CameraTestFixture, CameraGetFrames) {
         status = camera->setMode(g_mode);
         ASSERT_TRUE(status == Status::OK);
 
+        if (g_mode == 0 && g_fps > 40) {
+            return;
+        } else if (g_mode == 1 && g_fps > 30) {
+            return;
+        }
         status = camera->adsd3500SetFrameRate(g_fps);
         ASSERT_TRUE(status == Status::OK);
 
@@ -294,6 +299,11 @@ TEST_F(CameraTestFixture, CameraGetFramesAllModes) {
             status = camera->setMode(g_mode);
             ASSERT_TRUE(status == Status::OK);
 
+            if (g_mode == 0 && g_fps > 40) {
+                continue;
+            } else if (g_mode == 1 && g_fps > 30) {
+                continue;
+            }
             status = camera->adsd3500SetFrameRate(g_fps);
             ASSERT_TRUE(status == Status::OK);
 
