@@ -245,33 +245,30 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         }
 
         // Platform-based configuration for MIPI and deskew
-        aditof::platform::PlatformInfo platformInfo =
-            aditof::platform::Platform::getInstance().getPlatformInfo();
-        std::string platformName = platformInfo.name;
+        int platformMipiSpeed =
+            aditof::platform::Platform::getInstance().getMipiOutputSpeed();
+        int platformDeskewEnabled =
+            aditof::platform::Platform::getInstance().getDeskewEnabled();
 
-        // NVIDIA Jetson requires MIPI speed and deskew enabled
-        if (platformName.find("NVIDIA") != std::string::npos) {
-            if (m_mipiOutputSpeed < 0) {
-                m_mipiOutputSpeed = 1; // 2.5 Gbps for NVIDIA
-                LOG(INFO) << "Setting MIPI output speed to 1 (2.5Gbps) for "
-                             "NVIDIA platform";
-            }
-            if (m_isdeskewEnabled < 0) {
-                m_isdeskewEnabled = 1; // Enable deskew for NVIDIA
-                LOG(INFO) << "Enabling deskew for NVIDIA platform";
-            }
-        } else {
-            // NXP/RPi use hardware defaults unless config file overrides
-            if (m_mipiOutputSpeed < 0) {
-                m_mipiOutputSpeed = 0; // Use hardware default
-                LOG(INFO) << "Using hardware default MIPI output speed for "
-                          << platformName;
-            }
-            if (m_isdeskewEnabled < 0) {
-                m_isdeskewEnabled = 0; // Use hardware default
-                LOG(INFO) << "Using hardware default deskew setting for "
-                          << platformName;
-            }
+        // Apply platform defaults if not already configured
+        if (platformMipiSpeed >= 0 && m_mipiOutputSpeed < 0) {
+            m_mipiOutputSpeed = platformMipiSpeed;
+            LOG(INFO) << "Using platform MIPI output speed: "
+                      << m_mipiOutputSpeed;
+        }
+        if (platformDeskewEnabled >= 0 && m_isdeskewEnabled < 0) {
+            m_isdeskewEnabled = platformDeskewEnabled;
+            LOG(INFO) << "Using platform deskew setting: " << m_isdeskewEnabled;
+        }
+
+        // Use hardware defaults if platform didn't specify
+        if (m_mipiOutputSpeed < 0) {
+            m_mipiOutputSpeed = 0;
+            LOG(INFO) << "Using hardware default MIPI output speed";
+        }
+        if (m_isdeskewEnabled < 0) {
+            m_isdeskewEnabled = 0;
+            LOG(INFO) << "Using hardware default deskew setting";
         }
 
         // Apply MIPI output speed configuration

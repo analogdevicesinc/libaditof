@@ -30,10 +30,6 @@
 #include "sensor-tables/device_parameters.h"
 #include "utils_ini.h"
 
-#ifdef RPI
-#include "platform/raspberrypi/rpi_media_config.h"
-#endif
-
 #include "tofi/tofi_config.h"
 #include <aditof/log.h>
 #include <algorithm>
@@ -177,8 +173,8 @@ struct Adsd3500Sensor::ImplData {
     std::array<uint8_t, ADSD3500_CTRL_PACKET_SIZE> ctrlBuf;
 
     ImplData()
-        : numVideoDevs(1), videoDevs(nullptr),
-          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
+        : numVideoDevs(1),
+          videoDevs(nullptr), modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
         ccbVersion = CCBVersion::CCB_UNKNOWN;
         imagerType = SensorImagerType::IMAGER_UNKNOWN;
     }
@@ -862,31 +858,15 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             goto cleanup_on_error;
         }
 
-#ifdef RPI
-        // Configure RP1 CFE media pipeline for RPI with actual mode parameters
-        // Use baseResolutionWidth but frameHeightInBytes (which includes all interleaved planes)
-
-        // Dynamically detect media device and sensor entity
-        std::string mediaDevice = platform::rpi::detectRpiMediaDevice();
-        std::string sensorEntity =
-            platform::rpi::detectSensorEntity(mediaDevice);
-
-        int bitDepth = (type.pixelFormatIndex == 1) ? 12 : 8;
-        bool mediaConfigured = platform::rpi::configureMediaPipeline(
-            mediaDevice,            // dynamically detected media device
-            m_driverPath,           // video device (/dev/video0)
-            sensorEntity,           // dynamically detected sensor entity
-            type.frameWidthInBytes, // sensor width (e.g., 1024)
-            type.frameHeightInBytes, // total V4L2 height with all planes (e.g., 4096 for mode 0)
-            bitDepth // bit depth based on pixel format
-        );
-
-        if (!mediaConfigured) {
-            LOG(ERROR) << "Failed to configure RP1 CFE media pipeline";
-            status = Status::GENERIC_ERROR;
+        // Configure media pipeline via platform abstraction
+        status =
+            aditof::platform::Platform::getInstance().configureMediaPipeline(
+                m_driverPath, type.frameWidthInBytes, type.frameHeightInBytes,
+                (type.pixelFormatIndex == 1) ? 12 : 8);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Failed to configure media pipeline";
             return status;
         }
-#endif
 
         //End of set mode in chip
 

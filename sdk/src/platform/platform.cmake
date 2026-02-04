@@ -3,6 +3,9 @@
 
 message(STATUS "Platform configuration: NVIDIA=${NVIDIA}, RPI=${RPI}, NXP=${NXP}")
 
+# Set ON_TARGET define for all target platforms
+set(ON_TARGET 1)
+
 if(NVIDIA)
     set(PLATFORM_NAME "NVIDIA Jetson Orin Nano")
     set(PLATFORM_CAPTURE_DEVICE "vi-output, adsd3500")

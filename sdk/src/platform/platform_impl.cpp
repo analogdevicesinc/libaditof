@@ -6,6 +6,10 @@
 #include "platform_impl.h"
 #include "platform_config.h"
 
+#ifdef RPI
+#include "raspberrypi/rpi_media_config.h"
+#endif
+
 #ifdef USE_GLOG
 #include <glog/logging.h>
 #else
@@ -59,10 +63,15 @@ PlatformInfo Platform::getPlatformInfo() const {
 }
 
 std::string Platform::getBootloaderVersion() const {
+#ifdef NXP
     return getVersionOfComponent("u-boot");
+#else
+    return ""; // Only applicable for NXP
+#endif
 }
 
 std::string Platform::getKernelVersion() const {
+#ifdef NXP
     std::ifstream versionFile("/proc/version");
     if (versionFile.is_open()) {
         std::string version;
@@ -71,10 +80,17 @@ std::string Platform::getKernelVersion() const {
         return version;
     }
     return "unknown";
+#else
+    return ""; // Only applicable for NXP
+#endif
 }
 
 std::string Platform::getSDCardVersion() const {
+#ifdef NXP
     return getVersionOfComponent("sd_img_ver");
+#else
+    return ""; // Only applicable for NXP
+#endif
 }
 
 Status Platform::findToFSensors(std::vector<SensorInfo> &sensors) {
@@ -118,6 +134,39 @@ Status Platform::findToFSensors(std::vector<SensorInfo> &sensors) {
     }
 
     return sensors.empty() ? Status::GENERIC_ERROR : Status::OK;
+}
+
+int Platform::getMipiOutputSpeed() const {
+#ifdef NVIDIA
+    return 1; // 2.5 Gbps for NVIDIA Jetson
+#else
+    return -1; // Not configured for other platforms
+#endif
+}
+
+int Platform::getDeskewEnabled() const {
+#ifdef NVIDIA
+    return 1; // Enable deskew for NVIDIA Jetson
+#else
+    return -1; // Not configured for other platforms
+#endif
+}
+
+Status Platform::configureMediaPipeline(const std::string &videoDevice,
+                                        int width, int height, int bitDepth) {
+#ifdef RPI
+    // Raspberry Pi: Configure RP1 CFE media pipeline
+    std::string mediaDevice = rpi::detectRpiMediaDevice();
+    std::string sensorEntity = rpi::detectSensorEntity(mediaDevice);
+
+    bool configured = rpi::configureMediaPipeline(
+        mediaDevice, videoDevice, sensorEntity, width, height, bitDepth);
+
+    return configured ? Status::OK : Status::GENERIC_ERROR;
+#else
+    // Other platforms don't need media pipeline configuration
+    return Status::OK;
+#endif
 }
 
 Status Platform::parseMediaPipeline(const std::string &mediaDevice,

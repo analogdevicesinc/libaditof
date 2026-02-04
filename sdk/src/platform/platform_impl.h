@@ -54,6 +54,29 @@ class Platform {
     Status findToFSensors(std::vector<SensorInfo> &sensors);
 
     /**
+     * @brief Get platform-specific MIPI output speed configuration
+     * @return MIPI speed value (0=1.5Gbps, 1=2.5Gbps, -1=not configured)
+     */
+    int getMipiOutputSpeed() const;
+
+    /**
+     * @brief Get platform-specific deskew enable configuration
+     * @return 1 if deskew should be enabled, 0 if disabled, -1 if not configured
+     */
+    int getDeskewEnabled() const;
+
+    /**
+     * @brief Configure media pipeline for frame capture (platform-specific)
+     * @param[in] videoDevice Video device path (e.g., /dev/video0)
+     * @param[in] width Frame width
+     * @param[in] height Frame height (total including all planes)
+     * @param[in] bitDepth Pixel bit depth (8 or 12)
+     * @return Status::OK on success, error otherwise
+     */
+    Status configureMediaPipeline(const std::string &videoDevice, int width,
+                                  int height, int bitDepth);
+
+    /**
      * @brief Reset the ToF sensor via GPIO
      * @param[in] waitForInterrupt If true, wait for sensor interrupt callback
      * @param[in,out] resetDone Pointer to flag set by interrupt handler when reset completes

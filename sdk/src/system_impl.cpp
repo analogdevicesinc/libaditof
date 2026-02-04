@@ -49,11 +49,10 @@ buildCameras(std::unique_ptr<SensorEnumeratorInterface> enumerator,
     std::string sd_ver;
 
     enumerator->getDepthSensors(depthSensors);
-#ifdef NXP
     enumerator->getUbootVersion(uboot);
     enumerator->getKernelVersion(kernel);
     enumerator->getSdVersion(sd_ver);
-#endif
+
     for (const auto &dSensor : depthSensors) {
         std::shared_ptr<Camera> camera = std::make_shared<CameraItof>(
             dSensor, uboot, kernel, sd_ver, netLinkTest);
@@ -112,7 +111,7 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
     }
 #endif
 
-#if defined(NXP) || defined(NVIDIA) || defined(RPI)
+#ifdef ON_TARGET
     sensorEnumerator = SensorEnumeratorFactory::buildTargetSensorEnumerator();
     if (!sensorEnumerator) {
         LOG(ERROR) << "Could not create TargetSensorEnumerator";
