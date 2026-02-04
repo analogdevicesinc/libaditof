@@ -168,7 +168,7 @@ for i in $(seq 1 "$repeat_count"); do
             docker-compose run --rm -T \
                 -v "$FOLDER_MAPPING" \
                 -w "$REMOTE_FOLDER" \
-                aditof /workspace/libaditof/build/tests/sdk/bin/"$testname" $testparameters \
+                aditof /workspace/repo/build/tests/sdk/bin/"$testname" $testparameters \
                 > "$LOGPATH" 2>&1 < /dev/null
             rc=$?
             if [[ $rc -ne 0 ]]; then
