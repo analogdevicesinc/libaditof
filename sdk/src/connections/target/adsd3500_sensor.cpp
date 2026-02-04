@@ -68,14 +68,11 @@
 #define CTRL_DEPTH_EN                                                          \
     (aditof::platform::Platform::getInstance().getV4L2DepthEnControlId())
 #define CTRL_PHASE_DEPTH_BITS                                                  \
-    (aditof::platform::Platform::getInstance()                                 \
-         .getV4L2PhaseDepthBitsControlId())
+    (aditof::platform::Platform::getInstance().getV4L2PhaseDepthBitsControlId())
 #define CTRL_AB_BITS                                                           \
     (aditof::platform::Platform::getInstance().getV4L2AbBitsControlId())
 #define CTRL_CONFIDENCE_BITS                                                   \
-    (aditof::platform::Platform::getInstance()                                 \
-         .getV4L2ConfidenceBitsControlId())
-#define CTRL_FSYNC_TRIGGER (0x9819d7)
+    (aditof::platform::Platform::getInstance().getV4L2ConfidenceBitsControlId())
 
 #define ADSD3500_CTRL_PACKET_SIZE 4099
 
@@ -86,13 +83,6 @@
 // Burst response packet: [Header(3B)][Payload...]
 #define ADSD3500_BURST_RESPONSE_HEADER_SIZE                                    \
     3 // Size of response header before payload data
-
-// Can be moved to target_definitions in "camera"/"platform"
-#define TEMP_SENSOR_DEV_PATH "/dev/i2c-1"
-#define LASER_TEMP_SENSOR_I2C_ADDR 0x49
-#define AFE_TEMP_SENSOR_I2C_ADDR 0x4b
-
-#define REQ_COUNT 10
 
 #define NR_OF_MODES_FROM_CCB 10
 #define SIZE_OF_MODES_FROM_CCB 256
@@ -108,15 +98,6 @@
     30000 // 30ms - delay before reading payload
 #define ADSD3500_PAYLOAD_WRITE_DELAY_US                                        \
     100000 // 100ms - delay after writing payload
-#define ADSD3500_GPIO_SETTLE_DELAY_US                                          \
-    100000 // 100ms - GPIO settling time after toggle
-#define ADSD3500_RESET_HOLD_TIME_US 1000000 // 1s - reset signal hold time
-#define ADSD3500_RESET_COMPLETE_DELAY_US                                       \
-    5000000 // 5s - delay for reset completion (GPIO fallback)
-#define ADSD3500_RESET_FALLBACK_NXP_US                                         \
-    7000000 // 7s - NXP reset fallback delay (no interrupts)
-#define ADSD3500_RESET_FALLBACK_NVIDIA_US                                      \
-    10000000 // 10s - NVIDIA reset fallback delay (no interrupts)
 
 struct CalibrationData {
     std::string mode;
@@ -227,7 +208,6 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_controls.emplace("depthComputeOpenSource", "0");
     m_controls.emplace("disableCCBM", "0");
     m_controls.emplace("availableCCBM", "0");
-    m_controls.emplace("fsyncTrigger", "1");
 
     // Define the commands that correspond to the sensor controls
     m_implData->controlsCommands["abAveraging"] = CTRL_AB_AVG;
@@ -235,7 +215,6 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_implData->controlsCommands["phaseDepthBits"] = CTRL_PHASE_DEPTH_BITS;
     m_implData->controlsCommands["abBits"] = CTRL_AB_BITS;
     m_implData->controlsCommands["confidenceBits"] = CTRL_CONFIDENCE_BITS;
-    m_implData->controlsCommands["fsyncTrigger"] = CTRL_FSYNC_TRIGGER;
 
     m_bufferProcessor = new BufferProcessor();
 }
