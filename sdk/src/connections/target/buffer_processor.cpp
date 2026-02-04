@@ -24,6 +24,7 @@
 // TO DO: This exists in linux_utils.h which is not included on Dragoboard.
 // Should not have duplicated code if possible.
 
+#include "platform/platform_impl.h"
 #include <aditof/log.h>
 #include <algorithm>
 #include <arm_neon.h>
@@ -206,12 +207,9 @@ aditof::Status BufferProcessor::setVideoProperties(
     m_outputFrameWidth = frameWidth;
     m_outputFrameHeight = frameHeight;
 
-#ifdef NVIDIA
-    m_rawFrameBufferSize =
-        static_cast<size_t>(WidthInBytes) * HeightInBytes + WidthInBytes;
-#else
-    m_rawFrameBufferSize = static_cast<size_t>(WidthInBytes) * HeightInBytes;
-#endif
+    m_rawFrameBufferSize = aditof::platform::Platform::getInstance()
+                               .calculateBufferSize(WidthInBytes, HeightInBytes);
+
     {
         LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE
                   << " raw frame buffers, each of size " << m_rawFrameBufferSize

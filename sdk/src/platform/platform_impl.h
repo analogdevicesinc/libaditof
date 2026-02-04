@@ -77,6 +77,62 @@ class Platform {
                                   int height, int bitDepth);
 
     /**
+     * @brief Get platform-specific V4L2 control ID for chip configuration
+     * @return V4L2 control ID value
+     */
+    uint32_t getV4L2ChipConfigControlId() const;
+
+    /**
+     * @brief Get platform-specific V4L2 control ID for mode setting
+     * @return V4L2 control ID value
+     */
+    uint32_t getV4L2ModeControlId() const;
+
+    /**
+     * @brief Get platform-specific V4L2 control ID for AB averaging
+     * @return V4L2 control ID value
+     */
+    uint32_t getV4L2AbAvgControlId() const;
+
+    /**
+     * @brief Get platform-specific V4L2 control ID for depth enable
+     * @return V4L2 control ID value
+     */
+    uint32_t getV4L2DepthEnControlId() const;
+
+    /**
+     * @brief Get platform-specific V4L2 control ID for phase depth bits
+     * @return V4L2 control ID value
+     */
+    uint32_t getV4L2PhaseDepthBitsControlId() const;
+
+    /**
+     * @brief Get platform-specific V4L2 control ID for AB bits
+     * @return V4L2 control ID value
+     */
+    uint32_t getV4L2AbBitsControlId() const;
+
+    /**
+     * @brief Get platform-specific V4L2 control ID for confidence bits
+     * @return V4L2 control ID value
+     */
+    uint32_t getV4L2ConfidenceBitsControlId() const;
+
+    /**
+     * @brief Get platform-specific V4L2 pixel format for 8-bit mode
+     * @return V4L2 pixel format (e.g., V4L2_PIX_FMT_SRGGB8 or V4L2_PIX_FMT_SBGGR8)
+     */
+    uint32_t getV4L2PixelFormat8bit() const;
+
+    /**
+     * @brief Get platform-specific buffer size adjustment
+     * @param[in] widthInBytes Frame width in bytes
+     * @param[in] heightInBytes Frame height in bytes
+     * @return Calculated buffer size with platform-specific adjustments
+     */
+    size_t calculateBufferSize(int widthInBytes, int heightInBytes) const;
+
+    /**
      * @brief Reset the ToF sensor via GPIO
      * @param[in] waitForInterrupt If true, wait for sensor interrupt callback
      * @param[in,out] resetDone Pointer to flag set by interrupt handler when reset completes
