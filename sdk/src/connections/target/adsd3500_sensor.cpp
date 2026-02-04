@@ -59,33 +59,23 @@
 
 #define CTRL_PACKET_SIZE 65537
 #define CTRL_SET_FRAME_RATE (0x9a200b)
-#define V4L2_CID_AD_DEV_CHIP_CONFIG (0x9819d1)
-#define CTRL_SET_MODE (0x9819d0)
-#define CTRL_AB_AVG (0x9819d5)
-#define CTRL_DEPTH_EN (0x9819d6)
-#define CTRL_PHASE_DEPTH_BITS (0x9819d2)
-#define CTRL_AB_BITS (0x9819d3)
-#define CTRL_CONFIDENCE_BITS (0x9819d4)
+#define V4L2_CID_AD_DEV_CHIP_CONFIG                                            \
+    (aditof::platform::Platform::getInstance().getV4L2ChipConfigControlId())
+#define CTRL_SET_MODE                                                          \
+    (aditof::platform::Platform::getInstance().getV4L2ModeControlId())
+#define CTRL_AB_AVG                                                            \
+    (aditof::platform::Platform::getInstance().getV4L2AbAvgControlId())
+#define CTRL_DEPTH_EN                                                          \
+    (aditof::platform::Platform::getInstance().getV4L2DepthEnControlId())
+#define CTRL_PHASE_DEPTH_BITS                                                  \
+    (aditof::platform::Platform::getInstance()                                 \
+         .getV4L2PhaseDepthBitsControlId())
+#define CTRL_AB_BITS                                                           \
+    (aditof::platform::Platform::getInstance().getV4L2AbBitsControlId())
+#define CTRL_CONFIDENCE_BITS                                                   \
+    (aditof::platform::Platform::getInstance()                                 \
+         .getV4L2ConfidenceBitsControlId())
 #define CTRL_FSYNC_TRIGGER (0x9819d7)
-
-#if defined(NXP)
-#undef V4L2_CID_AD_DEV_CHIP_CONFIG
-#define V4L2_CID_AD_DEV_CHIP_CONFIG (0x9819e1)
-#undef CTRL_SET_MODE
-#define CTRL_SET_MODE (0x9819e0)
-#undef CTRL_AB_AVG
-#define CTRL_AB_AVG (0x9819e5)
-#undef CTRL_DEPTH_EN
-#define CTRL_DEPTH_EN (0x9819e6)
-#undef CTRL_PHASE_DEPTH_BITS
-#define CTRL_PHASE_DEPTH_BITS (0x9819e2)
-#undef CTRL_AB_BITS
-#define CTRL_AB_BITS (0x9819e3)
-#undef CTRL_CONFIDENCE_BITS
-#define CTRL_CONFIDENCE_BITS (0x9819e4)
-#undef CTRL_FSYNC_TRIGGER
-#define CTRL_FSYNC_TRIGGER (0x9819d7)
-#endif
 
 #define ADSD3500_CTRL_PACKET_SIZE 4099
 
@@ -905,11 +895,8 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         if (type.pixelFormatIndex == 1) {
             pixelFormat = V4L2_PIX_FMT_SBGGR12;
         } else {
-#ifdef NXP
-            pixelFormat = V4L2_PIX_FMT_SBGGR8;
-#else
-            pixelFormat = V4L2_PIX_FMT_SRGGB8;
-#endif
+            pixelFormat = aditof::platform::Platform::getInstance()
+                              .getV4L2PixelFormat8bit();
         }
 
         /* Set the frame format in the driver */

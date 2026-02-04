@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <linux/videodev2.h>
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
@@ -90,6 +91,80 @@ std::string Platform::getSDCardVersion() const {
     return getVersionOfComponent("sd_img_ver");
 #else
     return ""; // Only applicable for NXP
+#endif
+}
+
+uint32_t Platform::getV4L2ChipConfigControlId() const {
+#ifdef NXP
+    return 0x9819e1;
+#else
+    return 0x9819d1;
+#endif
+}
+
+uint32_t Platform::getV4L2ModeControlId() const {
+#ifdef NXP
+    return 0x9819e0;
+#else
+    return 0x9819d0;
+#endif
+}
+
+uint32_t Platform::getV4L2AbAvgControlId() const {
+#ifdef NXP
+    return 0x9819e5;
+#else
+    return 0x9819d5;
+#endif
+}
+
+uint32_t Platform::getV4L2DepthEnControlId() const {
+#ifdef NXP
+    return 0x9819e6;
+#else
+    return 0x9819d6;
+#endif
+}
+
+uint32_t Platform::getV4L2PhaseDepthBitsControlId() const {
+#ifdef NXP
+    return 0x9819e2;
+#else
+    return 0x9819d2;
+#endif
+}
+
+uint32_t Platform::getV4L2AbBitsControlId() const {
+#ifdef NXP
+    return 0x9819e3;
+#else
+    return 0x9819d3;
+#endif
+}
+
+uint32_t Platform::getV4L2ConfidenceBitsControlId() const {
+#ifdef NXP
+    return 0x9819e4;
+#else
+    return 0x9819d4;
+#endif
+}
+
+uint32_t Platform::getV4L2PixelFormat8bit() const {
+#ifdef NXP
+    return V4L2_PIX_FMT_SBGGR8;
+#else
+    return V4L2_PIX_FMT_SRGGB8;
+#endif
+}
+
+size_t Platform::calculateBufferSize(int widthInBytes,
+                                     int heightInBytes) const {
+#ifdef NVIDIA
+    // NVIDIA requires extra line for alignment
+    return static_cast<size_t>(widthInBytes) * heightInBytes + widthInBytes;
+#else
+    return static_cast<size_t>(widthInBytes) * heightInBytes;
 #endif
 }
 
