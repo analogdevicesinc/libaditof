@@ -25,20 +25,61 @@
 
 namespace aditof {
 
+/**
+ * @brief Equality operator for FrameDataDetails.
+ *
+ * Compares two FrameDataDetails objects for equality. Two FrameDataDetails
+ * are considered equal if their type, width, and height are all identical.
+ *
+ * @param lhs The left-hand side FrameDataDetails object.
+ * @param rhs The right-hand side FrameDataDetails object.
+ * @return true if the objects are equal, false otherwise.
+ */
 bool operator==(const FrameDataDetails &lhs, const FrameDataDetails &rhs) {
     return (lhs.type == rhs.type) && (lhs.width == rhs.width) &&
            (lhs.height == rhs.height);
 }
 
+/**
+ * @brief Inequality operator for FrameDataDetails.
+ *
+ * Compares two FrameDataDetails objects for inequality. Returns the opposite
+ * of the equality operator.
+ *
+ * @param lhs The left-hand side FrameDataDetails object.
+ * @param rhs The right-hand side FrameDataDetails object.
+ * @return true if the objects are not equal, false otherwise.
+ */
 bool operator!=(const FrameDataDetails &lhs, const FrameDataDetails &rhs) {
     return !(lhs == rhs);
 }
 
+/**
+ * @brief Equality operator for FrameDetails.
+ *
+ * Compares two FrameDetails objects for equality. Two FrameDetails are
+ * considered equal if their type, cameraMode, and all dataDetails elements
+ * are identical.
+ *
+ * @param lhs The left-hand side FrameDetails object.
+ * @param rhs The right-hand side FrameDetails object.
+ * @return true if the objects are equal, false otherwise.
+ */
 bool operator==(const FrameDetails &lhs, const FrameDetails &rhs) {
     return (lhs.type == rhs.type) && (lhs.cameraMode == rhs.cameraMode) &&
            (lhs.dataDetails == rhs.dataDetails);
 }
 
+/**
+ * @brief Inequality operator for FrameDetails.
+ *
+ * Compares two FrameDetails objects for inequality. Returns the opposite
+ * of the equality operator.
+ *
+ * @param lhs The left-hand side FrameDetails object.
+ * @param rhs The right-hand side FrameDetails object.
+ * @return true if the objects are not equal, false otherwise.
+ */
 bool operator!=(const FrameDetails &lhs, const FrameDetails &rhs) {
     return !(lhs == rhs);
 }

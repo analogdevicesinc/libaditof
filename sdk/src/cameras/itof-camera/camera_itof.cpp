@@ -56,6 +56,22 @@
 
 static const int skMetaDataBytesCount = 128;
 
+/**
+ * @brief Constructor for CameraItof.
+ *
+ * Initializes a camera instance with a depth sensor interface and version information.
+ * Sets up default camera parameters, XYZ table pointers, and determines sensor type
+ * (ADSD3500, offline, etc.). Detects imager type from sensor name.
+ *
+ * @param[in] depthSensor Shared pointer to DepthSensorInterface for V4L2 communication.
+ * @param[in] ubootVersion U-Boot bootloader version string.
+ * @param[in] kernelVersion Linux kernel version string.
+ * @param[in] sdCardImageVersion SD card image/firmware version string.
+ * @param[in] netLinkTest Optional network link test flag.
+ *
+ * @note Calls FloatToLinGenerateTable() and checks sensor name to determine
+ *       if ADSD3500 or offline mode should be used.
+ */
 CameraItof::CameraItof(
     std::shared_ptr<aditof::DepthSensorInterface> depthSensor,
     const std::string &ubootVersion, const std::string &kernelVersion,
@@ -108,8 +124,34 @@ CameraItof::CameraItof(
     m_adsd3500_master = true;
 }
 
+/**
+ * @brief Destructor for CameraItof.
+ *
+ * Cleans up XYZ lookup tables allocated during camera initialization.
+ */
 CameraItof::~CameraItof() { cleanupXYZtables(); }
 
+/**
+ * @brief Initializes the camera and sets up depth computation parameters.
+ *
+ * In offline mode, prepares for playback from a recorded file. In online mode,
+ * opens the V4L2 sensor interface, detects imager type, reads intrinsic and
+ * dealias parameters from ADSD3500, retrieves available modes and their details,
+ * loads or generates depth processing parameters, and configures MIPI, deskew,
+ * temperature compensation, and edge confidence settings.\n
+ * Also reads serial number if supported by firmware.
+ *
+ * @param[in] configFilepath Path to a JSON configuration file with depth parameters.
+ *                            If empty, uses firmware defaults.\n
+ *
+ * @return aditof::Status::OK on successful initialization;\n
+ *         aditof::Status::UNAVAILABLE if online mode is misconfigured;\n
+ *         error codes if sensor operations fail (open, control, parameter reads).\n
+ *
+ * @note This function is called automatically during camera setup before streaming.\n
+ *       In online mode, requires a valid depthSensor interface.\n
+ *       Creates and caches intrinsic parameters and dealias data for each mode.\n
+ */
 aditof::Status CameraItof::initialize(const std::string &configFilepath) {
     using namespace aditof;
     Status status = Status::OK;
@@ -330,6 +372,15 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
     return status;
 }
 
+/**
+ * @brief Starts the camera and begins frame streaming.
+ *
+ * Initiates the underlying depth sensor to start capturing and streaming
+ * depth frames. Sets the internal streaming flag to indicate the camera is active.
+ *
+ * @return aditof::Status::OK on successful start;
+ *         error codes from depth sensor if start operation fails.
+ */
 aditof::Status CameraItof::start() {
     using namespace aditof;
 
@@ -343,6 +394,16 @@ aditof::Status CameraItof::start() {
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Stops the camera and halts frame streaming.
+ *
+ * Terminates frame capture from the underlying depth sensor. In offline mode,
+ * stops playback of recorded frames. Clears the streaming flag to indicate
+ * the camera is no longer active.
+ *
+ * @return aditof::Status::OK on successful stop;
+ *         status from depth sensor operations if issues occur during shutdown.
+ */
 aditof::Status CameraItof::stop() {
     aditof::Status status = aditof::Status::OK;
 
@@ -363,6 +424,18 @@ aditof::Status CameraItof::stop() {
     return status;
 }
 
+/**
+ * @brief Retrieves depth processing parameters for a specific mode.
+ *
+ * Looks up and returns the depth computation INI parameters (such as thresholds,
+ * filter settings, etc.) associated with the given frame mode.
+ *
+ * @param[in] mode Frame mode number to retrieve parameters for.
+ * @param[out] params Map populated with parameter name-value pairs for the mode.
+ *
+ * @return aditof::Status::OK if parameters found and returned;
+ *         aditof::Status::INVALID_ARGUMENT if the mode is not in the parameter map.
+ */
 aditof::Status
 CameraItof::getDepthParamtersMap(uint16_t mode,
                                  std::map<std::string, std::string> &params) {
@@ -730,6 +803,19 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     return status;
 }
 
+/**
+ * @brief Retrieves the current depth processing parameters from the sensor.
+ *
+ * Queries the underlying depth sensor for the frame processing parameters
+ * currently active (only valid in online mode).
+ *
+ * @param[out] params Map to be populated with the current processing parameters.
+ *
+ * @return aditof::Status::OK if parameters retrieved successfully;
+ *         aditof::Status::GENERIC_ERROR if called in offline mode or sensor fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status
 CameraItof::getFrameProcessParams(std::map<std::string, std::string> &params) {
 
@@ -747,6 +833,21 @@ CameraItof::getFrameProcessParams(std::map<std::string, std::string> &params) {
     return status;
 }
 
+/**
+ * @brief Sets depth processing parameters on the sensor (online mode only).
+ *
+ * Applies depth computation parameter overrides to the underlying depth sensor.
+ * Parameter changes take effect immediately; applying changes while streaming
+ * is not recommended.
+ *
+ * @param[in] params Map of parameter name-value pairs to apply to the sensor.
+ * @param[in] mode Reserved parameter for future multi-mode support (currently unused).
+ *
+ * @return aditof::Status::OK if parameters applied successfully;
+ *         aditof::Status::GENERIC_ERROR if called in offline mode or sensor fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status
 CameraItof::setFrameProcessParams(std::map<std::string, std::string> &params,
                                   int32_t mode) {
@@ -767,6 +868,19 @@ CameraItof::setFrameProcessParams(std::map<std::string, std::string> &params,
     return status;
 }
 
+/**
+ * @brief Sets the offline playback file (offline mode only).
+ *
+ * Configures the file path for frame playback in offline mode. This must be
+ * called before calling setMode() in offline operation.
+ *
+ * @param[in] filePath Path to the recorded frame file to play back.
+ *
+ * @return aditof::Status::OK if file set successfully;
+ *         aditof::Status::GENERIC_ERROR if called in online mode.
+ *
+ * @note This function is only valid in offline mode.
+ */
 aditof::Status CameraItof::setPlaybackFile(std::string &filePath) {
     aditof::Status status = aditof::Status::OK;
 
@@ -780,6 +894,22 @@ aditof::Status CameraItof::setPlaybackFile(std::string &filePath) {
     return status;
 }
 
+/**
+ * @brief Starts recording frames to a file (online mode only).
+ *
+ * Begins capturing and writing depth frames to a file in the specified location.
+ * The file header contains frame metadata (mode details, XYZ parameters, etc.)
+ * followed by raw frame data. Recording continues until stopRecording() is called.
+ *
+ * @param[in] filePath Destination file path for the recorded frame data.
+ *
+ * @return aditof::Status::OK if recording started successfully;
+ *         aditof::Status::GENERIC_ERROR if called in offline mode or file I/O fails;
+ *         aditof::Status::INVALID_ARGUMENT if mode is not supported.
+ *
+ * @note This function is only valid in online mode.
+ * @note The file format includes a header with camera configuration and frame details.
+ */
 aditof::Status CameraItof::startRecording(std::string &filePath) {
 
     using namespace aditof;
@@ -951,6 +1081,16 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
     return status;
 }
 
+/**
+ * @brief Stops recording frames to file (online mode only).
+ *
+ * Terminates the ongoing recording session and closes the output file.
+ *
+ * @return aditof::Status::OK if recording stopped successfully;
+ *         aditof::Status::GENERIC_ERROR if called in offline mode or sensor fails.
+ *
+ * @note This function is only valid in online mode.
+ */
 aditof::Status CameraItof::stopRecording() {
     aditof::Status status = aditof::Status::OK;
 
@@ -963,6 +1103,19 @@ aditof::Status CameraItof::stopRecording() {
     return status;
 }
 
+/**
+ * @brief Resets INI parameters to defaults for a specific mode.
+ *
+ * Sends a command to the ADSD3500 to reset all depth computation parameters
+ * for the given mode back to firmware defaults.
+ *
+ * @param[in] mode Frame mode number to reset parameters for.
+ *
+ * @return aditof::Status::OK if reset command sent successfully;
+ *         error codes from depth sensor if command fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500ResetIniParamsForMode(const uint16_t mode) {
     aditof::Status status = aditof::Status::OK;
 
@@ -973,6 +1126,17 @@ aditof::Status CameraItof::adsd3500ResetIniParamsForMode(const uint16_t mode) {
     return status;
 }
 
+/**
+ * @brief Retrieves the list of supported frame modes.
+ *
+ * Returns the list of frame modes (resolutions and configurations) supported
+ * by the camera hardware and firmware.
+ *
+ * @param[out] availableModes Vector to be populated with supported mode numbers.
+ *
+ * @return aditof::Status::OK on success;
+ *         aditof::Status::OK (with empty list) in offline mode.
+ */
 aditof::Status
 CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
     using namespace aditof;
@@ -1185,6 +1349,16 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     return Status::OK;
 }
 
+/**
+ * @brief Retrieves detailed camera information and configuration.
+ *
+ * Returns camera details including mode, resolution, frame type information,
+ * intrinsics, serial number, firmware versions, and other metadata.
+ *
+ * @param[out] details CameraDetails struct to be populated with camera information.
+ *
+ * @return aditof::Status::OK.
+ */
 aditof::Status CameraItof::getDetails(aditof::CameraDetails &details) const {
     using namespace aditof;
     Status status = Status::OK;
@@ -1194,10 +1368,28 @@ aditof::Status CameraItof::getDetails(aditof::CameraDetails &details) const {
     return status;
 }
 
+/**
+ * @brief Retrieves the underlying depth sensor interface.
+ *
+ * Returns a shared pointer to the DepthSensorInterface used by this camera
+ * for V4L2 communication and frame acquisition.
+ *
+ * @return Shared pointer to the depth sensor interface.
+ */
 std::shared_ptr<aditof::DepthSensorInterface> CameraItof::getSensor() {
     return m_depthSensor;
 }
 
+/**
+ * @brief Retrieves the list of available camera control strings.
+ *
+ * Returns the names of all camera controls that can be queried or modified
+ * via setControl() and getControl().
+ *
+ * @param[out] controls Vector to be populated with control name strings.
+ *
+ * @return aditof::Status::OK.
+ */
 aditof::Status
 CameraItof::getAvailableControls(std::vector<std::string> &controls) const {
     using namespace aditof;
@@ -1212,6 +1404,20 @@ CameraItof::getAvailableControls(std::vector<std::string> &controls) const {
     return status;
 }
 
+/**
+ * @brief Sets a camera control to a specified value.
+ *
+ * Modifies a camera control setting. If the value is "call", invokes the
+ * control as a callable function. Otherwise, stores the value for the control.
+ *
+ * @param[in] control Name of the control to set.
+ * @param[in] value Value to set (or "call" to invoke as a function).
+ *
+ * @return aditof::Status::OK if control set successfully;
+ *         aditof::Status::INVALID_ARGUMENT if control is unsupported.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::setControl(const std::string &control,
                                       const std::string &value) {
     using namespace aditof;
@@ -1233,6 +1439,19 @@ aditof::Status CameraItof::setControl(const std::string &control,
     return status;
 }
 
+/**
+ * @brief Retrieves the current value of a camera control.
+ *
+ * Queries the current setting of a named camera control.
+ *
+ * @param[in] control Name of the control to query.
+ * @param[out] value Current value of the control.
+ *
+ * @return aditof::Status::OK if control retrieved successfully;
+ *         aditof::Status::INVALID_ARGUMENT if control is unsupported.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::getControl(const std::string &control,
                                       std::string &value) const {
     using namespace aditof;
@@ -1250,6 +1469,21 @@ aditof::Status CameraItof::getControl(const std::string &control,
     return status;
 }
 
+/**
+ * @brief Reads the module serial number from the sensor.
+ *
+ * Retrieves the 32-byte serial number programmed in the ADSD3500 module.
+ * Supports caching to avoid repeated sensor reads. Requires firmware version 4710+.
+ *
+ * @param[out] serialNumber String populated with the 32-byte serial number.
+ * @param[in] useCacheValue If true, returns cached value if available; defaults to true.
+ *
+ * @return aditof::Status::OK if serial read successfully;
+ *         aditof::Status::UNAVAILABLE if firmware does not support serial read;
+ *         aditof::Status::GENERIC_ERROR if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::readSerialNumber(std::string &serialNumber,
                                             bool useCacheValue) {
     using namespace aditof;
@@ -1286,6 +1520,22 @@ aditof::Status CameraItof::readSerialNumber(std::string &serialNumber,
     return status;
 }
 
+/**
+ * @brief Saves the ADSD3500 CCB (Configuration Calibration Block) to a file.
+ *
+ * Reads the configuration calibration block from the ADSD3500 memory and saves
+ * it to the specified file path for backup or analysis. Includes CRC validation
+ * to ensure data integrity.
+ *
+ * @param[in] filepath Path where the CCB file should be written.
+ *
+ * @return aditof::Status::OK if CCB saved successfully;
+ *         aditof::Status::INVALID_ARGUMENT if filepath is empty;
+ *         aditof::Status::GENERIC_ERROR if read fails after retries or CRC invalid.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Includes automatic retry logic (NR_READADSD3500CCB attempts) for reliability.
+ */
 aditof::Status CameraItof::saveModuleCCB(const std::string &filepath) {
     aditof::Status status =
         aditof::Status::GENERIC_ERROR; //Defining with error for ccb read
@@ -1316,6 +1566,19 @@ aditof::Status CameraItof::saveModuleCCB(const std::string &filepath) {
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Saves module configuration (CFG) to a file.
+ *
+ * Placeholder for future configuration file export functionality.
+ * Currently not implemented.
+ *
+ * @param[in] filepath Path where the CFG file should be written.
+ *
+ * @return aditof::Status::UNAVAILABLE (not currently supported);
+ *         aditof::Status::INVALID_ARGUMENT if filepath is empty.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::saveModuleCFG(const std::string &filepath) const {
 
     assert(!m_isOffline);
@@ -1330,6 +1593,20 @@ aditof::Status CameraItof::saveModuleCFG(const std::string &filepath) const {
     return aditof::Status::UNAVAILABLE;
 }
 
+/**
+ * @brief Enables or disables XYZ coordinate computation.
+ *
+ * Controls whether XYZ (3D world coordinates) data is computed and included
+ * in output frames. When disabled, only depth and AB data are provided.
+ * This setting takes precedence over the INI parameter configuration.
+ *
+ * @param[in] enable True to enable XYZ computation; false to disable.
+ *
+ * @return aditof::Status::OK.
+ *
+ * @note Calling this function sets m_xyzSetViaApi to true, preventing INI
+ *       parameters from overriding the user setting.
+ */
 aditof::Status CameraItof::enableXYZframe(bool enable) {
     m_xyzEnabled = enable;
     m_xyzSetViaApi = true;
@@ -1337,6 +1614,15 @@ aditof::Status CameraItof::enableXYZframe(bool enable) {
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Placeholder for depth compute enable control.
+ *
+ * Currently not supported by the camera implementation.
+ *
+ * @param[in] enable Requested enable state (currently ignored).
+ *
+ * @return aditof::Status::UNAVAILABLE.
+ */
 aditof::Status CameraItof::enableDepthCompute(bool enable) {
     return aditof::Status::UNAVAILABLE;
 }
@@ -1355,6 +1641,23 @@ typedef union {
 } cmd_header_t;
 #pragma pack(pop)
 
+/**
+ * @brief Updates the ADSD3500 firmware from a binary file.
+ *
+ * Reads a firmware binary file and programs it into the ADSD3500 ISP via the
+ * burst mode protocol. Includes CRC validation and status monitoring via interrupt
+ * callbacks. Waits for the chip to confirm successful reprogramming.
+ *
+ * @param[in] fwFilePath Path to the firmware binary file (.bin).
+ *
+ * @return aditof::Status::OK if firmware updated successfully;
+ *         aditof::Status::GENERIC_ERROR if update fails or times out.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Timeout is 60 seconds for firmware reprogramming. Without interrupt
+ *       support, the function waits 60 seconds unconditionally.
+ * @note The chip is automatically switched back to standard mode after update.
+ */
 aditof::Status
 CameraItof::adsd3500UpdateFirmware(const std::string &fwFilePath) {
 
@@ -1500,6 +1803,22 @@ CameraItof::adsd3500UpdateFirmware(const std::string &fwFilePath) {
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Reads the ADSD3500 CCB (Configuration Calibration Block) from sensor memory.
+ *
+ * Retrieves the configuration calibration block via payload read commands, with
+ * automatic chunking and CRC validation. Includes safety limits to prevent
+ * unbounded memory allocation.
+ *
+ * @param[out] ccb String populated with the CCB data (excluding 4-byte CRC trailer).
+ *
+ * @return aditof::Status::OK if CCB read successfully and CRC valid;
+ *         aditof::Status::GENERIC_ERROR if header invalid, read fails, or CRC mismatch.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Maximum CCB file size is 10 MB (safety limit).
+ * @note The chip is automatically switched back to standard mode after reading.
+ */
 aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     using namespace aditof;
     Status status = Status::OK;
@@ -1593,6 +1912,15 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
     return status;
 }
 
+/**
+ * @brief Configures sensor mode-specific output and processing settings.
+ *
+ * Applies INI parameters to the underlying depth sensor based on the current mode.
+ * Reads configuration (depth/AB/confidence bits, output formats, XYZ enable, etc.)
+ * from INI parameters and programs the sensor accordingly. In offline mode, derives
+ * settings from recorded frameContent. Rebuilds the frameContent list to reflect
+ * enabled frame types.
+ */
 void CameraItof::configureSensorModeDetails() {
 
     if (m_isOffline) {
@@ -1775,6 +2103,18 @@ static int16_t getValueFromJSON(json_object *config_json, std::string key) {
 }
 */
 
+/**
+ * @brief Retrieves depth processing parameters for all modes.
+ *
+ * Loads depth computation INI parameters from either a configuration file
+ * (if provided during initialization) or from the sensor firmware defaults.
+ * Populates the internal parameter map for all available modes.
+ *
+ * @return aditof::Status::OK on success.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Creates m_depth_params_map_reset backup on first call.
+ */
 aditof::Status CameraItof::retrieveDepthProcessParams() {
 
     using namespace aditof;
@@ -1802,6 +2142,15 @@ aditof::Status CameraItof::retrieveDepthProcessParams() {
     return status;
 }
 
+/**
+ * @brief Resets all depth parameters to the original cached values.
+ *
+ * Restores the depth parameter map to the state captured during the first
+ * call to retrieveDepthProcessParams(). Useful for reverting custom modifications.
+ *
+ * @return aditof::Status::OK if parameters reset successfully;
+ *         aditof::Status::GENERIC_ERROR if no cached parameters available.
+ */
 aditof::Status CameraItof::resetDepthProcessParams() {
     if (m_depth_params_map_reset.empty()) {
         LOG(WARNING) << "No reset parameters available. "
@@ -1814,6 +2163,20 @@ aditof::Status CameraItof::resetDepthProcessParams() {
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Saves current depth parameters to a JSON configuration file.
+ *
+ * Exports all depth processing parameters and global settings (MIPI speed, deskew,
+ * temp compensation, etc.) to a JSON file. Parameters are organized by mode and
+ * grouped into depth-compute and configuration-parameters sections.
+ *
+ * @param[in] savePathFile Path where the JSON configuration file should be written.
+ *
+ * @return aditof::Status::OK if file saved successfully;
+ *         aditof::Status::GENERIC_ERROR if file I/O fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status
 CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
     using namespace aditof;
@@ -1914,6 +2277,23 @@ CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
     return status;
 }
 
+/**
+ * @brief Loads depth parameters from a JSON configuration file.
+ *
+ * Parses a JSON configuration file and populates the depth parameter map with
+ * mode-specific settings. Also extracts global settings (MIPI speed, deskew,
+ * temp compensation, dynamic mode switching sequences, etc.).
+ * Optionally loads parameters for a specific mode only.
+ *
+ * @param[in] pathFile Path to the JSON configuration file.
+ * @param[in] mode_in_use If >= 0, load parameters only for this specific mode;
+ *                         if < 0, load parameters for all available modes.
+ *
+ * @return aditof::Status::OK on successful parse;
+ *         aditof::Status::OK (with partial data) if file malformed but parseable.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status
 CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
                                         const int16_t mode_in_use) {
@@ -2099,6 +2479,13 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
     return status;
 }
 
+/**
+ * @brief Checks if a string can be converted to a floating-point number.
+ *
+ * @param[in] str String to test for numeric convertibility.
+ *
+ * @return True if std::stod() can successfully parse the string; false otherwise.
+ */
 bool CameraItof::isConvertibleToDouble(const std::string &str) {
     bool result = false;
     try {
@@ -2109,11 +2496,34 @@ bool CameraItof::isConvertibleToDouble(const std::string &str) {
     return result;
 }
 
+/**
+ * @brief Enables or disables the first-frame drop behavior.
+ *
+ * Controls whether requestFrame() drops the first sensor frame to allow the
+ * imager to stabilize. Useful for mitigating sensor startup transients.
+ *
+ * @param[in] dropFrame True to drop first frame; false to use all frames.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 void CameraItof::dropFirstFrame(bool dropFrame) {
     assert(!m_isOffline);
     m_dropFirstFrame = dropFrame;
 }
 
+/**
+ * @brief Applies a sensor configuration string to the underlying depth sensor.
+ *
+ * Forwards a sensor-specific configuration string to the depth sensor interface
+ * for custom hardware setup.
+ *
+ * @param[in] sensorConf Configuration string to apply.
+ *
+ * @return aditof::Status::OK if configuration applied;
+ *         error codes from depth sensor if configuration fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status
 CameraItof::setSensorConfiguration(const std::string &sensorConf) {
     aditof::Status status = aditof::Status::OK;
@@ -2125,6 +2535,21 @@ CameraItof::setSensorConfiguration(const std::string &sensorConf) {
     return status;
 }
 
+/**
+ * @brief Sets the FSYNC toggle mode (master vs. slave operation).
+ *
+ * Configures how the ADSD3500 handles the FSYNC signal for frame timing:
+ * - Mode 0: FSYNC does not automatically toggle
+ * - Mode 1: FSYNC automatically toggles at user-specified frame rate (master)
+ * - Mode 2: FSYNC is driven by external source; pin acts as input (slave)
+ *
+ * @param[in] mode FSYNC toggle mode (0, 1, or 2).
+ *
+ * @return aditof::Status::OK if mode set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetToggleMode(int mode) {
 
     using namespace aditof;
@@ -2149,6 +2574,17 @@ aditof::Status CameraItof::adsd3500SetToggleMode(int mode) {
     return status;
 }
 
+/**
+ * @brief Manually toggles the FSYNC signal (master mode only).
+ *
+ * Sends a command to toggle the FSYNC output. Only valid when ADSD3500 is
+ * configured as the timing master (m_adsd3500_master = true).
+ *
+ * @return aditof::Status::OK if FSYNC toggled successfully;
+ *         aditof::Status error codes if not master or sensor fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500ToggleFsync() {
     using namespace aditof;
     Status status = Status::OK;
@@ -2169,6 +2605,21 @@ aditof::Status CameraItof::adsd3500ToggleFsync() {
     return status;
 }
 
+/**
+ * @brief Retrieves ADSD3500 firmware version and Git commit hash.
+ *
+ * Reads the 44-byte firmware version structure from the ADSD3500 ROM,
+ * extracting the version number (4 bytes) and Git hash (40 bytes).
+ * Caches results in m_adsd3500FwGitHash and m_adsd3500FwVersionInt.
+ *
+ * @param[out] fwVersion Formatted version string (e.g., "X.Y.Z.W").
+ * @param[out] fwHash 40-character Git commit hash string.
+ *
+ * @return aditof::Status::OK if version read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetFirmwareVersion(std::string &fwVersion,
                                                       std::string &fwHash) {
     using namespace aditof;
@@ -2205,6 +2656,19 @@ aditof::Status CameraItof::adsd3500GetFirmwareVersion(std::string &fwVersion,
     return status;
 }
 
+/**
+ * @brief Sets the AB (amplitude) invalidation threshold.
+ *
+ * Configures the minimum AB value below which depth pixels are marked invalid.
+ * Prevents low-confidence measurements from being used.
+ *
+ * @param[in] threshold Threshold value (sensor-specific units).
+ *
+ * @return aditof::Status::OK if threshold set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetABinvalidationThreshold(int threshold) {
     using namespace aditof;
     Status status = Status::OK;
@@ -2216,6 +2680,16 @@ aditof::Status CameraItof::adsd3500SetABinvalidationThreshold(int threshold) {
     return status;
 }
 
+/**
+ * @brief Retrieves the current AB invalidation threshold.
+ *
+ * @param[out] threshold Current threshold value.
+ *
+ * @return aditof::Status::OK if threshold read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetABinvalidationThreshold(int &threshold) {
     using namespace aditof;
     Status status = Status::OK;
@@ -2229,6 +2703,19 @@ aditof::Status CameraItof::adsd3500GetABinvalidationThreshold(int &threshold) {
     return status;
 }
 
+/**
+ * @brief Sets the confidence validity threshold.
+ *
+ * Configures the minimum confidence level required for depth pixels to be
+ * considered valid. Lower confidence pixels are invalidated.
+ *
+ * @param[in] threshold Confidence threshold value.
+ *
+ * @return aditof::Status::OK if threshold set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetConfidenceThreshold(int threshold) {
 
     using namespace aditof;
@@ -2240,6 +2727,14 @@ aditof::Status CameraItof::adsd3500SetConfidenceThreshold(int threshold) {
 
     return status;
 }
+/**
+ * @brief Retrieves the current confidence threshold.
+ *
+ * @param[out] threshold Current threshold value.
+ *
+ * @return aditof::Status::OK if threshold read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ */
 aditof::Status CameraItof::adsd3500GetConfidenceThreshold(int &threshold) {
 
     using namespace aditof;
@@ -2255,6 +2750,19 @@ aditof::Status CameraItof::adsd3500GetConfidenceThreshold(int &threshold) {
     return status;
 }
 
+/**
+ * @brief Enables or disables the JBLF (Joint Bilateral Laplacian Filter).
+ *
+ * Controls whether bilateral filtering is applied to the depth map to reduce
+ * noise while preserving depth edges.
+ *
+ * @param[in] enable True to enable JBLF; false to disable.
+ *
+ * @return aditof::Status::OK if state set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetJBLFfilterEnableState(bool enable) {
 
     using namespace aditof;
@@ -2266,6 +2774,16 @@ aditof::Status CameraItof::adsd3500SetJBLFfilterEnableState(bool enable) {
 
     return status;
 }
+/**
+ * @brief Retrieves the JBLF filter enable state.
+ *
+ * @param[out] enabled True if JBLF is enabled; false otherwise.
+ *
+ * @return aditof::Status::OK if state read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetJBLFfilterEnableState(bool &enabled) {
 
     using namespace aditof;
@@ -2281,6 +2799,19 @@ aditof::Status CameraItof::adsd3500GetJBLFfilterEnableState(bool &enabled) {
     return status;
 }
 
+/**
+ * @brief Sets the JBLF filter kernel size.
+ *
+ * Configures the spatial window size for the bilateral filter. Larger sizes
+ * increase smoothing but reduce edge definition.
+ *
+ * @param[in] size Filter kernel size (e.g., 3, 5, 7).
+ *
+ * @return aditof::Status::OK if size set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetJBLFfilterSize(int size) {
 
     using namespace aditof;
@@ -2292,6 +2823,16 @@ aditof::Status CameraItof::adsd3500SetJBLFfilterSize(int size) {
 
     return status;
 }
+/**
+ * @brief Retrieves the current JBLF filter kernel size.
+ *
+ * @param[out] size Current filter kernel size.
+ *
+ * @return aditof::Status::OK if size read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetJBLFfilterSize(int &size) {
 
     using namespace aditof;
@@ -2306,6 +2847,19 @@ aditof::Status CameraItof::adsd3500GetJBLFfilterSize(int &size) {
     return status;
 }
 
+/**
+ * @brief Sets the minimum radial distance validity threshold.
+ *
+ * Configures the closest distance at which depth measurements are considered valid.
+ * Pixels closer than this threshold are marked invalid (blind zone).
+ *
+ * @param[in] threshold Minimum radial distance threshold.
+ *
+ * @return aditof::Status::OK if threshold set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetRadialThresholdMin(int threshold) {
 
     using namespace aditof;
@@ -2317,6 +2871,16 @@ aditof::Status CameraItof::adsd3500SetRadialThresholdMin(int threshold) {
 
     return status;
 }
+/**
+ * @brief Retrieves the minimum radial distance threshold.
+ *
+ * @param[out] threshold Current minimum threshold value.
+ *
+ * @return aditof::Status::OK if threshold read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetRadialThresholdMin(int &threshold) {
 
     using namespace aditof;
@@ -2331,6 +2895,19 @@ aditof::Status CameraItof::adsd3500GetRadialThresholdMin(int &threshold) {
     return status;
 }
 
+/**
+ * @brief Sets the maximum radial distance validity threshold.
+ *
+ * Configures the farthest distance at which depth measurements are considered valid.
+ * Pixels farther than this threshold are marked invalid (range limit).
+ *
+ * @param[in] threshold Maximum radial distance threshold.
+ *
+ * @return aditof::Status::OK if threshold set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetRadialThresholdMax(int threshold) {
 
     using namespace aditof;
@@ -2343,6 +2920,16 @@ aditof::Status CameraItof::adsd3500SetRadialThresholdMax(int threshold) {
     return status;
 }
 
+/**
+ * @brief Retrieves the maximum radial distance threshold.
+ *
+ * @param[out] threshold Current maximum threshold value.
+ *
+ * @return aditof::Status::OK if threshold read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetRadialThresholdMax(int &threshold) {
 
     using namespace aditof;
@@ -2357,6 +2944,19 @@ aditof::Status CameraItof::adsd3500GetRadialThresholdMax(int &threshold) {
     return status;
 }
 
+/**
+ * @brief Sets the MIPI camera serial interface output speed.
+ *
+ * Configures the data rate of the MIPI CSI-2 interface used to stream depth
+ * frames to the host. Higher speeds support higher frame rates and resolutions.
+ *
+ * @param[in] speed MIPI output speed setting (device-specific encoding).
+ *
+ * @return aditof::Status::OK if speed set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetMIPIOutputSpeed(uint16_t speed) {
 
     using namespace aditof;
@@ -2369,6 +2969,19 @@ aditof::Status CameraItof::adsd3500SetMIPIOutputSpeed(uint16_t speed) {
     return status;
 }
 
+/**
+ * @brief Enables or disables hardware deskew on stream start.
+ *
+ * Configures whether the ADSD3500 applies image deskew correction when
+ * streaming begins (useful for rolling shutter compensation).
+ *
+ * @param[in] value 1 to enable deskew; 0 to disable.
+ *
+ * @return aditof::Status::OK if value set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetEnableDeskewAtStreamOn(uint16_t value) {
 
     using namespace aditof;
@@ -2381,6 +2994,16 @@ aditof::Status CameraItof::adsd3500SetEnableDeskewAtStreamOn(uint16_t value) {
     return status;
 }
 
+/**
+ * @brief Retrieves the current MIPI output speed setting.
+ *
+ * @param[out] speed Current MIPI speed value.
+ *
+ * @return aditof::Status::OK if speed read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetMIPIOutputSpeed(uint16_t &speed) {
 
     using namespace aditof;
@@ -2394,6 +3017,19 @@ aditof::Status CameraItof::adsd3500GetMIPIOutputSpeed(uint16_t &speed) {
     return status;
 }
 
+/**
+ * @brief Retrieves the imager error status code.
+ *
+ * Reads the error register from the paired imager (ADTF3080, ADSD3100, etc.)
+ * to diagnose hardware issues.
+ *
+ * @param[out] errcode Error code from the imager.
+ *
+ * @return aditof::Status::OK if error code read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetImagerErrorCode(uint16_t &errcode) {
 
     using namespace aditof;
@@ -2407,6 +3043,19 @@ aditof::Status CameraItof::adsd3500GetImagerErrorCode(uint16_t &errcode) {
     return status;
 }
 
+/**
+ * @brief Sets the VCSEL laser pulse timing delay.
+ *
+ * Configures the delay between the modulation clock and VCSEL firing for
+ * phase adjustment. Used for depth calibration and mode-specific optimization.
+ *
+ * @param[in] delay VCSEL timing delay value.
+ *
+ * @return aditof::Status::OK if delay set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetVCSELDelay(uint16_t delay) {
 
     using namespace aditof;
@@ -2419,6 +3068,16 @@ aditof::Status CameraItof::adsd3500SetVCSELDelay(uint16_t delay) {
     return status;
 }
 
+/**
+ * @brief Retrieves the current VCSEL timing delay.
+ *
+ * @param[out] delay Current VCSEL delay value.
+ *
+ * @return aditof::Status::OK if delay read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetVCSELDelay(uint16_t &delay) {
 
     using namespace aditof;
@@ -2432,6 +3091,19 @@ aditof::Status CameraItof::adsd3500GetVCSELDelay(uint16_t &delay) {
     return status;
 }
 
+/**
+ * @brief Sets the JBLF maximum edge threshold.
+ *
+ * Configures the edge detection threshold for the bilateral filter.
+ * Transitions exceeding this threshold are treated as edges and preserved.
+ *
+ * @param[in] threshold Maximum edge threshold value.
+ *
+ * @return aditof::Status::OK if threshold set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetJBLFMaxEdgeThreshold(uint16_t threshold) {
 
     using namespace aditof;
@@ -2444,6 +3116,19 @@ aditof::Status CameraItof::adsd3500SetJBLFMaxEdgeThreshold(uint16_t threshold) {
     return status;
 }
 
+/**
+ * @brief Sets the JBLF AB (amplitude) threshold for filtering.
+ *
+ * Configures the minimum amplitude required for a pixel to participate in
+ * the bilateral filtering process.
+ *
+ * @param[in] threshold Minimum AB threshold for filtering.
+ *
+ * @return aditof::Status::OK if threshold set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetJBLFABThreshold(uint16_t threshold) {
 
     using namespace aditof;
@@ -2456,6 +3141,19 @@ aditof::Status CameraItof::adsd3500SetJBLFABThreshold(uint16_t threshold) {
     return status;
 }
 
+/**
+ * @brief Sets the JBLF Gaussian smoothing parameter (sigma).
+ *
+ * Configures the standard deviation of the Gaussian kernel for spatial
+ * weighting in the bilateral filter. Higher values increase smoothing range.
+ *
+ * @param[in] value Gaussian sigma parameter value.
+ *
+ * @return aditof::Status::OK if parameter set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetJBLFGaussianSigma(uint16_t value) {
 
     using namespace aditof;
@@ -2468,6 +3166,16 @@ aditof::Status CameraItof::adsd3500SetJBLFGaussianSigma(uint16_t value) {
     return status;
 }
 
+/**
+ * @brief Retrieves the JBLF Gaussian sigma parameter.
+ *
+ * @param[out] value Current Gaussian sigma value.
+ *
+ * @return aditof::Status::OK if parameter read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetJBLFGaussianSigma(uint16_t &value) {
 
     using namespace aditof;
@@ -2482,6 +3190,19 @@ aditof::Status CameraItof::adsd3500GetJBLFGaussianSigma(uint16_t &value) {
     return status;
 }
 
+/**
+ * @brief Sets the JBLF exponential decay parameter.
+ *
+ * Configures the rate of spatial weighting decay in the bilateral filter.
+ * Controls how quickly the filter influence drops with distance.
+ *
+ * @param[in] value Exponential decay parameter.
+ *
+ * @return aditof::Status::OK if parameter set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetJBLFExponentialTerm(uint16_t value) {
 
     using namespace aditof;
@@ -2494,6 +3215,16 @@ aditof::Status CameraItof::adsd3500SetJBLFExponentialTerm(uint16_t value) {
     return status;
 }
 
+/**
+ * @brief Retrieves the JBLF exponential decay parameter.
+ *
+ * @param[out] value Current exponential term value.
+ *
+ * @return aditof::Status::OK if parameter read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetJBLFExponentialTerm(uint16_t &value) {
 
     using namespace aditof;
@@ -2507,6 +3238,17 @@ aditof::Status CameraItof::adsd3500GetJBLFExponentialTerm(uint16_t &value) {
     return status;
 }
 
+/**
+ * @brief Retrieves the current frame rate setting.
+ *
+ * Returns the frame rate in offline mode from cached parameters, or reads
+ * from the ADSD3500 in online mode.
+ *
+ * @param[out] fps Current frame rate in frames per second.
+ *
+ * @return aditof::Status::OK if frame rate read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ */
 aditof::Status CameraItof::adsd3500GetFrameRate(uint16_t &fps) {
 
     using namespace aditof;
@@ -2523,6 +3265,19 @@ aditof::Status CameraItof::adsd3500GetFrameRate(uint16_t &fps) {
     return status;
 }
 
+/**
+ * @brief Sets the camera frame rate.
+ *
+ * Configures the frame acquisition rate via the sensor control interface.
+ * If fps is 0, defaults to 10 FPS with a warning.
+ *
+ * @param[in] fps Desired frame rate in frames per second.
+ *
+ * @return aditof::Status::OK if frame rate set successfully;
+ *         aditof::Status error codes if sensor fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
 
     using namespace aditof;
@@ -2546,6 +3301,19 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
     return status;
 }
 
+/**
+ * @brief Enables or disables edge-based confidence adjustment.
+ *
+ * Controls whether the ISP adjusts confidence scores based on detected edges
+ * to improve depth reliability at object boundaries.
+ *
+ * @param[in] value 1 to enable edge confidence; 0 to disable.
+ *
+ * @return aditof::Status::OK if value set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetEnableEdgeConfidence(uint16_t value) {
 
     using namespace aditof;
@@ -2558,6 +3326,16 @@ aditof::Status CameraItof::adsd3500SetEnableEdgeConfidence(uint16_t value) {
     return status;
 }
 
+/**
+ * @brief Retrieves the temperature compensation enable status.
+ *
+ * @param[out] value Temperature compensation status (0=disabled, 1=enabled).
+ *
+ * @return aditof::Status::OK if status read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status
 CameraItof::adsd3500GetTemperatureCompensationStatus(uint16_t &value) {
 
@@ -2572,6 +3350,19 @@ CameraItof::adsd3500GetTemperatureCompensationStatus(uint16_t &value) {
     return status;
 }
 
+/**
+ * @brief Enables or disables phase invalidation filtering.
+ *
+ * Controls whether the ISP marks pixels with invalid phase as invalid depth.
+ * Helps prevent artifacts from poor signal-to-noise phases.
+ *
+ * @param[in] value 1 to enable phase invalidation; 0 to disable.
+ *
+ * @return aditof::Status::OK if value set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetEnablePhaseInvalidation(uint16_t value) {
 
     using namespace aditof;
@@ -2597,6 +3388,19 @@ CameraItof::adsd3500SetEnableTemperatureCompensation(uint16_t value) {
     return status;
 }
 
+/**
+ * @brief Enables or disables metadata embedding in the AB frame.
+ *
+ * Controls whether the ADSD3500 embeds 128-byte metadata (frame info, status, etc.)
+ * at the start of the AB (amplitude) frame data.
+ *
+ * @param[in] value 1 to enable metadata embedding; 0 to disable.
+ *
+ * @return aditof::Status::OK if value set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetEnableMetadatainAB(uint16_t value) {
 
     using namespace aditof;
@@ -2609,6 +3413,16 @@ aditof::Status CameraItof::adsd3500SetEnableMetadatainAB(uint16_t value) {
     return status;
 }
 
+/**
+ * @brief Retrieves the metadata embedding enable status.
+ *
+ * @param[out] value Metadata embedding status (0=disabled, 1=enabled).
+ *
+ * @return aditof::Status::OK if status read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetEnableMetadatainAB(uint16_t &value) {
 
     using namespace aditof;
@@ -2622,6 +3436,20 @@ aditof::Status CameraItof::adsd3500GetEnableMetadatainAB(uint16_t &value) {
     return status;
 }
 
+/**
+ * @brief Writes a generic 16-bit register value to the ADSD3500.
+ *
+ * Generic register write interface for setting arbitrary ADSD3500 registers
+ * not explicitly handled by dedicated functions.
+ *
+ * @param[in] reg Register address.
+ * @param[in] value Value to write.
+ *
+ * @return aditof::Status::OK if register written successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500SetGenericTemplate(uint16_t reg,
                                                       uint16_t value) {
 
@@ -2635,6 +3463,20 @@ aditof::Status CameraItof::adsd3500SetGenericTemplate(uint16_t reg,
     return status;
 }
 
+/**
+ * @brief Reads a generic 16-bit register value from the ADSD3500.
+ *
+ * Generic register read interface for reading arbitrary ADSD3500 registers
+ * not explicitly handled by dedicated functions.
+ *
+ * @param[in] reg Register address.
+ * @param[out] value Register value to be populated.
+ *
+ * @return aditof::Status::OK if register read successfully;
+ *         aditof::Status error codes if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetGenericTemplate(uint16_t reg,
                                                       uint16_t &value) {
 
@@ -2649,6 +3491,18 @@ aditof::Status CameraItof::adsd3500GetGenericTemplate(uint16_t reg,
     return status;
 }
 
+/**
+ * @brief Disables or enables the CCBM (Calibration Calibration Block Manager).
+ *
+ * Controls whether the ADSD3500 applies stored calibration data to depth computation.
+ *
+ * @param[in] disable True to disable CCBM (bypass calibration); false to enable.
+ *
+ * @return aditof::Status::OK if control applied successfully;
+ *         aditof::Status error codes if sensor fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500DisableCCBM(bool disable) {
 
     using namespace aditof;
@@ -2661,6 +3515,19 @@ aditof::Status CameraItof::adsd3500DisableCCBM(bool disable) {
     return status;
 }
 
+/**
+ * @brief Checks if CCBM (calibration support) is available in firmware.
+ *
+ * Queries the sensor for CCBM capability and translates the control value
+ * to a boolean.
+ *
+ * @param[out] supported True if CCBM is supported; false otherwise.
+ *
+ * @return aditof::Status::OK if support status determined;
+ *         aditof::Status::INVALID_ARGUMENT if control value is invalid.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500IsCCBMsupported(bool &supported) {
 
     aditof::Status status = aditof::Status::OK;
@@ -2685,6 +3552,20 @@ aditof::Status CameraItof::adsd3500IsCCBMsupported(bool &supported) {
     return status;
 }
 
+/**
+ * @brief Reads ADSD3500 and imager error status.
+ *
+ * Queries the chip and imager status registers. Logs detailed error messages
+ * if errors are detected, with error code translation based on imager type.
+ *
+ * @param[out] chipStatus ADSD3500 chip status code (0 or 41 = healthy).
+ * @param[out] imagerStatus Imager-specific status code (interpretation depends on type).
+ *
+ * @return aditof::Status::OK if status read successfully;
+ *         aditof::Status::GENERIC_ERROR if sensor communication fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
                                              int &imagerStatus) {
     aditof::Status status = aditof::Status::OK;
@@ -2723,6 +3604,19 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
     return status;
 }
 
+/**
+ * @brief Reads the current sensor temperature.
+ *
+ * Retrieves the temperature of the ADTF imager from the ADSD3500 sensor bridge.
+ * Uses frame-rate-based timing delays to allow sensor settling.
+ *
+ * @param[out] tmpValue Temperature value (sensor-specific units).
+ *
+ * @return aditof::Status::OK if temperature read successfully;
+ *         aditof::Status::GENERIC_ERROR if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetSensorTemperature(uint16_t &tmpValue) {
     using namespace aditof;
     Status status = Status::OK;
@@ -2742,6 +3636,19 @@ aditof::Status CameraItof::adsd3500GetSensorTemperature(uint16_t &tmpValue) {
 
     return status;
 }
+/**
+ * @brief Reads the current laser temperature.
+ *
+ * Retrieves the temperature of the VCSEL laser module from the ADSD3500 sensor bridge.
+ * Uses frame-rate-based timing delays to allow sensor settling.
+ *
+ * @param[out] tmpValue Temperature value (sensor-specific units).
+ *
+ * @return aditof::Status::OK if temperature read successfully;
+ *         aditof::Status::GENERIC_ERROR if sensor read fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ */
 aditof::Status CameraItof::adsd3500GetLaserTemperature(uint16_t &tmpValue) {
     using namespace aditof;
     Status status = Status::OK;
@@ -2762,6 +3669,16 @@ aditof::Status CameraItof::adsd3500GetLaserTemperature(uint16_t &tmpValue) {
     return status;
 }
 
+/**
+ * @brief Optionally updates a parameter in the depth parameters map.
+ *
+ * Helper function to conditionally update a single depth parameter in the
+ * internal parameter map for the current mode.
+ *
+ * @param[in] update If false, function returns without action; if true, performs update.
+ * @param[in] index Parameter name/key to update.
+ * @param[in] value New value to store for the parameter.
+ */
 void CameraItof::UpdateDepthParamsMap(bool update, const char *index,
                                       std::string value) {
 
@@ -2777,6 +3694,25 @@ void CameraItof::UpdateDepthParamsMap(bool update, const char *index,
     }
 }
 
+/**
+ * @brief Applies depth computation INI parameters to the ADSD3500.
+ *
+ * Sends a set of depth computation parameters (thresholds, filter settings,
+ * frame rate, VCSEL delay, etc.) to the ADSD3500 hardware for immediate effect.
+ * Parameters are matched against known keys; missing parameters generate warnings.
+ *
+ * @param[in] iniKeyValPairs Map of parameter name-value pairs to apply.
+ * @param[in] updateDepthMap If true, updates internal parameter cache;
+ *                            if false, applies to hardware only.
+ *
+ * @return aditof::Status::OK (always, with per-parameter warnings on failures).
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Handles parameters: abThreshMin, confThresh, radialThreshMin/Max,
+ *       jblfWindowSize, jblfApplyFlag, fps, vcselDelay, jblfMaxEdge,
+ *       jblfABThreshold, jblfGaussianSigma, jblfExponentialTerm,
+ *       enablePhaseInvalidation.
+ */
 aditof::Status CameraItof::setDepthIniParams(
     const std::map<std::string, std::string> &iniKeyValPairs,
     bool updateDepthMap) {
@@ -2956,6 +3892,12 @@ aditof::Status CameraItof::setDepthIniParams(
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Frees dynamically allocated XYZ lookup tables.
+ *
+ * Releases memory for the X, Y, and Z coordinate lookup tables if they were
+ * allocated. Sets pointers to nullptr after deallocation.
+ */
 void CameraItof::cleanupXYZtables() {
     if (m_xyzTable.p_x_table) {
         free((void *)m_xyzTable.p_x_table);
@@ -2971,12 +3913,36 @@ void CameraItof::cleanupXYZtables() {
     }
 }
 
+/**
+ * @brief Retrieves the imager type (sensor model) in use with ADSD3500.
+ *
+ * Returns the specific depth imager model paired with the ADSD3500 ISP.
+ * Common imagers: ADSD3100, ADSD3030, ADTF3080.
+ *
+ * @param[out] imagerType ImagerType enum value representing the sensor.
+ *
+ * @return aditof::Status::OK.
+ */
 aditof::Status CameraItof::getImagerType(aditof::ImagerType &imagerType) const {
     imagerType = m_imagerType;
 
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Enables or disables dynamic mode switching.
+ *
+ * Controls whether the ADSD3500 automatically switches between frame modes
+ * according to a pre-configured sequence.
+ *
+ * @param[in] en True to enable dynamic mode switching; false to disable.
+ *
+ * @return aditof::Status::OK if mode set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Requires a switching sequence to be configured via adsds3500setDynamicModeSwitchingSequence().
+ */
 aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
 
     using namespace aditof;
@@ -2989,6 +3955,22 @@ aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
     return status;
 }
 
+/**
+ * @brief Configures the dynamic mode switching sequence.
+ *
+ * Programs the ADSD3500 to automatically cycle through a sequence of frame modes
+ * with specified repetition counts. Supports up to 8 mode entries.
+ *
+ * @param[in] sequence Vector of (mode, repeat_count) pairs defining the switching sequence.
+ *                     For example: [(mode0, 10), (mode2, 5)] repeats mode0 10 times,
+ *                     then mode2 5 times, then loops back to mode0.
+ *
+ * @return aditof::Status::OK if sequence configured successfully;
+ *         aditof::Status error codes if sensor write fails at any step.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Maximum 8 entries per sequence; excess entries are silently ignored with warning.
+ */
 aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
     const std::vector<std::pair<uint8_t, uint8_t>> &sequence) {
     using namespace aditof;

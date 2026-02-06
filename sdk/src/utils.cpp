@@ -48,6 +48,20 @@
 using namespace std;
 using namespace aditof;
 
+/**
+ * @brief Splits a string into tokens based on a delimiter character.
+ *
+ * Parses the input string and separates it into substrings (tokens) wherever
+ * the delimiter character is found. All tokens, including the last one after
+ * the final delimiter, are appended to the output vector. The output vector
+ * is not cleared before appending.
+ *
+ * @param s The input string to split.
+ * @param delimiter The character to use as a separator.
+ * @param tokens Output vector where the extracted tokens will be appended.
+ *
+ * @note The tokens vector is not cleared; new tokens are appended to it.
+ */
 void Utils::splitIntoTokens(const string &s, const char delimiter,
                             vector<string> &tokens) {
     string::size_type start = 0;
@@ -59,6 +73,21 @@ void Utils::splitIntoTokens(const string &s, const char delimiter,
     tokens.push_back(s.substr(start));
 }
 
+/**
+ * @brief Retrieves the directory path of the currently running executable.
+ *
+ * Determines the folder containing the currently executing binary. This is
+ * useful for locating configuration files, resources, or other assets
+ * relative to the executable location.
+ *
+ * @return The absolute path to the executable's directory. Returns "." (current
+ *         directory) if the path cannot be determined or on unsupported platforms.
+ *
+ * @note Platform-specific implementations:
+ *       - Windows: Uses GetModuleFileNameA()
+ *       - Linux: Reads /proc/self/exe symlink
+ *       - Other platforms: Returns "."
+ */
 std::string Utils::getExecutableFolder() {
 #if defined(_WIN32)
     char path[MAX_PATH];
@@ -80,11 +109,33 @@ std::string Utils::getExecutableFolder() {
 #endif
 }
 
+/**
+ * @brief Checks if a folder exists at the specified path.
+ *
+ * Tests whether the given path points to an existing directory in the filesystem.
+ * Uses platform-agnostic stat() to check both existence and directory status.
+ *
+ * @param path The filesystem path to check.
+ * @return true if the path exists and is a directory, false otherwise.
+ */
 bool Utils::folderExists(const std::string &path) {
     struct stat info;
     return (stat(path.c_str(), &info) == 0 && (info.st_mode & S_IFDIR));
 }
 
+/**
+ * @brief Creates a new folder at the specified path.
+ *
+ * Attempts to create a directory at the given path. If the directory already
+ * exists, the function returns true (success). Uses platform-specific APIs
+ * to create the folder with appropriate permissions.
+ *
+ * @param path The filesystem path where the folder should be created.
+ * @return true if the folder was created or already exists, false if creation
+ *         failed for any other reason.
+ *
+ * @note On Linux/macOS, the folder is created with permissions 0755 (rwxr-xr-x).
+ */
 bool Utils::createFolder(const std::string &path) {
 #ifdef _WIN32
     return _mkdir(path.c_str()) == 0 || errno == EEXIST;
@@ -93,6 +144,25 @@ bool Utils::createFolder(const std::string &path) {
 #endif
 }
 
+/**
+ * @brief Generates a unique filename with timestamp and random component.
+ *
+ * Creates a filename combining a prefix, UTC timestamp, random hexadecimal
+ * suffix, and file extension. The format is:
+ * "<prefix>YYYYMMDD_HHMMSS_<8-digit-hex><extension>"
+ *
+ * This ensures filenames are unique and sortable by creation time. The random
+ * component further reduces collision probability when multiple files are
+ * created in quick succession.
+ *
+ * @param prefix The filename prefix (e.g., "frame_", "snapshot_").
+ * @param extension The file extension including the dot (e.g., ".bin", ".jpg").
+ * @return A unique filename string in the format described above.
+ *
+ * @note Uses UTC time to ensure consistency across time zones.
+ *
+ * Example output: "frame_20260206_143052_a3f5b8c1.bin"
+ */
 std::string Utils::generateFileName(const std::string &prefix,
                                     const std::string &extension) {
     // Get current UTC time

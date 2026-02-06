@@ -49,6 +49,26 @@ direct,
 
 #include "opencv_undistort.h"
 
+/**
+ * @brief Undistorts image points using camera intrinsic parameters and distortion coefficients.
+ *
+ * This function compensates for lens distortion by applying an iterative algorithm that uses
+ * the camera's intrinsic parameters (focal length, principal point) and distortion coefficients
+ * (radial k1-k6 and tangential p1-p2). It converts distorted image coordinates to ideal
+ * undistorted coordinates, accounting for binning factors.
+ *
+ * @param[in] _srcx Pointer to array of source x-coordinates (distorted)
+ * @param[in] _srcy Pointer to array of source y-coordinates (distorted)
+ * @param[out] _dstx Pointer to array of destination x-coordinates (undistorted, normalized)
+ * @param[out] _dsty Pointer to array of destination y-coordinates (undistorted, normalized)
+ * @param[in] _cameraMatrix Pointer to camera intrinsics structure containing focal lengths (fx, fy),
+ *                          principal point (cx, cy), and distortion coefficients (k1-k6, p1-p2)
+ * @param[in] maxcount Maximum number of iterations for the distortion compensation algorithm
+ * @param[in] rows Number of rows in the image
+ * @param[in] cols Number of columns in the image
+ * @param[in] row_bin_factor Row binning factor to adjust focal length and principal point
+ * @param[in] col_bin_factor Column binning factor to adjust focal length and principal point
+ */
 void UndistortPoints(float *_srcx, float *_srcy, float *_dstx, float *_dsty,
                      CameraIntrinsics *_cameraMatrix, int maxcount, int rows,
                      int cols, uint8_t row_bin_factor, uint8_t col_bin_factor) {
