@@ -44,6 +44,19 @@ typedef struct {
     XYZTable xyz_table;
 } PrivateData;
 
+/**
+ * @brief Initializes a ToFi compute context for depth frame processing.
+ *
+ * This function creates and initializes a TofiComputeContext structure for processing
+ * depth frames from the ISP. It extracts bit depth configuration for depth, AB, and
+ * confidence channels from the calibration data, then generates XYZ lookup tables for
+ * 3D point cloud computation using camera intrinsics and distortion parameters.
+ *
+ * @param[in] p_tofi_cal_config Pointer to ToFi calibration configuration (cast from TofiXYZDealiasData)
+ * @param[out] p_status Pointer to status variable for error reporting
+ *
+ * @return Pointer to newly allocated TofiComputeContext on success, nullptr on failure
+ */
 TofiComputeContext *InitTofiCompute(const void *p_tofi_cal_config,
                                     uint32_t *p_status) {
     TofiComputeContext *Obj = new TofiComputeContext;
@@ -87,6 +100,27 @@ TofiComputeContext *InitTofiCompute(const void *p_tofi_cal_config,
 
 #define NUM_BITS(Input, n_pos, n_bits) (((1 << n_bits) - 1) & (Input >> n_pos))
 
+/**
+ * @brief Deinterleaves packed frame data into separate depth, confidence, and AB channels.
+ *
+ * This function extracts depth, confidence, and AB (amplitude/brightness) data from
+ * the interleaved raw frame buffer produced by the ISP. The bit layout and packing
+ * depend on the frame mode, with each pixel's components packed into consecutive bytes.
+ * The function uses bit masking and shifting to extract each channel component.
+ *
+ * @param[in] p_frame_data Pointer to packed/interleaved raw frame data from ISP
+ * @param[in] n_bits_in_depth Number of bits used to encode depth per pixel
+ * @param[in] n_bits_in_conf Number of bits used to encode confidence per pixel
+ * @param[in] n_bits_in_ab Number of bits used to encode AB per pixel
+ * @param[in] n_bytes Number of bytes per pixel in the packed format
+ * @param[in] width Frame width in pixels
+ * @param[in] height Frame height in pixels
+ * @param[out] p_depth Pointer to output depth buffer (uint16_t per pixel)
+ * @param[out] p_conf Pointer to output confidence buffer (uint16_t per pixel), or NULL to skip
+ * @param[out] p_ab Pointer to output AB buffer (uint16_t per pixel), or NULL to skip
+ *
+ * @return 0 on success
+ */
 static uint32_t
 DeInterleaveDepth(uint8_t *p_frame_data, uint32_t n_bits_in_depth,
                   uint32_t n_bits_in_conf, uint32_t n_bits_in_ab,
@@ -128,6 +162,24 @@ DeInterleaveDepth(uint8_t *p_frame_data, uint32_t n_bits_in_depth,
     return 0;
 }
 
+/**
+ * @brief Processes raw ToF frame data to extract depth, confidence, AB, and optionally XYZ point cloud.
+ *
+ * This is the main processing function for depth frames from the ISP. It deinterleaves
+ * the packed input frame into separate depth, confidence, and AB channels based on the
+ * bit configuration from initialization. If the context's p_xyz_frame pointer is set,
+ * it also computes a 3D point cloud from the depth data using precomputed lookup tables.
+ *
+ * @param[in] input_frame Pointer to raw interleaved frame data from ISP (cast to uint16_t)
+ * @param[in,out] p_tofi_compute_context Pointer to TofiComputeContext with output buffers:
+ *                                       - p_depth_frame: output depth buffer
+ *                                       - p_conf_frame: output confidence buffer
+ *                                       - p_ab_frame: output AB buffer
+ *                                       - p_xyz_frame: output XYZ point cloud buffer (optional)
+ * @param[in] p_temperature Pointer to temperature information (currently unused)
+ *
+ * @return 0 on success, non-zero on error
+ */
 int TofiCompute(const uint16_t *const input_frame,
                 TofiComputeContext *const p_tofi_compute_context,
                 TemperatureInfo *p_temperature) {
@@ -169,6 +221,15 @@ int TofiCompute(const uint16_t *const input_frame,
     return 0;
 };
 
+/**
+ * @brief Frees memory allocated for a TofiComputeContext and its associated data.
+ *
+ * This function deallocates all heap memory associated with a TofiComputeContext,
+ * including the XYZ lookup tables (x, y, z) and private data structures that were
+ * allocated during InitTofiCompute. Must be called to avoid memory leaks.
+ *
+ * @param[in] p_tofi_compute_context Pointer to TofiComputeContext structure to be freed
+ */
 void FreeTofiCompute(TofiComputeContext *p_tofi_compute_context) {
     PrivateData *p =
         (PrivateData *)p_tofi_compute_context->p_tofi_processor_config;

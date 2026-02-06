@@ -23,6 +23,20 @@
  */
 #include "device_parameters.h"
 
+/**
+ * @brief Creates INI parameter structures for all available sensor modes.
+ *
+ * Populates a list of INI file structures with default parameters for each mode based on
+ * the imager type, resolution, chip ID, and whether it's a PCM mode. Selects appropriate
+ * parameter sets for different hardware configurations (single vs dual ISP, full vs partial depth).
+ *
+ * @param[out] iniFileStructList Vector to be populated with INI file structures for each mode
+ * @param[in] modeDetailsList Vector of mode details describing available sensor modes
+ * @param[in] imagerType Imager type identifier ("adsd3100", "adsd3030", or "adtf3080")
+ * @param[in] chipID Chip identifier to differentiate single vs dual ISP configurations
+ *
+ * @return Status::OK on success
+ */
 aditof::Status DeviceParameters::createIniParams(
     std::vector<iniFileStruct> &iniFileStructList,
     std::vector<aditof::DepthSensorModeDetails> &modeDetailsList,

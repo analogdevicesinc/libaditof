@@ -31,12 +31,27 @@
 
 using namespace aditof;
 
+/**
+ * @brief Constructor for FrameHandlerImpl.
+ *
+ * Initializes a frame handler with default settings for concatenating frames,
+ * frame dimensions, and file management. Sets up ready state for frame I/O operations.
+ *
+ * @note Multithreading is disabled by default.
+ * @note Frame concatenation is enabled by default.
+ */
 FrameHandlerImpl::FrameHandlerImpl()
     : m_concatFrames(true), m_enableMultithreading(false),
       m_customFormat(false), m_bitsInDepth(0), m_bitsInAB(0), m_bitsInConf(0),
       m_frameWidth(0), m_frameHeight(0), m_frameIndex(0), m_fileCreated(false),
       m_endOfFile(false), m_pos(0), m_threadRunning(false) {}
 
+/**
+ * @brief Destructor for FrameHandlerImpl.
+ *
+ * Cleans up resources by joining the worker thread if active and closing
+ * any open file streams. Resets output directory to current directory.
+ */
 FrameHandlerImpl::~FrameHandlerImpl() {
     m_dir = ".";
     if (m_threadWorker.joinable()) {
@@ -44,6 +59,16 @@ FrameHandlerImpl::~FrameHandlerImpl() {
     }
 }
 
+/**
+ * @brief Sets the output directory path for saved frame files.
+ *
+ * Configures the destination directory where frame binary files will be saved.
+ * Resets the file creation flag to allow creation of new files in the new directory.
+ *
+ * @param[in] filePath Directory path where output files should be saved.
+ *
+ * @return aditof::Status::OK.
+ */
 Status FrameHandlerImpl::setOutputFilePath(const std::string &filePath) {
     Status status = Status::OK;
     m_dir = filePath;
@@ -51,6 +76,16 @@ Status FrameHandlerImpl::setOutputFilePath(const std::string &filePath) {
     return status;
 }
 
+/**
+ * @brief Sets the input file path for frame reading operations.
+ *
+ * Configures the source file from which frames will be read. Resets the
+ * file position pointer to the beginning for sequential frame reading.
+ *
+ * @param[in] fullFileName Complete path to the input frame file.
+ *
+ * @return aditof::Status::OK.
+ */
 Status FrameHandlerImpl::setInputFileName(const std::string &fullFileName) {
     Status status = Status::OK;
     m_fullInputFileName = fullFileName;
@@ -58,6 +93,29 @@ Status FrameHandlerImpl::setInputFileName(const std::string &fullFileName) {
     return status;
 }
 
+/**
+ * @brief Saves a frame to a binary file in sequential order.
+ *
+ * Writes frame data to disk in the following order: metadata, depth, AB,
+ * confidence, and XYZ (if enabled). Creates a new file or appends to an
+ * existing file based on the concatenation flag. File format is binary with
+ * no compression.
+ *
+ * @details
+ * - Metadata: Fixed 128-byte header with frame information
+ * - Depth: width × height × 2 bytes (uint16_t)
+ * - AB: width × height × 2 bytes (uint16_t), if enabled
+ * - Confidence: width × height × 4 bytes (float), if enabled
+ * - XYZ: width × height × 6 bytes (3×int16_t per pixel), if enabled
+ *
+ * @param[in,out] frame Frame object containing the data to save.
+ * @param[in] fileName Name for the output file (auto-generated with timestamp if empty).
+ *
+ * @return aditof::Status::OK if frame saved successfully;
+ *         aditof::Status::GENERIC_ERROR if file creation fails.
+ *
+ * @note The frame queue is cleared after successful write if multithreading is enabled.
+ */
 Status FrameHandlerImpl::saveFrameToFile(aditof::Frame &frame,
                                          const std::string &fileName) {
     Status status = Status::OK;
@@ -133,6 +191,27 @@ Status FrameHandlerImpl::saveFrameToFile(aditof::Frame &frame,
     return status;
 }
 
+/**
+ * @brief Saves a frame to file asynchronously using a background worker thread.
+ *
+ * Queues a frame for asynchronous saving via a dedicated thread. Allows the
+ * caller to continue without blocking on file I/O. A worker thread is spawned
+ * on first call and processes frames from the queue sequentially.
+ *
+ * @details
+ * - Locks a mutex to safely enqueue the frame and filename
+ * - Spawns a new worker thread if one isn't already running
+ * - Clears the frame object after queuing (moves ownership to queue)
+ * - Processes queue items in FIFO order via threadWritter()
+ *
+ * @param[in,out] frame Frame object to save (ownership transferred, cleared after call).
+ * @param[in] fileName Name for the output file.
+ *
+ * @return aditof::Status::OK if frame successfully queued.
+ *
+ * @note Thread-safe: uses mutex to protect frame and filename queues.
+ * @note The frame object is invalidated after this call.
+ */
 Status
 FrameHandlerImpl::saveFrameToFileMultithread(aditof::Frame &frame,
                                              const std::string &fileName) {
@@ -159,6 +238,16 @@ FrameHandlerImpl::saveFrameToFileMultithread(aditof::Frame &frame,
     return status;
 }
 
+/**
+ * @brief Worker thread function for asynchronous frame saving.
+ *
+ * Processes frames from the queue via saveFrameToFile() until the queue is empty.
+ * Runs in a background thread spawned by saveFrameToFileMultithread().
+ * Sets the thread running flag and clears it when done.
+ *
+ * @note This function is called by std::thread and should not be called directly.
+ * @note Returns silently on first error encountered (no error recovery).
+ */
 void FrameHandlerImpl::threadWritter() {
     m_threadRunning = true;
     aditof::Status status;
@@ -174,6 +263,28 @@ void FrameHandlerImpl::threadWritter() {
     return; // status;
 }
 
+/**
+ * @brief Reads the next frame from a binary file.
+ *
+ * Sequentially reads frame data from the specified file in the format written
+ * by saveFrameToFile(). Manages file position internally for continuous reading.
+ * Resets position counter if a different file is specified.
+ *
+ * @details
+ * Reads in order: metadata (128 bytes), depth, AB, confidence, and XYZ data
+ * based on the metadata flags indicating which components are present.
+ *
+ * @param[out] frame Frame object to be populated with read data.
+ * @param[in] fullFileName Path to the binary frame file to read from.
+ *                         If different from previous call, resets position.
+ *
+ * @return aditof::Status::OK if frame read successfully;
+ *         aditof::Status::GENERIC_ERROR if file cannot be opened or read fails.
+ *
+ * @note Both frame object parameter and stored filename must be non-empty.
+ * @note Logs warning when end-of-file is reached.
+ * @note File position is maintained internally across calls for sequential reading.
+ */
 Status FrameHandlerImpl::readNextFrame(aditof::Frame &frame,
                                        const std::string &fullFileName) {
     Status status = Status::OK;
@@ -301,10 +412,29 @@ Status FrameHandlerImpl::readNextFrame(aditof::Frame &frame,
     return Status::OK;
 }
 
+/**
+ * @brief Sets a custom frame format (not currently implemented).
+ *
+ * Placeholder for future frame format customization functionality.
+ *
+ * @param[in] format Frame format specification string (currently ignored).
+ *
+ * @return aditof::Status::UNAVAILABLE (feature not yet implemented).
+ */
 Status FrameHandlerImpl::setCustomFormat(const std::string &format) {
     return Status::UNAVAILABLE;
 }
 
+/**
+ * @brief Enables or disables concatenation of multiple frames to a single file.
+ *
+ * Controls whether frames are appended to an existing file (true) or each frame
+ * is saved to a new file (false).
+ *
+ * @param[in] enable True to concatenate frames to one file; false for separate files.
+ *
+ * @return aditof::Status::OK.
+ */
 Status FrameHandlerImpl::storeFramesToSingleFile(bool enable) {
     Status status = Status::OK;
     m_concatFrames = enable;
@@ -312,10 +442,34 @@ Status FrameHandlerImpl::storeFramesToSingleFile(bool enable) {
     return status;
 }
 
+/**
+ * @brief Configures which frame components to save (not currently implemented).
+ *
+ * Placeholder for future frame component selection functionality.
+ *
+ * @param[in] frameContent Frame content specification string (currently ignored).
+ *
+ * @return aditof::Status::UNAVAILABLE (feature not yet implemented).
+ */
 Status FrameHandlerImpl::setFrameContent(const std::string &frameContent) {
     return Status::UNAVAILABLE;
 }
 
+/**
+ * @brief Creates a new output binary file for frame storage.
+ *
+ * Opens a file stream for writing frame data. If no filename is provided,
+ * generates a timestamped filename automatically (format: frame_YYYY_MM_DD_HH_MM_SS_N.bin).
+ * Updates internal filename tracking for subsequent append operations.
+ *
+ * @param[in] fileName Desired output filename. If empty, auto-generates with timestamp.
+ *
+ * @return aditof::Status::OK if file created successfully;
+ *         aditof::Status::GENERIC_ERROR if file creation fails.
+ *
+ * @note Sets m_fileCreated flag to true on success for concatenation tracking.
+ * @note Increments internal frame counter for auto-generated filenames.
+ */
 Status FrameHandlerImpl::createFile(const std::string &fileName) {
     if (fileName.empty()) {
         char time_buffer[128];
@@ -348,6 +502,19 @@ Status FrameHandlerImpl::createFile(const std::string &fileName) {
     return Status::OK;
 }
 
+/**
+ * @brief Constructs the full file path from directory and filename.
+ *
+ * Combines the configured output directory (m_dir) with the provided filename
+ * using the platform-specific path separator (backslash on Windows, forward
+ * slash on Unix-like systems).
+ *
+ * @param[in] fileName Filename to append to the output directory path.
+ *
+ * @return Full file path string. If directory is empty, returns filename alone.
+ *
+ * @note Path separator is OS-specific (backslash on Windows, forward slash on Unix).
+ */
 std::string
 FrameHandlerImpl::getOutputFileFullPath(const std::string &fileName) {
     std::string fullPath;
@@ -366,6 +533,23 @@ FrameHandlerImpl::getOutputFileFullPath(const std::string &fileName) {
     return fullPath;
 }
 
+/**
+ * @brief Saves floating-point image data as a JPEG file.
+ *
+ * Converts normalized float data to 8-bit grayscale and writes as JPEG with
+ * quality 100. Automatically scales data range [min, max] to [0, 255].
+ * Handles edge case where all pixels have identical values.
+ *
+ * @param[in] filename Output JPEG file path.
+ * @param[in] data Pointer to float image data (width * height elements).
+ * @param[in] width Image width in pixels.
+ * @param[in] height Image height in pixels.
+ *
+ * @return aditof::Status::OK if JPEG saved successfully;
+ *         aditof::Status::GENERIC_ERROR if data is null or encoding fails.
+ *
+ * @note Uses stbi_write_jpg() for JPEG encoding.
+ */
 aditof::Status FrameHandlerImpl::SaveFloatAsJPEG(const char *filename,
                                                  const float *data,
                                                  uint32_t width,
@@ -401,6 +585,24 @@ aditof::Status FrameHandlerImpl::SaveFloatAsJPEG(const char *filename,
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Saves 16-bit unsigned integer image data as a JPEG file.
+ *
+ * Converts uint16_t depth/amplitude data to 8-bit grayscale and writes as JPEG
+ * with quality 100. Automatically scales data range [min, max] to [0, 255].
+ * Handles edge case where all pixels have identical values.
+ *
+ * @param[in] filename Output JPEG file path.
+ * @param[in] data Pointer to uint16_t image data (width * height elements).
+ * @param[in] width Image width in pixels.
+ * @param[in] height Image height in pixels.
+ *
+ * @return aditof::Status::OK if JPEG saved successfully;
+ *         aditof::Status::GENERIC_ERROR if data is null or encoding fails.
+ *
+ * @note Uses stbi_write_jpg() for JPEG encoding.
+ * @note Typical use: saving depth or AB frames as viewable images.
+ */
 aditof::Status FrameHandlerImpl::SaveUint16AsJPEG(const char *filename,
                                                   const uint16_t *data,
                                                   uint32_t width,
@@ -435,6 +637,23 @@ aditof::Status FrameHandlerImpl::SaveUint16AsJPEG(const char *filename,
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Saves RGB color image data as a JPEG file.
+ *
+ * Writes 8-bit RGB image (3 channels per pixel) directly to JPEG without conversion.
+ * Assumes data is already in uint8_t format ready for encoding.
+ *
+ * @param[in] filename Output JPEG file path.
+ * @param[in] data Pointer to RGB image data (width * height * 3 bytes).
+ * @param[in] width Image width in pixels.
+ * @param[in] height Image height in pixels.
+ *
+ * @return aditof::Status::OK if JPEG saved successfully;
+ *         aditof::Status::GENERIC_ERROR if data is null or encoding fails.
+ *
+ * @note Uses stbi_write_jpg() with 3 color channels.
+ * @note Typical use: saving processed/annotated depth or confidence visualizations.
+ */
 aditof::Status FrameHandlerImpl::SaveRGBAsJPEG(const char *filename,
                                                const uint8_t *data,
                                                uint32_t width,
@@ -457,6 +676,30 @@ aditof::Status FrameHandlerImpl::SaveRGBAsJPEG(const char *filename,
     return result ? aditof::Status::OK : aditof::Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Saves XYZ point cloud data as a binary PLY (Polygon File) file.
+ *
+ * Converts 3D point data (stored as int16_t XYZ triplets) to a standard PLY format
+ * with floating-point coordinates. Scales values from millimeters to meters using
+ * a 0.001 scaling factor. Creates a binary little-endian PLY file compatible
+ * with 3D visualization tools.
+ *
+ * @details
+ * - Input data format: 3 * width * height int16_t values (X, Y, Z per pixel)
+ * - Output format: Binary PLY with 3 float properties (x, y, z) per vertex
+ * - Scaling: millimeters to meters (divide by 1000)
+ *
+ * @param[in] filename Output PLY file path.
+ * @param[in] data Pointer to XYZ point cloud data (3 int16_t values per pixel).
+ * @param[in] width Image width in pixels.
+ * @param[in] height Image height in pixels.
+ *
+ * @return aditof::Status::OK if PLY saved successfully;
+ *         aditof::Status::GENERIC_ERROR if data is null or file I/O fails.
+ *
+ * @note PLY format used: binary_little_endian with float x,y,z properties.
+ * @note Typical use: saving 3D point clouds for visualization in Meshlab, CloudCompare, etc.
+ */
 aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char *filename,
                                                          const uint16_t *data,
                                                          uint32_t width,
@@ -509,6 +752,30 @@ aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char *filename,
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Saves frame metadata to a human-readable text file.
+ *
+ * Exports all fields from the Metadata structure to a plaintext file with
+ * key-value pairs (one per line). Useful for debugging, documentation, and
+ * reviewing frame acquisition settings.
+ *
+ * @details Output includes:
+ * - Image dimensions (width, height in pixels)
+ * - Bit depths (depth, AB, confidence bits)
+ * - Processing parameters (phases, frequencies, imager mode)
+ * - Timing information (frame number, elapsed time)
+ * - Temperature readings (sensor, laser in Celsius)
+ * - Feature flags (XYZ enabled, output configuration)
+ * - Phase invalidation threshold
+ *
+ * @param[in] filename Output text file path.
+ * @param[in] data Pointer to Metadata structure to write.
+ *
+ * @return aditof::Status::OK if file written successfully;
+ *         aditof::Status::GENERIC_ERROR if data is null or file I/O fails.
+ *
+ * @note Creates a new file, overwriting any existing file with the same name.
+ */
 aditof::Status FrameHandlerImpl::SaveMetaAsTxt(const char *filename,
                                                const aditof::Metadata *data) {
 
@@ -553,6 +820,39 @@ aditof::Status FrameHandlerImpl::SaveMetaAsTxt(const char *filename,
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Saves all frame components and metadata as separate files (snapshot export).
+ *
+ * Exports a complete frame snapshot including metadata, depth, AB, confidence,
+ * and XYZ data in multiple formats for visualization and analysis. Creates:
+ * - Metadata text file (human-readable frame info)
+ * - JPEG grayscale images (depth, AB, confidence raw values)
+ * - JPEG RGB images (depth, AB processed/annotated versions)
+ * - Binary PLY file (3D point cloud if XYZ enabled)
+ *
+ * @details
+ * File naming convention uses frame number from metadata:
+ * - {baseFileName}_{frameNumber}_metadata.txt
+ * - {baseFileName}_{frameNumber}_depth.jpg
+ * - {baseFileName}_{frameNumber}_depth_processed.jpg (if ab/depth RGB provided)
+ * - {baseFileName}_{frameNumber}_ab.jpg
+ * - {baseFileName}_{frameNumber}_ab_processed.jpg (if provided)
+ * - {baseFileName}_{frameNumber}_conf.jpg (if confidence data available)
+ * - {baseFileName}_{frameNumber}_pointcloud.ply (if XYZ enabled)
+ *
+ * @param[in] baseFileName Base filename for output files (frame number appended).
+ * @param[in] frame Frame object containing depth, AB, confidence, XYZ, and metadata.
+ * @param[in] ab Optional pre-processed 8-bit RGB AB visualization (can be nullptr).
+ * @param[in] depth Optional pre-processed 8-bit RGB depth visualization (can be nullptr).
+ *
+ * @return aditof::Status::OK if snapshot saved successfully;
+ *         aditof::Status::GENERIC_ERROR if input is invalid or file I/O fails.
+ *
+ * @note Extracts metadata, dimensions, and data pointers from frame object.
+ * @note Confidence data format depends on resolution: float for 1024x1024, uint16 otherwise.
+ * @note Gracefully handles missing optional data (RGB visualizations, confidence, XYZ).
+ * @note All errors retrieving frame data are logged but do not halt export.
+ */
 aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
                                                 aditof::Frame *frame,
                                                 const uint8_t *ab,

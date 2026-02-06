@@ -44,15 +44,36 @@
 namespace aditof {
 namespace platform {
 
+/**
+ * @brief Constructor for Platform.
+ *
+ * Initializes the platform abstraction layer and logs the platform name.
+ */
 Platform::Platform() {
     LOG(INFO) << "Initializing platform: " << PLATFORM_NAME;
 }
 
+/**
+ * @brief Returns the singleton Platform instance.
+ *
+ * Creates and returns a static instance of the Platform class on first call.
+ * Subsequent calls return the same instance.
+ *
+ * @return Reference to the singleton Platform instance.
+ */
 Platform &Platform::getInstance() {
     static Platform instance;
     return instance;
 }
 
+/**
+ * @brief Retrieves platform metadata including name, architecture, and device paths.
+ *
+ * Returns a structure containing platform identification information and
+ * hardware-specific device naming conventions.
+ *
+ * @return PlatformInfo structure with name, architecture, video prefix, and media controller.
+ */
 PlatformInfo Platform::getPlatformInfo() const {
     PlatformInfo info;
     info.name = PLATFORM_NAME;
@@ -63,6 +84,13 @@ PlatformInfo Platform::getPlatformInfo() const {
     return info;
 }
 
+/**
+ * @brief Retrieves the U-Boot bootloader version string.
+ *
+ * Returns the bootloader version from the device. Only available on NXP platforms.
+ *
+ * @return Bootloader version string; empty string on non-NXP platforms.
+ */
 std::string Platform::getBootloaderVersion() const {
 #ifdef NXP
     return getVersionOfComponent("u-boot");
@@ -71,6 +99,13 @@ std::string Platform::getBootloaderVersion() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the Linux kernel version string.
+ *
+ * Reads and returns the kernel version from /proc/version on NXP platforms.
+ *
+ * @return Kernel version string; "unknown" on read error, empty string on non-NXP platforms.
+ */
 std::string Platform::getKernelVersion() const {
 #ifdef NXP
     std::ifstream versionFile("/proc/version");
@@ -86,6 +121,13 @@ std::string Platform::getKernelVersion() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the SD card image/firmware version string.
+ *
+ * Returns the SD card image version information. Only available on NXP platforms.
+ *
+ * @return SD card version string; empty string on non-NXP platforms.
+ */
 std::string Platform::getSDCardVersion() const {
 #ifdef NXP
     return getVersionOfComponent("sd_img_ver");
@@ -94,6 +136,13 @@ std::string Platform::getSDCardVersion() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the V4L2 chip configuration control ID.
+ *
+ * Returns the platform-specific V4L2 control ID for ISP chip configuration commands.
+ *
+ * @return V4L2 control ID for chip configuration.
+ */
 uint32_t Platform::getV4L2ChipConfigControlId() const {
 #ifdef NXP
     return 0x9819e1;
@@ -102,6 +151,13 @@ uint32_t Platform::getV4L2ChipConfigControlId() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the V4L2 mode selection control ID.
+ *
+ * Returns the platform-specific V4L2 control ID for sensor mode switching commands.
+ *
+ * @return V4L2 control ID for mode selection.
+ */
 uint32_t Platform::getV4L2ModeControlId() const {
 #ifdef NXP
     return 0x9819e0;
@@ -110,6 +166,14 @@ uint32_t Platform::getV4L2ModeControlId() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the V4L2 AB averaging control ID.
+ *
+ * Returns the platform-specific V4L2 control ID for AB (amplitude/brightness)
+ * frame averaging configuration.
+ *
+ * @return V4L2 control ID for AB averaging.
+ */
 uint32_t Platform::getV4L2AbAvgControlId() const {
 #ifdef NXP
     return 0x9819e5;
@@ -118,6 +182,14 @@ uint32_t Platform::getV4L2AbAvgControlId() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the V4L2 depth enable control ID.
+ *
+ * Returns the platform-specific V4L2 control ID for enabling/disabling
+ * depth frame computation.
+ *
+ * @return V4L2 control ID for depth enable.
+ */
 uint32_t Platform::getV4L2DepthEnControlId() const {
 #ifdef NXP
     return 0x9819e6;
@@ -126,6 +198,14 @@ uint32_t Platform::getV4L2DepthEnControlId() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the V4L2 phase depth bits control ID.
+ *
+ * Returns the platform-specific V4L2 control ID for configuring the bit depth
+ * of phase/depth data.
+ *
+ * @return V4L2 control ID for phase depth bits.
+ */
 uint32_t Platform::getV4L2PhaseDepthBitsControlId() const {
 #ifdef NXP
     return 0x9819e2;
@@ -134,6 +214,14 @@ uint32_t Platform::getV4L2PhaseDepthBitsControlId() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the V4L2 AB bits control ID.
+ *
+ * Returns the platform-specific V4L2 control ID for configuring the bit depth
+ * of AB (amplitude/brightness) data.
+ *
+ * @return V4L2 control ID for AB bits.
+ */
 uint32_t Platform::getV4L2AbBitsControlId() const {
 #ifdef NXP
     return 0x9819e3;
@@ -142,6 +230,14 @@ uint32_t Platform::getV4L2AbBitsControlId() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the V4L2 confidence bits control ID.
+ *
+ * Returns the platform-specific V4L2 control ID for configuring the bit depth
+ * of confidence data.
+ *
+ * @return V4L2 control ID for confidence bits.
+ */
 uint32_t Platform::getV4L2ConfidenceBitsControlId() const {
 #ifdef NXP
     return 0x9819e4;
@@ -150,6 +246,13 @@ uint32_t Platform::getV4L2ConfidenceBitsControlId() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the V4L2 pixel format for 8-bit raw sensor data.
+ *
+ * Returns the platform-specific V4L2 pixel format code for raw 8-bit Bayer pattern data.
+ *
+ * @return V4L2 pixel format code for 8-bit data.
+ */
 uint32_t Platform::getV4L2PixelFormat8bit() const {
 #ifdef NXP
     return V4L2_PIX_FMT_SBGGR8;
@@ -158,6 +261,20 @@ uint32_t Platform::getV4L2PixelFormat8bit() const {
 #endif
 }
 
+/**
+ * @brief Calculates the required buffer size for video frames.
+ *
+ * Computes the memory size needed for V4L2 video buffers based on frame dimensions.
+ * On NVIDIA platforms, adds extra alignment padding; on other platforms, computes
+ * exact frame size.
+ *
+ * @param[in] widthInBytes Frame width in bytes.
+ * @param[in] heightInBytes Frame height in lines.
+ *
+ * @return Required buffer size in bytes.
+ *
+ * @note NVIDIA platforms require extra line for alignment.
+ */
 size_t Platform::calculateBufferSize(int widthInBytes,
                                      int heightInBytes) const {
 #ifdef NVIDIA
@@ -168,6 +285,21 @@ size_t Platform::calculateBufferSize(int widthInBytes,
 #endif
 }
 
+/**
+ * @brief Discovers all ADSD3500 Time-of-Flight sensors connected to the system.
+ *
+ * Scans /dev directory for media device nodes and parses their media pipeline
+ * to identify ADSD3500 depth sensors. Caches device paths (video device,
+ * subdevice, and capture device) for each discovered sensor.
+ *
+ * @param[out] sensors Vector to be populated with discovered sensor information.
+ *
+ * @return Status::OK if at least one sensor is found; Status::GENERIC_ERROR if
+ *         no sensors found or media device enumeration fails.
+ *
+ * @note Clears the output vector before populating.
+ * @note Requires media device support in the kernel.
+ */
 Status Platform::findToFSensors(std::vector<SensorInfo> &sensors) {
     sensors.clear();
 
@@ -211,6 +343,14 @@ Status Platform::findToFSensors(std::vector<SensorInfo> &sensors) {
     return sensors.empty() ? Status::GENERIC_ERROR : Status::OK;
 }
 
+/**
+ * @brief Retrieves the MIPI output speed setting for the platform.
+ *
+ * Returns the configured MIPI CSI-2 data rate in Gbps. On NVIDIA Jetson,
+ * defaults to 2.5 Gbps.
+ *
+ * @return MIPI speed setting (1 for 2.5 Gbps on NVIDIA; -1 if not configured).
+ */
 int Platform::getMipiOutputSpeed() const {
 #ifdef NVIDIA
     return 1; // 2.5 Gbps for NVIDIA Jetson
@@ -219,6 +359,14 @@ int Platform::getMipiOutputSpeed() const {
 #endif
 }
 
+/**
+ * @brief Retrieves the deskew enable status for the platform.
+ *
+ * Returns whether deskew (geometric correction for sensor misalignment) is
+ * enabled on this platform. On NVIDIA Jetson, deskew is enabled.
+ *
+ * @return 1 if deskew is enabled (NVIDIA); -1 if not configured for this platform.
+ */
 int Platform::getDeskewEnabled() const {
 #ifdef NVIDIA
     return 1; // Enable deskew for NVIDIA Jetson
@@ -227,6 +375,22 @@ int Platform::getDeskewEnabled() const {
 #endif
 }
 
+/**
+ * @brief Configures the media pipeline for video device and sensor.
+ *
+ * Sets up the hardware media controller pipeline to match the specified video
+ * device, frame dimensions, and bit depth. Platform-specific implementations
+ * handle configuration via media controller entities and properties.
+ *
+ * @param[in] videoDevice Path to the video device (e.g., "/dev/video0").
+ * @param[in] width Frame width in pixels.
+ * @param[in] height Frame height in lines.
+ * @param[in] bitDepth Sensor raw data bit depth (8 or 12).
+ *
+ * @return Status::OK on successful configuration; Status::GENERIC_ERROR on failure.
+ *
+ * @note Raspberry Pi uses RP1 CFE pipeline; other platforms skip configuration.
+ */
 Status Platform::configureMediaPipeline(const std::string &videoDevice,
                                         int width, int height, int bitDepth) {
 #ifdef RPI
@@ -244,6 +408,22 @@ Status Platform::configureMediaPipeline(const std::string &videoDevice,
 #endif
 }
 
+/**
+ * @brief Parses the media pipeline to extract device paths and names.
+ *
+ * Uses media-ctl to query the media device entity hierarchy and extracts
+ * the video device, subdevice, and capture device entity names for the
+ * ADSD3500 sensor.
+ *
+ * @param[in] mediaDevice Path to the media device (e.g., "/dev/media0").
+ * @param[out] devPath Video device path (e.g., "/dev/video0").
+ * @param[out] subdevPath Subdevice path (e.g., "/dev/v4l-subdev0").
+ * @param[out] deviceName Capture entity name (e.g., "rp1-cfe-csi2_ch0").
+ *
+ * @return Status::OK if all paths are found; Status::GENERIC_ERROR otherwise.
+ *
+ * @note Requires media-ctl utility to be installed and accessible.
+ */
 Status Platform::parseMediaPipeline(const std::string &mediaDevice,
                                     std::string &devPath,
                                     std::string &subdevPath,
@@ -321,6 +501,18 @@ Status Platform::parseMediaPipeline(const std::string &mediaDevice,
                                                      : Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Retrieves a version string for a platform component.
+ *
+ * Reads the version information from a version file stored in /opt/adi/ directory.
+ * Commonly used to retrieve bootloader, SD image, and kernel version information.
+ *
+ * @param[in] component Component identifier (e.g., "u-boot", "sd_img_ver").
+ *
+ * @return Version string if file exists and is readable; "unknown" otherwise.
+ *
+ * @note Version files are stored at /opt/adi/{component}_ver.
+ */
 std::string
 Platform::getVersionOfComponent(const std::string &component) const {
     std::string versionFile = "/opt/adi/" + component + "_ver";
@@ -336,6 +528,23 @@ Platform::getVersionOfComponent(const std::string &component) const {
     return "unknown";
 }
 
+/**
+ * @brief Resets the ADSD3500 sensor via GPIO control.
+ *
+ * Performs a hardware reset of the sensor by toggling the reset GPIO pin.
+ * Can optionally wait for interrupt-driven reset completion. Supports both
+ * named GPIO paths and numeric GPIO pins depending on platform configuration.
+ *
+ * @param[in] waitForInterrupt Whether to wait for interrupt-driven reset confirmation.
+ * @param[in,out] resetDone Pointer to boolean flag indicating reset completion
+ *                          (set by interrupt handler if waitForInterrupt=true).
+ * @param[in] timeoutSeconds Timeout in seconds for reset operation.
+ *
+ * @return Status::OK on successful reset; Status::GENERIC_ERROR on failure.
+ *
+ * @note Raspberry Pi uses GPIO via sysfs or debugfs; other platforms may differ.
+ * @note Reset pin name/number is specified via PLATFORM_RESET_GPIO defines.
+ */
 Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
                              int timeoutSeconds) {
     LOG(INFO) << "Resetting sensor via GPIO";

@@ -37,6 +37,19 @@
 
 using namespace aditof;
 
+/**
+ * @brief Builds a sensor enumerator for target platform devices.
+ *
+ * Creates and returns a platform-specific sensor enumerator that discovers
+ * locally-attached ToF sensors. This is only available when building for
+ * target platforms (e.g., NVIDIA Jetson, Raspberry Pi) with the TARGET flag.
+ * On host builds, this returns nullptr.
+ *
+ * @return A unique_ptr to a PlatformSensorEnumerator on target builds,
+ *         nullptr on host-only builds.
+ *
+ * @note This function requires the TARGET preprocessor flag to be defined.
+ */
 std::unique_ptr<SensorEnumeratorInterface>
 SensorEnumeratorFactory::buildTargetSensorEnumerator() {
 #ifdef TARGET
@@ -46,6 +59,21 @@ SensorEnumeratorFactory::buildTargetSensorEnumerator() {
     return nullptr;
 }
 
+/**
+ * @brief Builds a sensor enumerator for network-connected devices.
+ *
+ * Creates and returns a network sensor enumerator that discovers ToF sensors
+ * accessible over the network via TCP/IP. This allows remote connection to
+ * sensors running on target platforms with the network server enabled.
+ * Only available when HAS_NETWORK is defined and not building for TARGET.
+ *
+ * @param ip The IP address of the remote target device to connect to
+ *           (e.g., "192.168.1.100").
+ * @return A unique_ptr to a NetworkSensorEnumerator if network support is enabled,
+ *         nullptr otherwise.
+ *
+ * @note Requires HAS_NETWORK to be defined and TARGET to be undefined.
+ */
 std::unique_ptr<SensorEnumeratorInterface>
 SensorEnumeratorFactory::buildNetworkSensorEnumerator(const std::string &ip) {
 #ifdef HAS_NETWORK
@@ -57,6 +85,19 @@ SensorEnumeratorFactory::buildNetworkSensorEnumerator(const std::string &ip) {
     return nullptr;
 }
 
+/**
+ * @brief Builds a sensor enumerator for offline/replay mode.
+ *
+ * Creates and returns an offline sensor enumerator that reads pre-recorded
+ * frame data from disk instead of connecting to real hardware. This is useful
+ * for development, testing, and debugging without requiring physical ToF sensors.
+ * Only available when HAS_OFFLINE is defined.
+ *
+ * @return A unique_ptr to an OfflineSensorEnumerator if offline support is enabled,
+ *         nullptr otherwise.
+ *
+ * @note Requires HAS_OFFLINE to be defined at build time.
+ */
 std::unique_ptr<SensorEnumeratorInterface>
 SensorEnumeratorFactory::buildOfflineSensorEnumerator() {
 #ifdef HAS_OFFLINE

@@ -31,6 +31,21 @@
 
 #include <sstream>
 
+/**
+ * @brief Initializes a TofiConfig structure for open-source depth computation.
+ *
+ * This function allocates and initializes a TofiConfig object with default values,
+ * setting all pointers to null and enabling the open-source depth computation path.
+ * This is used when the proprietary depth compute library is not available.
+ *
+ * @param[in] p_cal_file_data Pointer to calibration file data (unused in open-source implementation)
+ * @param[in] p_config_file_data Pointer to configuration file data (unused in open-source implementation)
+ * @param[in] p_ini_file_data Pointer to INI file data (unused in open-source implementation)
+ * @param[in] mode Frame mode identifier
+ * @param[out] p_status Pointer to status variable for error reporting
+ *
+ * @return Pointer to newly allocated and initialized TofiConfig structure
+ */
 TofiConfig *InitTofiConfig(ConfigFileData *p_cal_file_data,
                            ConfigFileData *p_config_file_data,
                            ConfigFileData *p_ini_file_data, uint16_t mode,
@@ -56,6 +71,18 @@ TofiConfig *InitTofiConfig(ConfigFileData *p_cal_file_data,
     return Obj;
 };
 
+/**
+ * @brief Searches for a key in INI file content and returns its associated value.
+ *
+ * This function parses INI file content (provided as an input stream) to find a line
+ * starting with the specified key, then extracts and returns the value following the
+ * '=' delimiter. The stream is reset to the beginning before searching.
+ *
+ * @param[in,out] iniContent Input stream containing INI file content (seeked to beginning)
+ * @param[in] key Key string to search for at the start of lines
+ *
+ * @return String value associated with the key, or empty string if key not found
+ */
 std::string iniFileContentFindKeyAndGetValue(std::istream &iniContent,
                                              const std::string &key) {
     iniContent.clear();
@@ -74,6 +101,21 @@ std::string iniFileContentFindKeyAndGetValue(std::istream &iniContent,
     return "";
 }
 
+/**
+ * @brief Initializes a TofiConfig structure for ISP-based depth computation.
+ *
+ * This function creates a TofiConfig object specifically for hardware ISP configurations.
+ * It parses the INI file to extract bit depth information for depth, AB (amplitude/brightness),
+ * and confidence channels, then encodes this metadata into the dealias data structure.
+ * The function stores configuration and dealias data pointers in the TofiConfig for later use.
+ *
+ * @param[in] p_ini_file_data Pointer to INI file data containing bit depth configuration
+ * @param[in] mode Frame mode index to select appropriate dealias data
+ * @param[out] p_status Pointer to status variable for error reporting
+ * @param[in] p_xyz_dealias_data Array of TofiXYZDealiasData structures indexed by mode
+ *
+ * @return Pointer to newly allocated and initialized TofiConfig structure for ISP mode
+ */
 TofiConfig *InitTofiConfig_isp(ConfigFileData *p_ini_file_data, uint16_t mode,
                                uint32_t *p_status,
                                TofiXYZDealiasData *p_xyz_dealias_data) {
@@ -119,11 +161,31 @@ TofiConfig *InitTofiConfig_isp(ConfigFileData *p_ini_file_data, uint16_t mode,
     return Obj;
 };
 
+/**
+ * @brief Retrieves XYZ dealias data from calibration block data.
+ *
+ * This function is a stub in the open-source implementation. In the full implementation,
+ * it would extract dealias parameters from the camera calibration block (CCB) data.
+ *
+ * @param[in] ccb_data Pointer to camera calibration block data
+ * @param[out] p_xyz_data Pointer to TofiXYZDealiasData structure to populate
+ *
+ * @return 0 on success (always succeeds in open-source stub)
+ */
 uint32_t GetXYZ_DealiasData(ConfigFileData *ccb_data,
                             TofiXYZDealiasData *p_xyz_data) {
     return 0;
 };
 
+/**
+ * @brief Frees memory allocated for a TofiConfig structure and its associated data.
+ *
+ * This function deallocates all heap memory associated with a TofiConfig object,
+ * including the config file data and dealias data that were allocated during
+ * initialization (particularly from InitTofiConfig_isp).
+ *
+ * @param[in] p_tofi_cal_config Pointer to TofiConfig structure to be freed
+ */
 void FreeTofiConfig(TofiConfig *p_tofi_cal_config) {
     ConfigFileData *configFileObj =
         (ConfigFileData *)p_tofi_cal_config->p_tofi_config_str;
@@ -135,10 +197,35 @@ void FreeTofiConfig(TofiConfig *p_tofi_cal_config) {
     delete p_tofi_cal_config;
 };
 
+/**
+ * @brief Sets INI configuration parameters for the ToFi computation.
+ *
+ * This function is a stub in the open-source implementation. In the full implementation,
+ * it would update configuration parameters in the specified parameter group.
+ *
+ * @param[in,out] p_config_params Pointer to configuration parameters structure to update
+ * @param[in] params_group Parameter group identifier
+ * @param[in] p_tofi_cal_config Pointer to ToFi calibration configuration
+ *
+ * @return 0 on success (always succeeds in open-source stub)
+ */
 uint32_t TofiSetINIParams(void *p_config_params, int params_group,
                           const void *p_tofi_cal_config) {
     return 0;
 };
+
+/**
+ * @brief Retrieves INI configuration parameters from the ToFi computation.
+ *
+ * This function is a stub in the open-source implementation. In the full implementation,
+ * it would read configuration parameters from the specified parameter group.
+ *
+ * @param[out] p_config_params Pointer to configuration parameters structure to populate
+ * @param[in] params_group Parameter group identifier
+ * @param[in] p_tofi_cal_config Pointer to ToFi calibration configuration
+ *
+ * @return 0 on success (always succeeds in open-source stub)
+ */
 uint32_t TofiGetINIParams(void *p_config_params, int params_group,
                           const void *p_tofi_cal_config) {
     return 0;

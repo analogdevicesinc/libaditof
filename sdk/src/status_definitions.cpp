@@ -25,6 +25,19 @@
 
 namespace aditof {
 
+/**
+ * @brief Stream insertion operator for Status enum.
+ *
+ * Allows Status enum values to be printed to output streams in human-readable
+ * format. Each Status value is converted to its corresponding string representation
+ * (e.g., "Status::OK", "Status::BUSY", "Status::GENERIC_ERROR").
+ *
+ * @param os The output stream to write to.
+ * @param status The Status value to convert to a string.
+ * @return A reference to the output stream for chaining.
+ *
+ * @note If the status value is not recognized, the stream's failbit is set.
+ */
 std::ostream &operator<<(std::ostream &os, aditof::Status status) {
     switch (status) {
     case aditof::Status::OK:
@@ -54,6 +67,21 @@ std::ostream &operator<<(std::ostream &os, aditof::Status status) {
     return os;
 }
 
+/**
+ * @brief Stream insertion operator for Adsd3500Status enum.
+ *
+ * Allows Adsd3500Status enum values to be printed to output streams in human-readable
+ * format. Each Adsd3500Status value is converted to its corresponding string representation
+ * (e.g., "Adsd3500Status::OK", "Adsd3500Status::INVALID_MODE", "Adsd3500Status::FIRMWARE_UPDATE_COMPLETE").
+ * This enum represents ADSD3500 Depth ISP-specific status codes including firmware update states,
+ * configuration errors, and hardware communication issues.
+ *
+ * @param os The output stream to write to.
+ * @param status The Adsd3500Status value to convert to a string.
+ * @return A reference to the output stream for chaining.
+ *
+ * @note If the status value is not recognized, the stream's failbit is set.
+ */
 std::ostream &operator<<(std::ostream &os, aditof::Adsd3500Status status) {
     switch (status) {
     case aditof::Adsd3500Status::OK:
