@@ -1920,6 +1920,9 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
  * from INI parameters and programs the sensor accordingly. In offline mode, derives
  * settings from recorded frameContent. Rebuilds the frameContent list to reflect
  * enabled frame types.
+ *
+ * @note Updates m_depthEnabled, m_abEnabled, m_confEnabled, and m_xyzEnabled flags
+ *       based on sensor configuration or recorded content in offline mode.
  */
 void CameraItof::configureSensorModeDetails() {
 
@@ -2087,6 +2090,20 @@ void CameraItof::configureSensorModeDetails() {
     }
 }
 
+/**
+ * @brief Extracts an integer value from a JSON object.
+ *
+ * Looks up a key in the JSON object and retrieves its value as a string,
+ * then converts it to an integer. Used for parsing depth computation configuration
+ * parameters from JSON format.
+ *
+ * @param[in] config_json Pointer to JSON object to query
+ * @param[in] key String key to look up in the JSON object
+ *
+ * @return Integer value if key found and string is valid, -1 otherwise
+ *
+ * @note Currently unused but retained for potential future use in JSON configuration parsing.
+ */
 /* // Not currently used, but leaving in case it is needed later.
 static int16_t getValueFromJSON(json_object *config_json, std::string key) {
     int16_t value = -1;
@@ -3375,6 +3392,20 @@ aditof::Status CameraItof::adsd3500SetEnablePhaseInvalidation(uint16_t value) {
     return status;
 }
 
+/**
+ * @brief Enables or disables temperature compensation in the ADSD3500.
+ *
+ * Configures the ADSD3500 ISP to apply or disable temperature compensation
+ * algorithms to account for thermal effects on sensor performance and depth accuracy.
+ *
+ * @param[in] value 1 to enable temperature compensation; 0 to disable.
+ *
+ * @return aditof::Status::OK if value set successfully;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Uses command 0x0021 to configure the temperature compensation setting.
+ */
 aditof::Status
 CameraItof::adsd3500SetEnableTemperatureCompensation(uint16_t value) {
 

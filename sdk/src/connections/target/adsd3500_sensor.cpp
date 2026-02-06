@@ -2721,6 +2721,16 @@ aditof::Status Adsd3500Sensor::adsd3500_get_status(int &chipStatus,
     return status;
 }
 
+/**
+ * @brief Sets the sensor configuration mode.
+ *
+ * Configures the sensor with the specified configuration mode (e.g., "standard", "custom")
+ * by delegating to the mode selector's setConfiguration method.
+ *
+ * @param[in] sensorConf Configuration mode identifier string
+ *
+ * @return Status::OK on success, error status if configuration is invalid
+ */
 aditof::Status
 Adsd3500Sensor::setSensorConfiguration(const std::string &sensorConf) {
     aditof::Status status;
@@ -2733,6 +2743,20 @@ Adsd3500Sensor::setSensorConfiguration(const std::string &sensorConf) {
     return status;
 }
 
+/**
+ * @brief Converts a numeric status ID to Adsd3500Status enumeration.
+ *
+ * Maps hardware status codes from the ADSD3500 ISP to the corresponding
+ * Adsd3500Status enum values for easier error handling and reporting.
+ * Handles all known status codes from the ISP firmware.
+ *
+ * @param[in] status Numeric status code from ADSD3500 hardware
+ *
+ * @return Corresponding Adsd3500Status enum value; UNKNOWN_ERROR_ID if status is unrecognized
+ *
+ * @note Covers status codes from 0 (OK) through 41+ (various error conditions)
+ * @note Unknown status codes log an error and return UNKNOWN_ERROR_ID
+ */
 aditof::Adsd3500Status Adsd3500Sensor::convertIdToAdsd3500Status(int status) {
     using namespace aditof;
 
