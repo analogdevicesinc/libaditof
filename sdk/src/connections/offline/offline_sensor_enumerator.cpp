@@ -24,8 +24,23 @@
 #include "offline_sensor_enumerator.h"
 #include "offline_depth_sensor.h"
 
+/**
+ * @brief Constructs an OfflineSensorEnumerator object.
+ *
+ * Initializes the offline sensor enumerator for managing offline (playback) depth sensors.
+ */
 OfflineSensorEnumerator::OfflineSensorEnumerator() {}
 
+/**
+ * @brief Retrieves available offline depth sensors.
+ *
+ * Clears the provided vector and populates it with a single OfflineDepthSensor instance
+ * for playback operations. This creates the interface for working with recorded depth data.
+ *
+ * @param[out] depthSensors Vector to be populated with available offline depth sensor interfaces
+ *
+ * @return Status::OK on success
+ */
 aditof::Status OfflineSensorEnumerator::getDepthSensors(
     std::vector<std::shared_ptr<aditof::DepthSensorInterface>> &depthSensors) {
     depthSensors.clear();
@@ -34,20 +49,55 @@ aditof::Status OfflineSensorEnumerator::getDepthSensors(
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Searches for available offline sensors.
+ *
+ * This is a stub implementation for the offline enumerator. Since offline sensors
+ * don't require hardware discovery, this function simply returns success.
+ *
+ * @return Status::OK on success
+ */
 aditof::Status OfflineSensorEnumerator::searchSensors() {
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Retrieves the U-Boot version.
+ *
+ * This information is not available in offline mode since there is no hardware target.
+ *
+ * @param[out] uBootVersion String to receive U-Boot version (not populated)
+ *
+ * @return Status::UNAVAILABLE (always unavailable for offline mode)
+ */
 aditof::Status
 OfflineSensorEnumerator::getUbootVersion(std::string &uBootVersion) const {
     return aditof::Status::UNAVAILABLE;
 }
 
+/**
+ * @brief Retrieves the kernel version.
+ *
+ * This information is not available in offline mode since there is no hardware target.
+ *
+ * @param[out] kernelVersion String to receive kernel version (not populated)
+ *
+ * @return Status::UNAVAILABLE (always unavailable for offline mode)
+ */
 aditof::Status
 OfflineSensorEnumerator::getKernelVersion(std::string &kernelVersion) const {
     return aditof::Status::UNAVAILABLE;
 }
 
+/**
+ * @brief Retrieves the SD card image version.
+ *
+ * This information is not available in offline mode since there is no hardware target.
+ *
+ * @param[out] sdVersion String to receive SD version (not populated)
+ *
+ * @return Status::UNAVAILABLE (always unavailable for offline mode)
+ */
 aditof::Status
 OfflineSensorEnumerator::getSdVersion(std::string &sdVersion) const {
     return aditof::Status::UNAVAILABLE;
