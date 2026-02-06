@@ -33,6 +33,14 @@
 
 using namespace aditof;
 
+/**
+ * @brief Constructor for PlatformSensorEnumerator.
+ *
+ * Initializes the platform abstraction layer and logs the detected platform
+ * information including name and architecture.
+ *
+ * @note Logs platform information via glog (if available) or aditof logging.
+ */
 PlatformSensorEnumerator::PlatformSensorEnumerator() {
 
     auto info = m_platform.getPlatformInfo();
@@ -45,6 +53,18 @@ PlatformSensorEnumerator::PlatformSensorEnumerator() {
 #endif
 }
 
+/**
+ * @brief Searches for available ToF sensors on the platform.
+ *
+ * Discovers all ADSD3500 Time-of-Flight sensors connected to the system using
+ * the platform abstraction layer. Retrieves bootloader, kernel, and SD card
+ * version information. Results are cached internally.
+ *
+ * @return Status::OK on success; Status::GENERIC_ERROR if sensor discovery fails.
+ *
+ * @note Clears previous sensor list before searching.
+ * @note Caches version information for later retrieval via getters.
+ */
 Status PlatformSensorEnumerator::searchSensors() {
     Status status;
 
@@ -76,6 +96,21 @@ Status PlatformSensorEnumerator::searchSensors() {
     return Status::OK;
 }
 
+/**
+ * @brief Retrieves instantiated depth sensor interfaces.
+ *
+ * Creates and returns DepthSensorInterface objects for all discovered ADSD3500
+ * sensors. Enables interrupt support for each sensor. Must be called after
+ * searchSensors() to have valid results.
+ *
+ * @param[out] depthSensors Vector to be populated with sensor interface pointers.
+ *
+ * @return Status::OK on success.
+ *
+ * @note Clears the output vector before populating.
+ * @note Enables interrupt notifications for each ADSD3500 sensor.
+ * @note Sensor discovery must be run first via searchSensors().
+ */
 Status PlatformSensorEnumerator::getDepthSensors(
     std::vector<std::shared_ptr<DepthSensorInterface>> &depthSensors) {
 
@@ -103,18 +138,54 @@ Status PlatformSensorEnumerator::getDepthSensors(
     return Status::OK;
 }
 
+/**
+ * @brief Retrieves the U-Boot bootloader version string.
+ *
+ * Returns the cached bootloader version information discovered during sensor
+ * enumeration.
+ *
+ * @param[out] uBootVersion String to receive the U-Boot version.
+ *
+ * @return Status::OK if version string is available; Status::GENERIC_ERROR if empty.
+ *
+ * @note Must call searchSensors() first to populate version information.
+ */
 Status
 PlatformSensorEnumerator::getUbootVersion(std::string &uBootVersion) const {
     uBootVersion = m_uBootVersion;
     return uBootVersion.empty() ? Status::GENERIC_ERROR : Status::OK;
 }
 
+/**
+ * @brief Retrieves the Linux kernel version string.
+ *
+ * Returns the cached kernel version information discovered during sensor
+ * enumeration.
+ *
+ * @param[out] kernelVersion String to receive the kernel version.
+ *
+ * @return Status::OK if version string is available; Status::GENERIC_ERROR if empty.
+ *
+ * @note Must call searchSensors() first to populate version information.
+ */
 Status
 PlatformSensorEnumerator::getKernelVersion(std::string &kernelVersion) const {
     kernelVersion = m_kernelVersion;
     return kernelVersion.empty() ? Status::GENERIC_ERROR : Status::OK;
 }
 
+/**
+ * @brief Retrieves the SD card image/firmware version string.
+ *
+ * Returns the cached SD card version information discovered during sensor
+ * enumeration.
+ *
+ * @param[out] sdVersion String to receive the SD card version.
+ *
+ * @return Status::OK if version string is available; Status::GENERIC_ERROR if empty.
+ *
+ * @note Must call searchSensors() first to populate version information.
+ */
 Status PlatformSensorEnumerator::getSdVersion(std::string &sdVersion) const {
     sdVersion = m_sdVersion;
     return sdVersion.empty() ? Status::GENERIC_ERROR : Status::OK;
