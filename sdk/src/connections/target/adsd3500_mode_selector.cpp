@@ -24,6 +24,14 @@
 #include "adsd3500_mode_selector.h"
 #include <algorithm>
 
+/**
+ * @brief Constructs an Adsd3500ModeSelector object.
+ *
+ * Initializes the mode selector with default "standard" configuration and populates
+ * available configurations (standard, standardRaw, custom, customRaw). Also initializes
+ * control parameters map for mode selection including imagerType, mode, mixedModes,
+ * depthBits, abBits, confBits, and inputFormat.
+ */
 Adsd3500ModeSelector::Adsd3500ModeSelector() : m_configuration("standard") {
 
     m_availableConfigurations.emplace_back("standard");
@@ -42,7 +50,17 @@ Adsd3500ModeSelector::Adsd3500ModeSelector() : m_configuration("standard") {
     m_controls.emplace("inputFormat", "");
 }
 
-//functions to set which table configuration to use
+/**
+ * @brief Sets the sensor mode configuration.
+ *
+ * Selects which configuration table to use for mode lookups. Valid configurations
+ * include "standard", "standardRaw", "custom", and "customRaw".
+ *
+ * @param[in] configuration Configuration name to set
+ *
+ * @return Status::OK if configuration is valid and set successfully,
+ *         Status::INVALID_ARGUMENT if configuration is not in available list
+ */
 aditof::Status
 Adsd3500ModeSelector::setConfiguration(const std::string &configuration) {
     aditof::Status status = aditof::Status::OK;
@@ -57,6 +75,17 @@ Adsd3500ModeSelector::setConfiguration(const std::string &configuration) {
     return status;
 }
 
+/**
+ * @brief Retrieves available mode details based on current configuration and imager type.
+ *
+ * Returns a list of available DepthSensorModeDetails for the currently selected configuration
+ * (e.g., "standard") and imager type (ADSD3100, ADSD3030, or ADTF3080). The returned modes
+ * include resolution, phase count, and other sensor-specific parameters.
+ *
+ * @param[out] m_depthSensorModeDetails Vector to be populated with available mode details
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500ModeSelector::getAvailableModeDetails(
     std::vector<DepthSensorModeDetails> &m_depthSensorModeDetails) {
 
@@ -77,6 +106,17 @@ aditof::Status Adsd3500ModeSelector::getAvailableModeDetails(
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Retrieves the configuration table for the currently selected mode.
+ *
+ * Searches the appropriate mode table (based on configuration and imager type) for the
+ * mode matching the current "mode" control value, then returns its full configuration details.
+ *
+ * @param[out] configurationTable DepthSensorModeDetails structure to be populated with mode config
+ *
+ * @return Status::OK if mode is found and configuration returned,
+ *         Status::INVALID_ARGUMENT if mode is not found or imager type is invalid
+ */
 aditof::Status Adsd3500ModeSelector::getConfigurationTable(
     DepthSensorModeDetails &configurationTable) {
 
@@ -113,6 +153,19 @@ aditof::Status Adsd3500ModeSelector::getConfigurationTable(
     return aditof::Status::INVALID_ARGUMENT;
 }
 
+/**
+ * @brief Updates configuration table with driver-specific parameters.
+ *
+ * Matches the base configuration with ADSD3500 driver requirements to populate frame
+ * width/height in bytes and pixel format index. For standard modes, searches m_adsd3500standard
+ * for matching resolution, phases, and bit configuration. For custom modes, calculates dimensions
+ * based on bit configuration. Special handling for PCM modes.
+ *
+ * @param[in,out] configurationTable Configuration to update with driver-specific parameters
+ *
+ * @return Status::OK if configuration is successfully updated,
+ *         Status::INVALID_ARGUMENT if bits combination is invalid
+ */
 aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
     DepthSensorModeDetails &configurationTable) {
 
@@ -171,7 +224,19 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
     return aditof::Status::OK;
 }
 
-//Functions used to set mode, number of bits, pixel format, etc
+/**
+ * @brief Sets a control parameter value.
+ *
+ * Updates the specified control parameter with the given value. Valid controls include:
+ * imagerType, mode, mixedModes, depthBits, abBits, confBits, and inputFormat.
+ * When imagerType is set, automatically updates the mode table in use.
+ *
+ * @param[in] control Name of the control parameter to set
+ * @param[in] value Value to assign to the control
+ *
+ * @return Status::OK if control is valid and set successfully,
+ *         Status::INVALID_ARGUMENT if control name is not recognized
+ */
 aditof::Status Adsd3500ModeSelector::setControl(const std::string &control,
                                                 const std::string &value) {
     using namespace aditof;
@@ -197,6 +262,17 @@ aditof::Status Adsd3500ModeSelector::setControl(const std::string &control,
     return status;
 }
 
+/**
+ * @brief Retrieves a control parameter value.
+ *
+ * Returns the current value of the specified control parameter.
+ *
+ * @param[in] control Name of the control parameter to retrieve
+ * @param[out] value String to receive the control value
+ *
+ * @return Status::OK if control is valid and value returned,
+ *         Status::INVALID_ARGUMENT if control name is not recognized
+ */
 aditof::Status Adsd3500ModeSelector::getControl(const std::string &control,
                                                 std::string &value) {
     using namespace aditof;
@@ -211,12 +287,34 @@ aditof::Status Adsd3500ModeSelector::getControl(const std::string &control,
     return status;
 }
 
+/**
+ * @brief Creates a lookup key string from bit configuration.
+ *
+ * Generates a string key in format "depth_conf_ab" for use in the bits-per-pixel
+ * validation table. Used to validate whether a specific combination of depth, confidence,
+ * and AB bits is supported.
+ *
+ * @param[in] depthbits Number of bits for depth channel
+ * @param[in] confbits Number of bits for confidence channel
+ * @param[in] ABbits Number of bits for AB (amplitude/brightness) channel
+ *
+ * @return String key in format "depth_conf_ab"
+ */
 std::string Adsd3500ModeSelector::make_key(int &depthbits, int &confbits,
                                            int &ABbits) {
     return std::to_string(depthbits) + "_" + std::to_string(confbits) + "_" +
            std::to_string(ABbits);
 }
 
+/**
+ * @brief Initializes the bits-per-pixel validation lookup table.
+ *
+ * Populates m_bitsPerPixelTable with valid combinations of depth, confidence, and AB
+ * bit configurations from m_validbitsperpixel. This table is used to validate custom
+ * mode bit configurations.
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500ModeSelector::init_bitsPerPixelTable() {
     for (auto row : m_validbitsperpixel) {
         m_bitsPerPixelTable[make_key(row.depth_bits, row.conf_bits,

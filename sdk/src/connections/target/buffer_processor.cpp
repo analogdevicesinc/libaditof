@@ -57,6 +57,18 @@ constexpr int THREAD_PRIORITY = 20;
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 
+/**
+ * @brief Wrapper for ioctl that retries on EINTR.
+ *
+ * Repeatedly calls ioctl until it succeeds or fails with an error other than EINTR.
+ * This handles the case where ioctl is interrupted by a signal.
+ *
+ * @param[in] fh File descriptor
+ * @param[in] request ioctl request code
+ * @param[in,out] arg Pointer to ioctl argument structure
+ *
+ * @return ioctl result: 0 on success, -1 on error (with errno set)
+ */
 static int xioctl(int fh, unsigned int request, void *arg) {
     int r;
 
@@ -67,6 +79,13 @@ static int xioctl(int fh, unsigned int request, void *arg) {
     return r;
 }
 
+/**
+ * @brief Constructs a BufferProcessor object.
+ *
+ * Initializes all queues with MAX_QUEUE_SIZE capacity, creates video device structures,
+ * sets initial state flags, and prepares for multi-threaded frame capture and processing.
+ * All buffer pools are empty at construction; they are allocated later via setVideoProperties.
+ */
 BufferProcessor::BufferProcessor()
     : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE),
       m_capture_to_process_Q(MAX_QUEUE_SIZE),
@@ -90,6 +109,13 @@ BufferProcessor::BufferProcessor()
     LOG(INFO) << "BufferProcessor initialized";
 }
 
+/**
+ * @brief Destructor for BufferProcessor.
+ *
+ * Stops worker threads, frees ToFi compute resources (context and config), and closes
+ * the output video device. Thread shutdown drains all queues and ensures ToFi context
+ * pointers are restored before cleanup, preventing use-after-free errors.
+ */
 BufferProcessor::~BufferProcessor() {
     // STEP 1: Stop threads first (this also drains all queues)
     if (!stopThreadsFlag.load(std::memory_order_acquire)) {
@@ -126,6 +152,14 @@ BufferProcessor::~BufferProcessor() {
     }
 }
 
+/**
+ * @brief Opens the output video device.
+ *
+ * Currently returns OK immediately (UVC temporarily disabled). When enabled, opens the
+ * video device, queries capabilities with VIDIOC_QUERYCAP, and retrieves format info.
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on ioctl or open failure
+ */
 aditof::Status BufferProcessor::open() {
     using namespace aditof;
     Status status = Status::OK;
@@ -154,6 +188,16 @@ aditof::Status BufferProcessor::open() {
     return status;
 }
 
+/**
+ * @brief Sets the input video device for frame capture.
+ *
+ * Assigns the V4L2 input device that will be used by captureFrameThread for
+ * acquiring raw frames from the sensor.
+ *
+ * @param[in] inputVideoDev Pointer to the input VideoDev structure
+ *
+ * @return Status::OK on success
+ */
 aditof::Status BufferProcessor::setInputDevice(VideoDev *inputVideoDev) {
     m_inputVideoDev = inputVideoDev;
 
@@ -290,6 +334,22 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     m_tofiBufferSize = depthSize + abSize + confSize;
 }
 
+/**
+ * @brief Initializes ToFi compute library with INI and calibration data.
+ *
+ * Frees any existing ToFi config/context, then calls InitTofiConfig_isp and InitTofiCompute
+ * to set up depth computation for the specified mode. For ISP-enabled operation, uses
+ * XYZ dealias data from calibration. Returns error if initialization fails.
+ *
+ * @param[in] iniFile Pointer to INI file data buffer
+ * @param[in] iniFileLength Length of INI file in bytes
+ * @param[in] calData Pointer to calibration data buffer
+ * @param[in] calDataLength Length of calibration data in bytes
+ * @param[in] mode Frame mode number
+ * @param[in] ispEnabled Whether ISP depth computation is enabled
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR if initialization fails
+ */
 aditof::Status BufferProcessor::setProcessorProperties(
     uint8_t *iniFile, uint16_t iniFileLength, uint8_t *calData,
     uint16_t calDataLength, uint16_t mode, bool ispEnabled) {
@@ -732,6 +792,16 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
     return aditof::Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Waits for a buffer to be available on the V4L2 device using select.
+ *
+ * Blocks on select() with a timeout (SELECT_TIMEOUT_SEC) until the device is ready for reading.
+ * If stopThreadsFlag is set, uses zero timeout to avoid blocking during shutdown.
+ *
+ * @param[in] dev Pointer to VideoDev structure (uses m_inputVideoDev if nullptr)
+ *
+ * @return Status::OK if buffer is ready, Status::GENERIC_ERROR on timeout or select error
+ */
 aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
     fd_set fds;
     struct timeval tv;
@@ -762,6 +832,17 @@ aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
     return status;
 }
 
+/**
+ * @brief Dequeues a buffer from the V4L2 device.
+ *
+ * Calls VIDIOC_DQBUF ioctl to dequeue a filled buffer from the driver. The buffer
+ * contains captured frame data ready for processing.
+ *
+ * @param[out] buf v4l2_buffer structure to receive dequeued buffer info
+ * @param[in] dev Pointer to VideoDev structure (uses m_inputVideoDev if nullptr)
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on ioctl failure or invalid index
+ */
 aditof::Status
 BufferProcessor::dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
                                               struct VideoDev *dev) {
@@ -797,6 +878,19 @@ BufferProcessor::dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
     return status;
 }
 
+/**
+ * @brief Retrieves pointer and size of a dequeued V4L2 buffer.
+ *
+ * Returns a pointer to the mmap'd memory region for the given buffer index and
+ * the actual number of bytes used (from v4l2_buffer.bytesused).
+ *
+ * @param[out] buffer Pointer to receive buffer memory address
+ * @param[out] buf_data_len Variable to receive buffer data length in bytes
+ * @param[in] buf v4l2_buffer structure from dequeue operation
+ * @param[in] dev Pointer to VideoDev structure (uses m_inputVideoDev if nullptr)
+ *
+ * @return Status::OK on success
+ */
 aditof::Status BufferProcessor::getInternalBufferPrivate(
     uint8_t **buffer, uint32_t &buf_data_len, const struct v4l2_buffer &buf,
     struct VideoDev *dev) {
@@ -809,6 +903,17 @@ aditof::Status BufferProcessor::getInternalBufferPrivate(
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Re-queues a buffer to the V4L2 device for reuse.
+ *
+ * Calls VIDIOC_QBUF ioctl to return an empty buffer to the driver queue for
+ * future frame capture. Must be called after processing buffer data.
+ *
+ * @param[in] buf v4l2_buffer structure to re-queue
+ * @param[in] dev Pointer to VideoDev structure (uses m_inputVideoDev if nullptr)
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on ioctl failure
+ */
 aditof::Status
 BufferProcessor::enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
                                               struct VideoDev *dev) {
@@ -824,21 +929,58 @@ BufferProcessor::enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Retrieves the output video device file descriptor.
+ *
+ * Returns the file descriptor for the output video device, which can be used
+ * for direct ioctl calls or monitoring.
+ *
+ * @param[out] fileDescriptor Variable to receive the file descriptor
+ *
+ * @return Status::OK on success
+ */
 aditof::Status BufferProcessor::getDeviceFileDescriptor(int &fileDescriptor) {
     fileDescriptor = m_outputVideoDev->fd;
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Public wrapper for waitForBufferPrivate.
+ *
+ * Waits for a buffer to be available on the default input video device.
+ *
+ * @return Status::OK if buffer is ready, Status::GENERIC_ERROR on error
+ */
 aditof::Status BufferProcessor::waitForBuffer() {
 
     return waitForBufferPrivate();
 }
 
+/**
+ * @brief Public wrapper for dequeueInternalBufferPrivate.
+ *
+ * Dequeues a buffer from the default input video device.
+ *
+ * @param[out] buf v4l2_buffer structure to receive dequeued buffer info
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on error
+ */
 aditof::Status BufferProcessor::dequeueInternalBuffer(struct v4l2_buffer &buf) {
 
     return dequeueInternalBufferPrivate(buf);
 }
 
+/**
+ * @brief Public wrapper for getInternalBufferPrivate.
+ *
+ * Retrieves pointer and size of a dequeued buffer from the default input device.
+ *
+ * @param[out] buffer Pointer to receive buffer memory address
+ * @param[out] buf_data_len Variable to receive buffer data length
+ * @param[in] buf v4l2_buffer structure from dequeue operation
+ *
+ * @return Status::OK on success
+ */
 aditof::Status
 BufferProcessor::getInternalBuffer(uint8_t **buffer, uint32_t &buf_data_len,
                                    const struct v4l2_buffer &buf) {
@@ -846,18 +988,51 @@ BufferProcessor::getInternalBuffer(uint8_t **buffer, uint32_t &buf_data_len,
     return getInternalBufferPrivate(buffer, buf_data_len, buf);
 }
 
+/**
+ * @brief Public wrapper for enqueueInternalBufferPrivate.
+ *
+ * Re-queues a buffer to the default input video device for reuse.
+ *
+ * @param[in] buf v4l2_buffer structure to re-queue
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on error
+ */
 aditof::Status BufferProcessor::enqueueInternalBuffer(struct v4l2_buffer &buf) {
 
     return enqueueInternalBufferPrivate(buf);
 }
 
+/**
+ * @brief Retrieves the ToFi configuration object.
+ *
+ * Returns a pointer to the current ToFi configuration structure, which contains
+ * calibration and mode-specific settings.
+ *
+ * @return Pointer to TofiConfig structure, or nullptr if not initialized
+ */
 TofiConfig *BufferProcessor::getTofiCongfig() const { return m_tofiConfig; }
 
+/**
+ * @brief Retrieves the depth compute library version/type.
+ *
+ * Returns whether the open-source depth compute library is enabled.
+ *
+ * @param[out] enabled Variable to receive enabled status (1 for open-source, 0 for proprietary)
+ *
+ * @return Status::OK on success
+ */
 aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled) const {
     enabled = depthComputeOpenSourceEnabled;
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Starts the capture and processing worker threads.
+ *
+ * Clears stop flag, sets stream running, and launches captureFrameThread and processThread.
+ * The processing thread priority is set to SCHED_FIFO with priority THREAD_PRIORITY for
+ * real-time performance.
+ */
 void BufferProcessor::startThreads() {
     stopThreadsFlag.store(false, std::memory_order_release);
     streamRunning = true;
@@ -871,6 +1046,13 @@ void BufferProcessor::startThreads() {
                           &param);
 }
 
+/**
+ * @brief Stops the capture and processing worker threads.
+ *
+ * Sets stop flag, stops recording if active, waits for queue drainage with 5-second timeout,
+ * joins threads, and flushes remaining frames back to buffer pools. Ensures threads fully
+ * exit before touching any buffers to prevent race conditions.
+ */
 void BufferProcessor::stopThreads() {
     // Signal threads to stop
     stopThreadsFlag.store(true, std::memory_order_release);
@@ -936,6 +1118,19 @@ void BufferProcessor::stopThreads() {
 
 #include "aditof/utils.h"
 
+/**
+ * @brief Starts recording processed frames to a binary file.
+ *
+ * Creates output folder if needed, generates a timestamped filename, opens the output
+ * file stream, writes header parameters, and transitions to recording state. Frames
+ * are written during processThread execution.
+ *
+ * @param[out] fileName String to receive the generated recording file path
+ * @param[in] parameters Pointer to header parameters buffer (written as first frame)
+ * @param[in] paramSize Size of header parameters in bytes
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR if folder creation or file open fails
+ */
 aditof::Status BufferProcessor::startRecording(std::string &fileName,
                                                uint8_t *parameters,
                                                uint32_t paramSize) {
@@ -969,6 +1164,15 @@ aditof::Status BufferProcessor::startRecording(std::string &fileName,
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Stops recording and finalizes the output file.
+ *
+ * Seeks back to the header to write the final frame count (excluding header frame),
+ * then closes the file stream. Logs total frames saved.
+ *
+ * @return Status::OK if file was open and closed successfully,
+ *         Status::GENERIC_ERROR if file stream was not open
+ */
 aditof::Status BufferProcessor::stopRecording() {
 
     using namespace aditof;
@@ -997,6 +1201,17 @@ aditof::Status BufferProcessor::stopRecording() {
     return status;
 }
 
+/**
+ * @brief Writes a frame to the recording file.
+ *
+ * Writes frame marker (0xFFFFFFFF), buffer size, and buffer data to the output stream.
+ * Increments frame count on successful write. Only operates in recording state.
+ *
+ * @param[in] buffer Pointer to frame data to write
+ * @param[in] bufferSize Size of frame data in bytes
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR if not recording or I/O error
+ */
 aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
                                            uint32_t bufferSize) {
     if (m_state != ST_RECORD) {
@@ -1025,6 +1240,15 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
     return aditof::Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Automatically stops recording or playback based on current state.
+ *
+ * Called during shutdown to clean up active recording or playback operations.
+ * Stops recording if in recording state; returns error for playback state.
+ *
+ * @return Status::OK if recording stopped successfully,
+ *         Status::GENERIC_ERROR for playback state or if not recording
+ */
 aditof::Status BufferProcessor::automaticStop() {
     aditof::Status status = aditof::Status::OK;
     if (m_state == ST_PLAYBACK) {

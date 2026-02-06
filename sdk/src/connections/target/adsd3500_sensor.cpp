@@ -151,7 +151,18 @@ struct Adsd3500Sensor::ImplData {
     }
 };
 
-// Should not have duplicated code if possible.
+/**
+ * @brief Wrapper for ioctl that retries on EINTR with validation.
+ *
+ * Repeatedly calls ioctl until it succeeds or fails with an error other than EINTR.
+ * Validates the file descriptor before attempting ioctl calls and retries up to 3 times.
+ *
+ * @param[in] fh File descriptor
+ * @param[in] request ioctl request code
+ * @param[in,out] arg Pointer to ioctl argument structure
+ *
+ * @return ioctl result: 0 on success, -1 on error (with errno set)
+ */
 static int xioctl(int fh, unsigned int request, void *arg) {
     int r;
     int tries = 3;
@@ -181,6 +192,17 @@ static int xioctl(int fh, unsigned int request, void *arg) {
     return r;
 }
 
+/**
+ * @brief Constructs an Adsd3500Sensor object.
+ *
+ * Initializes the ADSD3500 depth sensor with driver paths, creates implementation data,
+ * sets up control parameters, and instantiates the buffer processor. Configures sensor
+ * name, connection type, and available controls for depth, AB, confidence settings.
+ *
+ * @param[in] driverPath Path to the main V4L2 video device driver
+ * @param[in] driverSubPath Path to the sub-device driver
+ * @param[in] captureDev Path to the capture device
+ */
 Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
                                const std::string &driverSubPath,
                                const std::string &captureDev)
@@ -219,6 +241,13 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_bufferProcessor = new BufferProcessor();
 }
 
+/**
+ * @brief Destructor for Adsd3500Sensor.
+ *
+ * Stops streaming if active, unmaps video buffers, closes file descriptors, and
+ * deallocates video device structures and buffer processor. Ensures proper cleanup
+ * of all allocated resources.
+ */
 Adsd3500Sensor::~Adsd3500Sensor() {
     struct VideoDev *dev = nullptr;
 
@@ -280,6 +309,15 @@ Adsd3500Sensor::~Adsd3500Sensor() {
     delete m_bufferProcessor;
 }
 
+/**
+ * @brief Opens the ADSD3500 sensor and initializes V4L2 devices.
+ *
+ * Subscribes to interrupt notifications, opens V4L2 video devices, queries capabilities,
+ * checks for subdevice support, allocates and maps video buffers for MMAP, initializes
+ * buffer processor, and queries ADSD3500 chip information. On first run, enables interrupts.
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on failure
+ */
 aditof::Status Adsd3500Sensor::open() {
     using namespace aditof;
     Status status = Status::OK;
@@ -574,6 +612,14 @@ cleanup_on_open_error:
     return Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Starts video streaming from the ADSD3500 sensor.
+ *
+ * Queues all pre-allocated video buffers to the driver, enables streaming with VIDIOC_STREAMON,
+ * and starts the buffer processor threads for frame capture and processing.
+ *
+ * @return Status::OK on success, Status::BUSY if already started, Status::GENERIC_ERROR on ioctl failure
+ */
 aditof::Status Adsd3500Sensor::start() {
     using namespace aditof;
     Status status = Status::OK;
@@ -617,6 +663,14 @@ aditof::Status Adsd3500Sensor::start() {
     return status;
 }
 
+/**
+ * @brief Stops video streaming from the ADSD3500 sensor.
+ *
+ * Stops buffer processor threads, disables streaming with VIDIOC_STREAMOFF, and marks
+ * devices as stopped. Safe to call even if already stopped.
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on ioctl failure
+ */
 aditof::Status Adsd3500Sensor::stop() {
     using namespace aditof;
     Status status = Status::OK;
@@ -648,6 +702,16 @@ aditof::Status Adsd3500Sensor::stop() {
     return status;
 }
 
+/**
+ * @brief Retrieves available sensor modes from the mode selector.
+ *
+ * Queries the ADSD3500 mode selector for available mode indices and populates the
+ * provided vector with mode numbers.
+ *
+ * @param[out] modes Vector to be filled with available mode numbers
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::getAvailableModes(std::vector<uint8_t> &modes) {
     modes.clear();
     for (const auto &availableMode : m_availableModes) {
@@ -674,6 +738,17 @@ Adsd3500Sensor::getModeDetails(const uint8_t &mode,
     return status;
 }
 
+/**
+ * @brief Sets the sensor operating mode.
+ *
+ * Configures the ADSD3500 sensor with the specified mode, retrieves mode configuration
+ * from the mode selector, updates V4L2 controls for bit configurations, and initializes
+ * video properties and depth compute parameters for the buffer processor.
+ *
+ * @param[in] mode Mode number to set
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on configuration failure
+ */
 aditof::Status Adsd3500Sensor::setMode(const uint8_t &mode) {
     aditof::DepthSensorModeDetails modeTable;
     aditof::Status status = aditof::Status::OK;
@@ -1019,6 +1094,18 @@ cleanup_on_error:
     return status;
 }
 
+/**
+ * @brief Retrieves a processed frame from the buffer processor.
+ *
+ * Gets the next available processed frame containing depth, AB, and confidence data
+ * from the buffer processor's output queue. The frame has been deinterleaved and
+ * processed by the ToFi compute library.
+ *
+ * @param[out] buffer Pointer to buffer to receive frame data
+ * @param[in] index Frame index (currently unused)
+ *
+ * @return Status::OK on success, error status from buffer processor on failure
+ */
 aditof::Status Adsd3500Sensor::getFrame(uint16_t *buffer, uint32_t index) {
 
     using namespace aditof;
@@ -1082,6 +1169,18 @@ Adsd3500Sensor::getAvailableControls(std::vector<std::string> &controls) const {
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Sets a sensor control parameter.
+ *
+ * Updates the specified control parameter value and applies it via V4L2 ioctl or
+ * mode selector. Supports controls like abAveraging, depthEnable, bit configurations,
+ * fps, imagerType, and depth compute settings.
+ *
+ * @param[in] control Name of the control parameter
+ * @param[in] value Value to set for the control
+ *
+ * @return Status::OK on success, Status::INVALID_ARGUMENT if control is unknown
+ */
 aditof::Status Adsd3500Sensor::setControl(const std::string &control,
                                           const std::string &value) {
     using namespace aditof;
@@ -1182,6 +1281,17 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
     return status;
 }
 
+/**
+ * @brief Retrieves a sensor control parameter value.
+ *
+ * Returns the current value of the specified control parameter from the internal
+ * controls map.
+ *
+ * @param[in] control Name of the control parameter
+ * @param[out] value String to receive the control value
+ *
+ * @return Status::OK on success, Status::INVALID_ARGUMENT if control is unknown
+ */
 aditof::Status Adsd3500Sensor::getControl(const std::string &control,
                                           std::string &value) const {
     using namespace aditof;
@@ -1242,17 +1352,47 @@ Adsd3500Sensor::getDetails(aditof::SensorDetails &details) const {
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Retrieves the sensor handle.
+ *
+ * Returns a pointer to the internal implementation data structure.
+ *
+ * @param[out] handle Pointer to receive the sensor handle
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::getHandle(void **handle) {
 
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Retrieves the sensor name.
+ *
+ * Returns the name "adsd3500" identifying this sensor type.
+ *
+ * @param[out] name String to receive the sensor name
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::getName(std::string &name) const {
     name = m_sensorName;
 
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Reads a command from the ADSD3500 ISP.
+ *
+ * Sends a read command to the ADSD3500 via the control buffer, waits for the specified
+ * delay, then reads back the response data from the chip.
+ *
+ * @param[in] cmd Command identifier to read
+ * @param[out] data Pointer to receive command response data
+ * @param[in] usDelay Delay in microseconds after command execution
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on ioctl failure
+ */
 aditof::Status Adsd3500Sensor::adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
                                                  unsigned int usDelay) {
     using namespace aditof;
@@ -1310,6 +1450,18 @@ aditof::Status Adsd3500Sensor::adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
     return status;
 }
 
+/**
+ * @brief Writes a command to the ADSD3500 ISP.
+ *
+ * Sends a write command with data to the ADSD3500 via the control buffer, then waits
+ * for the specified delay to allow the chip to process the command.
+ *
+ * @param[in] cmd Command identifier to write
+ * @param[in] data Command data to write
+ * @param[in] usDelay Delay in microseconds after command execution
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on ioctl failure
+ */
 aditof::Status Adsd3500Sensor::adsd3500_write_cmd(uint16_t cmd, uint16_t data,
                                                   unsigned int usDelay) {
     using namespace aditof;
@@ -1348,6 +1500,18 @@ aditof::Status Adsd3500Sensor::adsd3500_write_cmd(uint16_t cmd, uint16_t data,
     return status;
 }
 
+/**
+ * @brief Reads payload data from ADSD3500 after sending a command.
+ *
+ * Sends a burst read command to the ADSD3500, waits for processing, then reads back
+ * the payload data. Uses burst protocol with header, checksum, and error validation.
+ *
+ * @param[in] cmd Command identifier to execute before reading payload
+ * @param[out] readback_data Pointer to buffer to receive payload data
+ * @param[in] payload_len Length of payload data to read in bytes
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on ioctl failure or checksum error
+ */
 aditof::Status Adsd3500Sensor::adsd3500_read_payload_cmd(uint32_t cmd,
                                                          uint8_t *readback_data,
                                                          uint16_t payload_len) {
@@ -1486,6 +1650,17 @@ aditof::Status Adsd3500Sensor::adsd3500_read_payload_cmd(uint32_t cmd,
     return status;
 }
 
+/**
+ * @brief Reads payload data from ADSD3500 using burst protocol.
+ *
+ * Reads payload data from the ADSD3500 in chunks using the burst protocol. Validates
+ * response headers, handles multi-chunk transfers, and performs checksum verification.
+ *
+ * @param[out] payload Pointer to buffer to receive payload data
+ * @param[in] payload_len Length of payload data to read in bytes
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on read error or validation failure
+ */
 aditof::Status Adsd3500Sensor::adsd3500_read_payload(uint8_t *payload,
                                                      uint16_t payload_len) {
     using namespace aditof;
@@ -1625,6 +1800,17 @@ Adsd3500Sensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
     return status;
 }
 
+/**
+ * @brief Writes payload data to ADSD3500 using burst protocol.
+ *
+ * Writes payload data to the ADSD3500 in chunks using the burst protocol with header,
+ * command, checksum, and payload. Waits for processing delay after write completion.
+ *
+ * @param[in] payload Pointer to payload data to write
+ * @param[in] payload_len Length of payload data in bytes
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on write failure
+ */
 aditof::Status Adsd3500Sensor::adsd3500_write_payload(uint8_t *payload,
                                                       uint16_t payload_len) {
     using namespace aditof;
@@ -1669,6 +1855,13 @@ aditof::Status Adsd3500Sensor::adsd3500_write_payload(uint8_t *payload,
     return status;
 }
 
+/**
+ * @brief Resets the ADSD3500 ISP chip.
+ *
+ * Sends a software reset command to the ADSD3500 ISP and waits for reset completion.
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on reset failure
+ */
 aditof::Status Adsd3500Sensor::adsd3500_reset() {
     using namespace aditof;
     aditof::Status status = aditof::Status::OK;
@@ -1695,6 +1888,14 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     return status;
 }
 
+/**
+ * @brief Gets interrupt status and resets the ADSD3500 interrupt.
+ *
+ * Reads the interrupt status from the ADSD3500 and resets the interrupt flag.
+ * Updates internal chip and imager status variables.
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on read failure
+ */
 aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
     Status status = aditof::Status::OK;
 
@@ -1733,6 +1934,19 @@ aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
     return status;
 }
 
+/**
+ * @brief Initializes depth computation on target with INI and calibration data.
+ *
+ * Stores INI file data and passes it along with calibration data to the buffer processor
+ * for depth compute initialization. Must be called before starting frame capture.
+ *
+ * @param[in] iniFile Pointer to INI file data buffer
+ * @param[in] iniFileLength Length of INI file in bytes
+ * @param[in] calData Pointer to calibration data buffer
+ * @param[in] calDataLength Length of calibration data in bytes
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
                                                       uint16_t iniFileLength,
                                                       uint8_t *calData,
@@ -1760,6 +1974,15 @@ aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Retrieves depth computation parameters.
+ *
+ * Returns the open-source depth compute enabled status from the buffer processor.
+ *
+ * @param[out] params Map to be filled with depth compute parameter key-value pairs
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::getDepthComputeParams(
     std::map<std::string, std::string> &params) {
     TofiConfig *config = m_bufferProcessor->getTofiCongfig();
@@ -1817,6 +2040,15 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
     return status;
 }
 
+/**
+ * @brief Sets depth computation parameters.
+ *
+ * Currently a stub implementation that accepts but does not use parameters.
+ *
+ * @param[in] params Map of depth compute parameter key-value pairs
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::setDepthComputeParams(
     const std::map<std::string, std::string> &params) {
     TofiConfig *config = m_bufferProcessor->getTofiCongfig();
@@ -1866,6 +2098,15 @@ aditof::Status Adsd3500Sensor::setDepthComputeParams(
     return status;
 }
 
+/**
+ * @brief Waits for a buffer to be available on the V4L2 device using select.
+ *
+ * Blocks on select() until the device is ready for reading or timeout occurs.
+ *
+ * @param[in] dev Pointer to VideoDev structure (uses first device if nullptr)
+ *
+ * @return Status::OK if buffer is ready, Status::GENERIC_ERROR on timeout or error
+ */
 aditof::Status Adsd3500Sensor::waitForBufferPrivate(struct VideoDev *dev) {
     fd_set fds;
     struct timeval tv;
@@ -1929,6 +2170,19 @@ Adsd3500Sensor::dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
     return status;
 }
 
+/**
+ * @brief Retrieves pointer and size of a dequeued V4L2 buffer.
+ *
+ * Returns a pointer to the mmap'd memory region for the given buffer index and
+ * the actual number of bytes used.
+ *
+ * @param[out] buffer Pointer to receive buffer memory address
+ * @param[out] buf_data_len Variable to receive buffer data length in bytes
+ * @param[in] buf v4l2_buffer structure from dequeue operation
+ * @param[in] dev Pointer to VideoDev structure (uses first device if nullptr)
+ *
+ * @return Status::OK on success, Status::INVALID_ARGUMENT if buffer index invalid
+ */
 aditof::Status Adsd3500Sensor::getInternalBufferPrivate(
     uint8_t **buffer, uint32_t &buf_data_len, const struct v4l2_buffer &buf,
     struct VideoDev *dev) {
@@ -1956,6 +2210,15 @@ Adsd3500Sensor::enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Retrieves the video device file descriptor.
+ *
+ * Returns the file descriptor for the first video device.
+ *
+ * @param[out] fileDescriptor Variable to receive the file descriptor
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR if device not initialized
+ */
 aditof::Status Adsd3500Sensor::getDeviceFileDescriptor(int &fileDescriptor) {
     using namespace aditof;
     struct VideoDev *dev = &m_implData->videoDevs[0];
@@ -1968,11 +2231,27 @@ aditof::Status Adsd3500Sensor::getDeviceFileDescriptor(int &fileDescriptor) {
     return Status::INVALID_ARGUMENT;
 }
 
+/**
+ * @brief Public wrapper for waitForBufferPrivate.
+ *
+ * Waits for a buffer to be available on the default video device.
+ *
+ * @return Status::OK if buffer is ready, Status::GENERIC_ERROR on error
+ */
 aditof::Status Adsd3500Sensor::waitForBuffer() {
 
     return waitForBufferPrivate();
 }
 
+/**
+ * @brief Public wrapper for buffer dequeue via buffer processor.
+ *
+ * Dequeues a buffer from the buffer processor's internal queue.
+ *
+ * @param[out] buf v4l2_buffer structure to receive dequeued buffer info
+ *
+ * @return Status from buffer processor dequeue operation
+ */
 aditof::Status Adsd3500Sensor::dequeueInternalBuffer(struct v4l2_buffer &buf) {
 
     return dequeueInternalBufferPrivate(buf);
@@ -1985,16 +2264,43 @@ Adsd3500Sensor::getInternalBuffer(uint8_t **buffer, uint32_t &buf_data_len,
     return getInternalBufferPrivate(buffer, buf_data_len, buf);
 }
 
+/**
+ * @brief Public wrapper for buffer enqueue via buffer processor.
+ *
+ * Re-queues a buffer to the buffer processor's internal queue.
+ *
+ * @param[in] buf v4l2_buffer structure to re-queue
+ *
+ * @return Status from buffer processor enqueue operation
+ */
 aditof::Status Adsd3500Sensor::enqueueInternalBuffer(struct v4l2_buffer &buf) {
 
     return enqueueInternalBufferPrivate(buf);
 }
 
+/**
+ * @brief Writes configuration block to ADSD3500 at specified offset.
+ *
+ * Currently a stub implementation that returns OK without action.
+ *
+ * @param[in] offset Offset address for configuration block
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::writeConfigBlock(const uint32_t offset) {
 
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Queries ADSD3500 chip for firmware version and configuration.
+ *
+ * Reads chip ID, firmware version, imager type, reads CCB (Camera Calibration Block)
+ * data including camera intrinsics and mode configurations. Initializes mode selector
+ * with retrieved configuration data.
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on read failure
+ */
 aditof::Status Adsd3500Sensor::queryAdsd3500() {
     using namespace aditof;
     Status status = Status::OK;
@@ -2305,6 +2611,15 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
     return status;
 }
 
+/**
+ * @brief Registers an interrupt callback for ADSD3500 events.
+ *
+ * Adds the provided callback to the list of registered interrupt callbacks.
+ *
+ * @param[in] cb Callback function to register for interrupt events
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::adsd3500_register_interrupt_callback(
     aditof::SensorInterruptCallback &cb) {
     if (Adsd3500InterruptNotifier::getInstance().interruptsAvailable()) {
@@ -2316,6 +2631,15 @@ aditof::Status Adsd3500Sensor::adsd3500_register_interrupt_callback(
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Unregisters an interrupt callback for ADSD3500 events.
+ *
+ * Removes the provided callback from the list of registered interrupt callbacks.
+ *
+ * @param[in] cb Callback function to unregister from interrupt events
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::adsd3500_unregister_interrupt_callback(
     aditof::SensorInterruptCallback &cb) {
 
@@ -2324,6 +2648,16 @@ aditof::Status Adsd3500Sensor::adsd3500_unregister_interrupt_callback(
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Handles ADSD3500 hardware interrupts.
+ *
+ * Called by the interrupt notifier when a hardware interrupt is received. Reads
+ * interrupt status, updates chip/imager status, and invokes all registered callbacks.
+ *
+ * @param[in] signalValue Signal value from the interrupt
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::adsd3500InterruptHandler(int signalValue) {
     uint16_t statusRegister;
     aditof::Status status = aditof::Status::OK;
@@ -2365,6 +2699,17 @@ aditof::Status Adsd3500Sensor::adsd3500InterruptHandler(int signalValue) {
     return status;
 }
 
+/**
+ * @brief Retrieves ADSD3500 chip and imager status.
+ *
+ * Returns the current chip and imager status values stored from the most recent
+ * interrupt or status read.
+ *
+ * @param[out] chipStatus Variable to receive chip status
+ * @param[out] imagerStatus Variable to receive imager status
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::adsd3500_get_status(int &chipStatus,
                                                    int &imagerStatus) {
     using namespace aditof;
@@ -2498,6 +2843,16 @@ aditof::Adsd3500Status Adsd3500Sensor::convertIdToAdsd3500Status(int status) {
     }
 }
 
+/**
+ * @brief Retrieves INI configuration parameters.
+ *
+ * Gets INI parameters via TofiGetINIParams from the buffer processor's ToFi config.
+ *
+ * @param[out] p_config_params Pointer to configuration parameters structure
+ * @param[in] params_group Parameter group identifier
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR if ToFi config unavailable
+ */
 aditof::Status Adsd3500Sensor::getIniParamsImpl(void *p_config_params,
                                                 int params_group,
                                                 const void *p_tofi_cal_config) {
@@ -2515,6 +2870,16 @@ aditof::Status Adsd3500Sensor::getIniParamsImpl(void *p_config_params,
     return status;
 }
 
+/**
+ * @brief Sets INI configuration parameters.
+ *
+ * Sets INI parameters via TofiSetINIParams to the buffer processor's ToFi config.
+ *
+ * @param[in] p_config_params Pointer to configuration parameters structure
+ * @param[in] params_group Parameter group identifier
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR if ToFi config unavailable
+ */
 aditof::Status Adsd3500Sensor::setIniParamsImpl(void *p_config_params,
                                                 int params_group,
                                                 const void *p_tofi_cal_config) {
@@ -2532,6 +2897,17 @@ aditof::Status Adsd3500Sensor::setIniParamsImpl(void *p_config_params,
     return status;
 }
 
+/**
+ * @brief Retrieves default INI parameters for a specific mode.
+ *
+ * Reads the default INI file for the specified mode from the modes directory and
+ * converts it to an INI structure.
+ *
+ * @param[in] mode Mode number to retrieve default parameters for
+ * @param[out] iniParams INI structure to populate with default parameters
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR if file read or parse fails
+ */
 aditof::Status Adsd3500Sensor::getDefaultIniParamsForMode(
     const std::string &imager, const std::string &mode,
     std::map<std::string, std::string> &params) {
@@ -2600,6 +2976,16 @@ Adsd3500Sensor::mergeIniParams(std::vector<iniFileStruct> &iniFileStructList) {
     return Status::OK;
 }
 
+/**
+ * @brief Converts INI parameters between structure and string formats.
+ *
+ * Converts an INI file structure to a string representation.
+ *
+ * @param[in] iniStruct INI structure containing parameters
+ * @param[out] iniString String to receive INI content
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::convertIniParams(iniFileStruct &iniStruct,
                                                 std::string &inistr) {
 
@@ -2611,6 +2997,16 @@ aditof::Status Adsd3500Sensor::convertIniParams(iniFileStruct &iniStruct,
     return Status::OK;
 }
 
+/**
+ * @brief Retrieves INI parameters as a string array for a specific mode.
+ *
+ * Gets the default INI parameters for the mode and converts them to string format.
+ *
+ * @param[in] mode Mode number to retrieve INI parameters for
+ * @param[out] iniStr String to receive INI parameters
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on failure
+ */
 aditof::Status Adsd3500Sensor::getIniParamsArrayForMode(int mode,
                                                         std::string &iniStr) {
     std::string modestr = std::to_string(mode);
@@ -2639,6 +3035,18 @@ aditof::Status Adsd3500Sensor::getIniParamsArrayForMode(int mode,
 }
 #pragma region Stream_Recording_and_Playback
 
+/**
+ * @brief Starts recording frames to a file.
+ *
+ * Delegates to the buffer processor's startRecording method to begin recording
+ * processed frames to a binary file.
+ *
+ * @param[out] fileName String to receive the generated recording file path
+ * @param[in] parameters Pointer to header parameters buffer
+ * @param[in] paramSize Size of header parameters in bytes
+ *
+ * @return Status from buffer processor startRecording
+ */
 aditof::Status Adsd3500Sensor::startRecording(std::string &fileName,
                                               uint8_t *parameters,
                                               uint32_t paramSize) {
@@ -2652,6 +3060,14 @@ aditof::Status Adsd3500Sensor::startRecording(std::string &fileName,
     return status;
 }
 
+/**
+ * @brief Stops recording frames.
+ *
+ * Delegates to the buffer processor's stopRecording method to finalize and close
+ * the recording file.
+ *
+ * @return Status from buffer processor stopRecording
+ */
 aditof::Status Adsd3500Sensor::stopRecording() {
 
     using namespace aditof;
@@ -2663,27 +3079,73 @@ aditof::Status Adsd3500Sensor::stopRecording() {
     return status;
 }
 
+/**
+ * @brief Sets the playback file for offline replay.
+ *
+ * Currently returns unavailable as playback is not supported on target sensors.
+ *
+ * @param[in] filePath Path to the playback file
+ *
+ * @return Status::UNAVAILABLE (playback not supported on target)
+ */
 aditof::Status Adsd3500Sensor::setPlaybackFile(const std::string filePath) {
 
     return aditof::Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Stops playback.
+ *
+ * Currently returns unavailable as playback is not supported on target sensors.
+ *
+ * @return Status::UNAVAILABLE (playback not supported on target)
+ */
 aditof::Status Adsd3500Sensor::stopPlayback() {
 
     return aditof::Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Retrieves the frame count from playback file.
+ *
+ * Currently returns unavailable as playback is not supported on target sensors.
+ *
+ * @param[out] frameCount Variable to receive frame count
+ *
+ * @return Status::UNAVAILABLE (playback not supported on target)
+ */
 aditof::Status Adsd3500Sensor::getFrameCount(uint32_t &frameCount) {
     frameCount = m_frameIndex.size();
 
     return aditof::Status::OK;
 }
 
+/**
+ * @brief Retrieves the header from playback file.
+ *
+ * Currently returns unavailable as playback is not supported on target sensors.
+ *
+ * @param[out] buffer Pointer to buffer to receive header data
+ * @param[in] bufferSize Size of the buffer in bytes
+ *
+ * @return Status::UNAVAILABLE (playback not supported on target)
+ */
 aditof::Status Adsd3500Sensor::getHeader(uint8_t *buffer, uint32_t bufferSize) {
 
     return aditof::Status::GENERIC_ERROR;
 }
 
+/**
+ * @brief Reads a frame from playback file.
+ *
+ * Currently returns unavailable as playback is not supported on target sensors.
+ *
+ * @param[out] buffer Pointer to buffer to receive frame data
+ * @param[in,out] bufferSize On input: buffer size; on output: actual size read
+ * @param[in] index Frame index to read
+ *
+ * @return Status::UNAVAILABLE (playback not supported on target)
+ */
 aditof::Status Adsd3500Sensor::readFrame(uint8_t *buffer, uint32_t &bufferSize,
                                          uint32_t index) {
 

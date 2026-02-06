@@ -31,10 +31,30 @@
 #include <unistd.h>
 
 using namespace aditof;
+
+/**
+ * @brief Constructs a Gpio object for a specific GPIO line.
+ *
+ * Initializes the GPIO interface with the character device path and GPIO line number.
+ * The GPIO must be opened (openForRead or openForWrite) before use.
+ *
+ * @param[in] charDeviceName Path to the GPIO character device (e.g., "/dev/gpiochip0")
+ * @param[in] gpioNumber GPIO line number (offset) within the chip
+ */
 Gpio::Gpio(const std::string &charDeviceName, int gpioNumber)
     : m_charDevName{charDeviceName}, m_lineHandle{-1},
       m_gpioNumber(gpioNumber) {}
 
+/**
+ * @brief Opens the GPIO line with the specified access mode.
+ *
+ * Opens the GPIO character device and requests a line handle with the specified flags
+ * (input or output). Uses ioctl GPIO_GET_LINEHANDLE_IOCTL to obtain the line handle.
+ *
+ * @param[in] openType GPIO handle request flags (GPIOHANDLE_REQUEST_INPUT or GPIOHANDLE_REQUEST_OUTPUT)
+ *
+ * @return 0 on success, errno on failure
+ */
 int Gpio::open(int openType) {
     int ret;
     int fd;
@@ -60,10 +80,32 @@ int Gpio::open(int openType) {
     return ret;
 }
 
+/**
+ * @brief Opens the GPIO line for output (write) operations.
+ *
+ * Convenience method that opens the GPIO with GPIOHANDLE_REQUEST_OUTPUT flag.
+ *
+ * @return 0 on success, errno on failure
+ */
 int Gpio::openForWrite() { return this->open(GPIOHANDLE_REQUEST_OUTPUT); }
 
+/**
+ * @brief Opens the GPIO line for input (read) operations.
+ *
+ * Convenience method that opens the GPIO with GPIOHANDLE_REQUEST_INPUT flag.
+ *
+ * @return 0 on success, errno on failure
+ */
 int Gpio::openForRead() { return this->open(GPIOHANDLE_REQUEST_INPUT); }
 
+/**
+ * @brief Closes the GPIO line handle.
+ *
+ * Releases the GPIO line handle obtained during open. After closing, the GPIO
+ * must be reopened before it can be used again.
+ *
+ * @return 0 on success, error code on failure
+ */
 int Gpio::close() {
     int ret = 0;
 
@@ -75,6 +117,16 @@ int Gpio::close() {
     return ret;
 }
 
+/**
+ * @brief Reads the current value of the GPIO line.
+ *
+ * Reads the logic level of the GPIO line using ioctl GPIOHANDLE_GET_LINE_VALUES_IOCTL.
+ * The GPIO must be opened for reading before calling this function.
+ *
+ * @param[out] value Variable to receive the GPIO value (0 for low, 1 for high)
+ *
+ * @return 0 on success, -EBADFD if GPIO not initialized, errno on ioctl failure
+ */
 int Gpio::readValue(int &value) {
     struct gpiohandle_data data;
     int ret;
@@ -94,6 +146,16 @@ int Gpio::readValue(int &value) {
     return ret;
 }
 
+/**
+ * @brief Writes a value to the GPIO line.
+ *
+ * Sets the logic level of the GPIO line using ioctl GPIOHANDLE_SET_LINE_VALUES_IOCTL.
+ * The GPIO must be opened for writing before calling this function.
+ *
+ * @param[in] value GPIO value to write (0 for low, 1 for high)
+ *
+ * @return 0 on success, -EBADFD if GPIO not initialized, errno on ioctl failure
+ */
 int Gpio::writeValue(int value) {
     struct gpiohandle_data data;
     int ret;
