@@ -251,8 +251,9 @@ aditof::Status BufferProcessor::setVideoProperties(
     m_outputFrameWidth = frameWidth;
     m_outputFrameHeight = frameHeight;
 
-    m_rawFrameBufferSize = aditof::platform::Platform::getInstance()
-                               .calculateBufferSize(WidthInBytes, HeightInBytes);
+    m_rawFrameBufferSize =
+        aditof::platform::Platform::getInstance().calculateBufferSize(
+            WidthInBytes, HeightInBytes);
 
     {
         LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE

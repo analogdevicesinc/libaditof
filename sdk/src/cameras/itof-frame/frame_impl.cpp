@@ -35,9 +35,12 @@
 static const int skMetaDataBytesCount = 128;
 
 struct FrameImpl::ImplData {
-    std::unordered_map<std::string, uint16_t *> m_dataLocations;
-    std::shared_ptr<uint16_t[]> m_allData;
-    size_t allDataNbBytes;
+    std::unordered_map<std::string, uint16_t *>
+        m_dataLocations; /**< Map of frame data type names to pointers within m_allData buffer */
+    std::shared_ptr<uint16_t[]>
+        m_allData; /**< Consolidated heap buffer containing depth, AB, and confidence data */
+    size_t
+        allDataNbBytes; /**< Total size in bytes of m_allData (W*H*8 for depth+AB+confidence) */
 };
 
 /**

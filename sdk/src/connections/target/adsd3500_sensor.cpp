@@ -134,14 +134,17 @@ enum class CCBVersion {
 };
 
 struct Adsd3500Sensor::ImplData {
-    uint8_t numVideoDevs;
-    struct VideoDev *videoDevs;
-    aditof::DepthSensorModeDetails modeDetails;
-    std::unordered_map<std::string, __u32> controlsCommands;
-    SensorImagerType imagerType;
-    CCBVersion ccbVersion;
-    std::string fw_ver;
-    std::array<uint8_t, ADSD3500_CTRL_PACKET_SIZE> ctrlBuf;
+    uint8_t numVideoDevs; /**< Number of V4L2 video devices for this sensor */
+    struct VideoDev *videoDevs; /**< Array of V4L2 video device descriptors */
+    aditof::DepthSensorModeDetails
+        modeDetails; /**< Current frame mode details and capabilities */
+    std::unordered_map<std::string, __u32>
+        controlsCommands; /**< Map of V4L2 control command names to IDs */
+    SensorImagerType imagerType; /**< Type of ADTF3175D imager (detector) */
+    CCBVersion ccbVersion; /**< CCB (Camera Control Board) firmware version */
+    std::string fw_ver;    /**< ISP firmware version string */
+    std::array<uint8_t, ADSD3500_CTRL_PACKET_SIZE>
+        ctrlBuf; /**< Buffer for ISP control commands and responses */
 
     ImplData()
         : numVideoDevs(1),

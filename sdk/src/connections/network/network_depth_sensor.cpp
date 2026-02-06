@@ -34,12 +34,16 @@ struct CalibrationData {
     uint16_t *cache;
 };
 struct NetworkDepthSensor::ImplData {
-    NetworkHandle handle;
-    std::string ip;
-    aditof::DepthSensorModeDetails modeDetailsCache;
-    std::unordered_map<std::string, CalibrationData> calibration_cache;
-    bool opened;
-    Network::InterruptNotificationCallback cb;
+    NetworkHandle
+        handle; /**< Connection handle to remote depth sensor over network */
+    std::string ip; /**< IP address of the remote sensor */
+    aditof::DepthSensorModeDetails
+        modeDetailsCache; /**< Cached mode details retrieved from remote sensor */
+    std::unordered_map<std::string, CalibrationData>
+        calibration_cache; /**< Cache of calibration data per frame mode */
+    bool opened; /**< Flag indicating whether connection to sensor is open */
+    Network::InterruptNotificationCallback
+        cb; /**< Interrupt notification callback registered with network connection */
 };
 
 int NetworkDepthSensor::frame_size = 0;
