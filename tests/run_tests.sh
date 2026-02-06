@@ -169,7 +169,7 @@ SCRIPT_EOF
 
 # Use pushd/popd to return automatically, and print results path on exit
 pushd "$script_dir/docker" > /dev/null
-trap 'exec 1>&3 2>&4;print_results_path;[[ "$force_cleanup" == "true" ]] && ./cleanup.sh > /dev/null; popd > /dev/null;' EXIT
+trap 'exec 1>&3 2>&4;print_results_path;[[ "$force_cleanup" == "true" ]] && ./container_delete.sh > /dev/null; popd > /dev/null;' EXIT
 
 # Save original stdout and stderr
 exec 3>&1 4>&2
@@ -185,11 +185,11 @@ if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 || [[ "$force_build" == "
 		printf '%s\n' "Force build requested, rebuilding Docker container..."
 	fi
 	# Cleanup previous artifacts
-	./cleanup.sh
+	./container_delete.sh
 
-	# Build the container (compilation happens inside build.sh)
+	# Build the container (compilation happens inside container_build.sh )
 	set +e
-	./build.sh -l ~/dev/libs/ --repo "$repo"
+	./container_build.sh  -l ~/dev/libs/ --repo "$repo"
 	BUILD_RC=$?
 	set -e
 else
@@ -214,5 +214,5 @@ exec 1>&3 2>&4
 exec > >(tee -a "$script_log_libaditof") 2>&1
 
 # If build succeeded, run tests
-printf '%b\n' "Test executing: ./run_tests.sh -f ${csv_file} -o ${output_path} -n ${repeat_count}\n"
-./run_tests.sh -f "$csv_file" -o ${output_path} -n ${repeat_count}
+printf '%b\n' "Test executing: ./container_run_tests.sh -f ${csv_file} -o ${output_path} -n ${repeat_count}\n"
+./container_run_tests.sh -f "$csv_file" -o ${output_path} -n ${repeat_count}

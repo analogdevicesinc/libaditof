@@ -1,29 +1,37 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -euxo pipefail
 
 # Script to clone, build, and run full test suite for libaditof
-# Usage: ./run_test_suite.sh branch_or_tag output_dir csv1 [csv2] [csv3] ...
+# Usage: ./run_test_suite.sh repo_name branch_or_tag output_dir csv1 [csv2] [csv3] ...
 
 # Check minimum arguments
 if [ $# -lt 3 ]; then
     printf '%s\n' "Error: Insufficient arguments."
-    printf '%s\n' "Usage: $0 branch_or_tag output_dir csv1 [csv2] [csv3] ..."
-    printf '%s\n' "Example: $0 gtest-integration ~/Documents test_csvs/test_set_1.csv test_csvs/test_set_2.csv"
+    printf '%s\n' "Usage: $0 repo_name branch_or_tag output_dir csv1 [csv2] [csv3] ..."
+    printf '%s\n' "Example: $0 libaditof gtest-integration ~/Documents test_csvs/test_set_1.csv test_csvs/test_set_2.csv"
     exit 1
 fi
 
 # Parse arguments
-BRANCH="$1"
-OUTPUT_DIR="$2"
-REPO_URL="https://github.com/analogdevicesinc/libaditof"
+REPO="$1"
+BRANCH="$2"
+OUTPUT_DIR="$3"
+REPO_URL="https://github.com/analogdevicesinc/${REPO}.git"
+
+# Validate repo value
+if [ "$REPO" != "adcam" ] && [ "$REPO" != "libaditof" ]; then
+    echo "Error: invalid repository name '$REPO'. Must be either 'adcam' or 'libaditof'."
+    echo "Use -h or --help for usage information"
+    exit 1
+fi
 
 # Create working directory name with branch and random number
 BRANCH_SAFE="${BRANCH//\//_}"  # Replace / with _
 RANDOM_NUM="$RANDOM"
-WORK_DIR="${WORK_DIR:-/tmp/libaditof_${BRANCH_SAFE}_${RANDOM_NUM}}"
+WORK_DIR="${WORK_DIR:-/tmp/${REPO}_${BRANCH_SAFE}_${RANDOM_NUM}}"
 
 # Shift to get CSV files from remaining arguments
-shift 2
+shift 3
 CSV_FILES=("$@")
 
 # Save original directory to return to later
@@ -85,15 +93,15 @@ for i in "${!CSV_FILES[@]}"; do
     if [ $i -eq 0 ]; then
         # First CSV: build container
         printf '%b\n' "${GREEN}Running test set $test_num (building container): $csv_file${NC}"
-        ./start_tests.sh -f "$csv_file" -o "$OUTPUT_DIR" -b
+        ./run_tests.sh -f "$csv_file" -o "$OUTPUT_DIR" -b --repo "$REPO"
     elif [ $i -eq $((${#CSV_FILES[@]} - 1)) ]; then
         # Last CSV: reuse container and cleanup after
         printf '%b\n' "${GREEN}Running test set $test_num (reusing container, cleanup after): $csv_file${NC}"
-        ./start_tests.sh -f "$csv_file" -o "$OUTPUT_DIR" -c
+        ./run_tests.sh -f "$csv_file" -o "$OUTPUT_DIR" -c --repo "$REPO"
     else
         # Middle CSVs: reuse container
         printf '%b\n' "${GREEN}Running test set $test_num (reusing container): $csv_file${NC}"
-        ./start_tests.sh -f "$csv_file" -o "$OUTPUT_DIR"
+        ./run_tests.sh.sh -f "$csv_file" -o "$OUTPUT_DIR" --repo "$REPO"
     fi
 done
 

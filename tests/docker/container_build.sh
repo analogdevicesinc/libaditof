@@ -22,7 +22,7 @@ Build a Docker container to test ADCAM repository build in a clean environment.
 
 Options:
     -h, --help          Show this help message
-    -r, --repo NAME     Repository name: 'adcam' or 'libaditof' (required)
+    --repo NAME         Repository name: 'adcam' or 'libaditof' (required)
     -j, --jobs N        Number of parallel build jobs (default: 6)
     -t, --tag NAME      Docker image tag name (default: adcam-build-test)
     -l, --libs PATH     Path to libs folder to copy into container (required)
@@ -30,10 +30,10 @@ Options:
     --no-cache          Build without using Docker cache
 
 Examples:
-    $0 -r adcam -l /path/to/libs                     # Build ADCAM repository
-    $0 -r libaditof -l /path/to/libs                 # Build libaditof repository
-    $0 -r adcam -j 4 -l /path/to/libs                # Build with 4 parallel jobs
-    $0 -r libaditof --no-cache -l /path/to/libs      # Force clean build
+    $0 --repo adcam -l /path/to/libs                     # Build ADCAM repository
+    $0 --repo libaditof -l /path/to/libs                 # Build libaditof repository
+    $0 --repo adcam -j 4 -l /path/to/libs                # Build with 4 parallel jobs
+    $0 --repo libaditof --no-cache -l /path/to/libs      # Force clean build
 
 The build output is saved to build_output.log
 EOF
@@ -53,7 +53,7 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             show_help
             ;;
-        -r|--repo)
+        --repo)
             REPO="$2"
             shift 2
             ;;
@@ -90,7 +90,7 @@ done
 
 # Check if repo is specified
 if [ -z "$REPO" ]; then
-    echo "Error: repository name is required. Use -r or --repo to specify 'adcam' or 'libaditof'."
+    echo "Error: repository name is required. Use --repo to specify 'adcam' or 'libaditof'."
     echo "Use -h or --help for usage information"
     exit 1
 fi
