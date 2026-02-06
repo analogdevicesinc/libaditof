@@ -36,6 +36,21 @@
 using namespace std;
 using namespace aditof;
 
+/**
+ * @brief Parses an INI configuration file and extracts key-value pairs.
+ *
+ * Reads the specified INI file and parses it line by line, extracting key-value
+ * pairs in the format "key=value". Each line is expected to contain one key-value
+ * pair separated by an equals sign. Lines with unexpected format or missing values
+ * are logged as warnings and skipped. The resulting map is cleared before parsing.
+ *
+ * @param iniFileName The path to the INI file to parse.
+ * @param iniKeyValPairs Output map where parsed key-value pairs will be stored.
+ *                       The map is cleared at the beginning of the function.
+ * @return Status::OK on success, Status::UNREACHABLE if the file cannot be opened.
+ *
+ * @note Lines without an equals sign or with empty values are skipped with warnings.
+ */
 Status UtilsIni::getKeyValuePairsFromIni(const string &iniFileName,
                                          map<string, string> &iniKeyValPairs) {
 
@@ -69,6 +84,22 @@ Status UtilsIni::getKeyValuePairsFromIni(const string &iniFileName,
     return Status::OK;
 }
 
+/**
+ * @brief Parses an INI-formatted string and extracts key-value pairs.
+ *
+ * Processes the provided string as if it were INI file content, parsing it
+ * line by line to extract key-value pairs in the format "key=value". Lines
+ * are delimited by newline characters. Lines with unexpected format or missing
+ * values are logged as warnings and skipped. The resulting map is cleared
+ * before parsing.
+ *
+ * @param iniStr The INI-formatted string to parse (lines separated by '\n').
+ * @param iniKeyValPairs Output map where parsed key-value pairs will be stored.
+ *                       The map is cleared at the beginning of the function.
+ * @return Status::OK on success (no failure conditions in current implementation).
+ *
+ * @note Lines without an equals sign or with empty values are skipped with warnings.
+ */
 Status UtilsIni::getKeyValuePairsFromString(
     const std::string &iniStr,
     std::map<std::string, std::string> &iniKeyValPairs) {

@@ -38,6 +38,22 @@
 
 using namespace aditof;
 
+/**
+ * @brief Internal helper function to construct Camera objects from enumerated sensors.
+ *
+ * Takes a sensor enumerator that has already discovered depth sensors, retrieves
+ * the sensor list along with version information (U-Boot, kernel, SD card), and
+ * constructs a Camera object for each discovered sensor. Each Camera is an instance
+ * of CameraItof configured with the depth sensor and version metadata.
+ *
+ * @param enumerator A unique_ptr to a SensorEnumeratorInterface that has completed
+ *                   sensor discovery.
+ * @param netLinkTest Optional network link test string for network-based cameras
+ *                    (e.g., "network_test_param"). Defaults to empty string.
+ * @return A vector of shared_ptr<Camera> objects representing all discovered cameras.
+ *
+ * @note This is a static helper function used internally by SystemImpl methods.
+ */
 static std::vector<std::shared_ptr<Camera>>
 buildCameras(std::unique_ptr<SensorEnumeratorInterface> enumerator,
              const std::string &netLinkTest = {}) {
@@ -62,10 +78,42 @@ buildCameras(std::unique_ptr<SensorEnumeratorInterface> enumerator,
     return cameras;
 }
 
+/**
+ * @brief Default constructor for SystemImpl.
+ *
+ * Initializes the System implementation object. The System class is responsible
+ * for discovering and enumerating ToF cameras on the current platform or network.
+ */
 SystemImpl::SystemImpl() {}
 
+/**
+ * @brief Destructor for SystemImpl.
+ *
+ * Cleans up the System implementation object and releases any resources.
+ */
 SystemImpl::~SystemImpl() = default;
 
+/**
+ * @brief Retrieves a list of available cameras based on the specified URI.
+ *
+ * Discovers and enumerates ToF cameras accessible via different methods:
+ * - Local/target cameras (when built with ON_TARGET flag)
+ * - Network cameras (URI format: "ip:<address>[:port]")
+ * - Offline/replay cameras (URI format: "offline:<path>")
+ *
+ * The function creates the appropriate sensor enumerator based on the URI scheme,
+ * searches for sensors, and builds Camera objects for each discovered device.
+ * Also logs the ZMQ version when network support is enabled.
+ *
+ * @param cameraList Output vector where discovered Camera objects will be stored.
+ *                   The vector is cleared before populating.
+ * @param uri Connection URI specifying how to discover cameras:
+ *            - Empty or no prefix: local/target cameras (if ON_TARGET defined)
+ *            - "ip:<address>[:port]": network cameras at the specified IP
+ *            - "offline:<path>": offline replay from recorded data
+ * @return Status::OK on success, Status::GENERIC_ERROR if enumeration fails or
+ *         the requested mode is not supported.
+ */
 Status
 SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
                           const std::string &uri) const {
@@ -131,6 +179,24 @@ SystemImpl::getCameraList(std::vector<std::shared_ptr<Camera>> &cameraList,
     return Status::OK;
 }
 
+/**
+ * @brief Retrieves a list of cameras accessible at a specific IP address.
+ *
+ * Creates a network sensor enumerator to discover ToF cameras running on a remote
+ * target device at the specified IP address. The IP address can optionally include
+ * a network link test parameter separated by a colon (e.g., "192.168.1.100:test").
+ * This method is used internally by getCameraList() when an "ip:" URI is provided.
+ *
+ * @param cameraList Output vector where discovered Camera objects will be stored.
+ * @param ip The IP address of the remote device, optionally followed by ":" and
+ *           a network link test parameter (e.g., "192.168.1.100" or
+ *           "192.168.1.100:network_test").
+ * @return Status::OK on success, Status::GENERIC_ERROR if the network interface is
+ *         not enabled or if sensor discovery fails.
+ *
+ * @note Requires HAS_NETWORK to be defined at build time. Logs a warning if called
+ *       when network support is disabled.
+ */
 Status
 SystemImpl::getCameraListAtIp(std::vector<std::shared_ptr<Camera>> &cameraList,
                               const std::string &ip) const {
