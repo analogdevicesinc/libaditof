@@ -44,7 +44,7 @@ while [[ $# -gt 0 ]]; do
             printf '%s\n' "  -f, --file CSV_FILE    CSV test list file (required)"
             printf '%s\n' "  -o, --output PATH      Output folder for final results script (required)"
             printf '%s\n' "  -r, --repeat COUNT     Number of times to run tests (default: 1)"
-            printf '%s\n' "......--repo NAME        Repository name: 'adcam' or 'libaditof' (required)"
+            printf '%s\n' "      --repo NAME        Repository name: 'adcam' or 'libaditof' (required)"
             printf '%s\n' "  -b, --build            Force rebuild of Docker container even if it exists"
             printf '%s\n' "  -c, --cleanup          Force cleanup of Docker container on exit"
             printf '%s\n' "  -h, --help             Show this help message"
