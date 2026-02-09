@@ -62,15 +62,12 @@ std::string detectRpiMediaDevice();
  * @param mediaDevice Media device path (e.g., "/dev/media3")
  * @return Sensor entity name (e.g., "adsd3500 10-0038"), or empty string if not found
  */
-std::string detectSensorEntity(const std::string& mediaDevice);
+std::string detectSensorEntity(const std::string &mediaDevice);
 
-bool configureMediaPipeline(
-    const std::string& mediaDevice,
-    const std::string& videoDevice,
-    const std::string& sensorEntity,
-    int width,
-    int height,
-    int bitDepth);
+bool configureMediaPipeline(const std::string &mediaDevice,
+                            const std::string &videoDevice,
+                            const std::string &sensorEntity, int width,
+                            int height, int bitDepth);
 
 } // namespace rpi
 } // namespace platform
