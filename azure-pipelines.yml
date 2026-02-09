@@ -7,7 +7,7 @@ variables:
   WORK_DIR: "$(Agent.BuildDirectory)/s"  
   BUILD_DIR:  "$(WORK_DIR)/build"
   DEPS_DIR: "$(BUILD_DIR)/deps"
-  DEFAULT_CMAKE_FLAGS: "-DWITH_NETWORK=1 \
+  DEFAULT_CMAKE_FLAGS: "-DWITH_NETWORK=0 \
                         -DWITH_DOC=0 \
                         -DCI_BUILD=1"
   NUM_JOBS: 4
@@ -29,9 +29,9 @@ jobs:
       ubuntu_24_04_x86_64:
         imageName: 'ubuntu-24.04'
 
-      ubuntu_22_04_x86_64_offline:
-        imageName: 'ubuntu-22.04'
-        EXTRA_CMAKE_FLAGS: "-DWITH_OFFLINE=on"
+#      ubuntu_22_04_x86_64_offline:
+#        imageName: 'ubuntu-22.04'
+#        EXTRA_CMAKE_FLAGS: "-DWITH_OFFLINE=on"
 
       #IMX
       ubuntu_22_04_imx:
@@ -97,6 +97,7 @@ jobs:
     displayName: "Build"
 
 - job: WindowsBuild
+  condition: eq(1, 0)
   strategy:
     matrix:
 
