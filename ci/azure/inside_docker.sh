@@ -1,11 +1,11 @@
 #!/bin/bash
 git config --global --add safe.directory /libaditof
-git config --global --add safe.directory /libaditof/dependencies/third-party/protobuf
-git config --global --add safe.directory /libaditof/dependencies/third-party/benchmark
-git config --global --add safe.directory /libaditof/dependencies/third-party/googletest
-git config --global --add safe.directory /libaditof/dependencies/third-party/libzmq
-git config --global --add safe.directory /libaditof/dependencies/third-party/cppzmq
-git config --global --add safe.directory /libaditof/dependencies/third-party/gtest
+#git config --global --add safe.directory /libaditof/dependencies/third-party/protobuf
+#git config --global --add safe.directory /libaditof/dependencies/third-party/benchmark
+#git config --global --add safe.directory /libaditof/dependencies/third-party/googletest
+#git config --global --add safe.directory /libaditof/dependencies/third-party/libzmq
+#git config --global --add safe.directory /libaditof/dependencies/third-party/cppzmq
+#git config --global --add safe.directory /libaditof/dependencies/third-party/gtest
 
 project_dir=$1
 pushd ${project_dir}
