@@ -122,9 +122,33 @@ if [[ ! -f "$input_file" ]]; then
     exit 1
 fi
 
+# Check if docker-compose is available
+if ! command -v docker-compose &> /dev/null && ! command -v docker &> /dev/null; then
+    printf '%b\n' "${RED}Error:${RESET} docker-compose or docker not found."
+    printf '%b\n' "Please install docker-compose:"
+    printf '%b\n' "  sudo curl -L \"https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-\$(uname -s)-\$(uname -m)\" -o /usr/local/bin/docker-compose"
+    printf '%b\n' "  sudo chmod +x /usr/local/bin/docker-compose"
+    printf '\n'
+    printf '%b\n' "Or use Docker Compose V2 (built into Docker):"
+    printf '%b\n' "  docker compose version"
+    exit 1
+fi
+
+# Determine which compose command to use
+if command -v docker &> /dev/null && docker compose version &> /dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+else
+    printf '%b\n' "${RED}Error:${RESET} No docker compose found."
+    exit 1
+fi
+
 # Create output directory and setup logging
 if [[ -n "$output_path" ]]; then
     mkdir -p "$output_path"
+    # Convert to absolute path for Docker volume mounting
+    output_path=$(cd "$output_path" && pwd)
 fi
 
 TESTS_TOTAL=0
@@ -153,11 +177,19 @@ for i in $(seq 1 "$repeat_count"); do
             fi
         else
             mkdir -p "${output_path}/test_${testid}/run_${i}"
+            chmod -R 755 "${output_path}/test_${testid}" 2>/dev/null || true
 
             REMOTE_FOLDER="/out/test_${testid}/run_${i}"
             LOCAL_DIR="${output_path}/test_${testid}/run_${i}"
             FOLDER_MAPPING="${LOCAL_DIR}:${REMOTE_FOLDER}"
             LOGPATH="${LOCAL_DIR}/result.log"
+
+            # Ensure log file is writable
+            touch "$LOGPATH" 2>/dev/null || {
+                printf '%b\n' "${RED}Failed: Cannot create log file ${LOGPATH}${RESET}"
+                ((TESTS_FAILED++))
+                continue
+            }
 
             # Print the initial "Processing" text without a newline, per run
             printf '%s' "${testid},${testname},${testparameters},run_${i},"
@@ -165,7 +197,7 @@ for i in $(seq 1 "$repeat_count"); do
 
             # Prevent docker-compose from reading the loop's stdin by redirecting it from /dev/null.
             # Capture exit code so the script doesn't unexpectedly exit if you have set -e.
-            docker-compose run --rm -T \
+            $COMPOSE_CMD run --rm -T \
                 -v "$FOLDER_MAPPING" \
                 -w "$REMOTE_FOLDER" \
                 aditof /workspace/libaditof/build/tests/sdk/bin/"$testname" $testparameters \

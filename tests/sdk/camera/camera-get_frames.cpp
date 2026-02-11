@@ -1,7 +1,10 @@
+
+#include <aditof/frame_handler.h>
+
 #include <aditof/camera.h>
 #include <aditof/camera_definitions.h>
 #include <aditof/frame.h>
-#include <aditof/frame_handler.h>
+#include <aditof/camera_definitions.h>
 #include <aditof/status_definitions.h>
 #include <aditof/system.h>
 #include <aditof/version.h>
