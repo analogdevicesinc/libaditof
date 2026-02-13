@@ -58,7 +58,9 @@ elseif ( RPI )
     set(PLATFORM_DIR "platform/raspberrypi")
     add_definitions(-DRPI)
 else()
-    message(FATAL_ERROR "Platform not supported.")
+    message(WARNING "Assuming host platform.")
+
+    set(OS_SPECIFIC_DIR "connections/network")
 endif()
 
 if (NOT APPLE AND NOT WIN32)
@@ -66,14 +68,23 @@ if (NOT APPLE AND NOT WIN32)
 endif()
 
 # Platform layer sources and headers (unified implementation)
-set(PLATFORM_COMMON_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/sensor_enumerator.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_impl.cpp
-)
-set(PLATFORM_COMMON_HEADERS
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/sensor_enumerator.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_impl.h
-)
+if(WITH_NETWORK)
+    set(PLATFORM_COMMON_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_impl.cpp
+    )
+    set(PLATFORM_COMMON_HEADERS
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_impl.h
+    )
+else()
+    set(PLATFORM_COMMON_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/sensor_enumerator.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_impl.cpp
+    )
+    set(PLATFORM_COMMON_HEADERS
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/sensor_enumerator.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_impl.h
+    )
+endif()
 
 # Platform-specific utilities (e.g., RPI media config)
 file(GLOB PLATFORM_UTIL_SOURCES
@@ -170,18 +181,18 @@ if(WITH_NETWORK AND WITH_PROTOBUF_DEPENDENCY)
     if ( WITH_NETWORK )
         # Check if submodule exists, and build the library
         # Include the cppzmq to use in c++
-		set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/cppzmq")
-		
-		# Check if submodule exists, and build the library
-		if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/libzmq/.git")
-			find_package(ZeroMQ REQUIRED)
-		else()
-			include_directories(${CPPZMQ_INSTALL_DIR})
-			target_link_libraries(${PROJECT_NAME} PUBLIC libzmq-static)
-		endif()
+        set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/cppzmq")
+        
+        # Check if submodule exists, and build the library
+        if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/libzmq/.git")
+            find_package(ZeroMQ REQUIRED)
+        else()
+            include_directories(${CPPZMQ_INSTALL_DIR})
+            target_link_libraries(${PROJECT_NAME} PUBLIC libzmq-static)
+        endif()
         set(NET_PROTO_HRDS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.h")
         set(NET_PROTO_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.cc")
-		add_custom_command(OUTPUT ${NET_PROTO_HRDS} ${NET_PROTO_SRCS}
+        add_custom_command(OUTPUT ${NET_PROTO_HRDS} ${NET_PROTO_SRCS}
                             COMMAND protoc buffer.proto -I ${CMAKE_CURRENT_SOURCE_DIR}/src/connections/network --cpp_out=.
                             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         target_sources(${PROJECT_NAME} PRIVATE ${NET_PROTO_HRDS} ${NET_PROTO_SRCS})
