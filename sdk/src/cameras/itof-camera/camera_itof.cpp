@@ -195,6 +195,8 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
                 m_imagerType = ImagerType::ADSD3030;
             } else if (controlValue == ControlValue.at(ImagerType::ADTF3080)) {
                 m_imagerType = ImagerType::ADTF3080;
+            } else if (controlValue == ControlValue.at(ImagerType::ADTF3066)) {
+                m_imagerType = ImagerType::ADTF3066;
             } else {
                 m_imagerType = ImagerType::UNSET;
                 LOG(ERROR) << "Unkown imager type: " << controlValue;
@@ -3037,7 +3039,7 @@ aditof::Status CameraItof::adsd3500GetMIPIOutputSpeed(uint16_t &speed) {
 /**
  * @brief Retrieves the imager error status code.
  *
- * Reads the error register from the paired imager (ADTF3080, ADSD3100, etc.)
+ * Reads the error register from the paired imager (ADTF3080, ADTF3066, ADSD3100, etc.)
  * to diagnose hardware issues.
  *
  * @param[out] errcode Error code from the imager.
@@ -3621,8 +3623,11 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
                 LOG(ERROR) << "ADSD3030 imager error detected: "
                            << m_adsdErrors.GetStringADSD3030(imagerStatus);
             } else if (m_imagerType == aditof::ImagerType::ADTF3080) {
-                LOG(ERROR) << "ADSD3030 imager error detected: "
-                           << m_adsdErrors.GetStringADSD3030(imagerStatus);
+                LOG(ERROR) << "ADTF3080 imager error detected: "
+                           << m_adsdErrors.GetStringADSD3080(imagerStatus);
+            } else if (m_imagerType == aditof::ImagerType::ADTF3066) {
+                LOG(ERROR) << "ADTF3066 imager error detected: "
+                           << m_adsdErrors.GetStringADTF3066(imagerStatus);
             } else {
                 LOG(ERROR) << "Imager error detected. Cannot be displayed "
                               "because imager type is unknown";
@@ -3948,7 +3953,7 @@ void CameraItof::cleanupXYZtables() {
  * @brief Retrieves the imager type (sensor model) in use with ADSD3500.
  *
  * Returns the specific depth imager model paired with the ADSD3500 ISP.
- * Common imagers: ADSD3100, ADSD3030, ADTF3080.
+ * Common imagers: ADSD3100, ADSD3030, ADTF3080, ADTF3066.
  *
  * @param[out] imagerType ImagerType enum value representing the sensor.
  *

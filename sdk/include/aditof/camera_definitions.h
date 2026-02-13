@@ -194,6 +194,7 @@ enum class ImagerType {
     ADSD3100, //!< The ADSD3100 imager
     ADSD3030, //!< The ADSD3030 imager
     ADTF3080, //!< The ADTF3080 imager
+    ADTF3066, //!< The ADTF3066 imager
 };
 
 /**
@@ -203,14 +204,16 @@ enum class ImagerType {
 const std::map<ImagerType, std::string> ControlValue{
     {ImagerType::ADSD3100, "1"},
     {ImagerType::ADSD3030, "2"},
-    {ImagerType::ADTF3080, "3"}};
+    {ImagerType::ADTF3080, "3"},
+    {ImagerType::ADTF3066, "4"}};
 /**
  * @brief Types of imagers 
  */
 const std::map<ImagerType, std::string> imagerType{
     {ImagerType::ADSD3100, "adsd3100"},
     {ImagerType::ADSD3030, "adsd3030"},
-    {ImagerType::ADTF3080, "adtf3080"}};
+    {ImagerType::ADTF3080, "adtf3080"},
+    {ImagerType::ADTF3066, "adtf3066"}};
 
 } // namespace aditof
 
