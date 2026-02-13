@@ -92,4 +92,15 @@ const std::vector<DepthSensorModeDetails> adtf3080_standardModes = {
     {8, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
     {9, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()}};
 
+const std::vector<DepthSensorModeDetails> adtf3066_standardModes = {
+    {0, {}, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
+    {1, {}, 3, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
+    {4, {}, 1, 0, 0, 0, 512, 640, 128, 1, DriverConfiguration()},
+    {7, {}, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
+    {3, {}, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {6, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {5, {}, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {8, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {9, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()}};
+
 #endif
