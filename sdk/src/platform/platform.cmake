@@ -37,7 +37,7 @@ elseif(NXP)
     message(STATUS "Configured for NXP i.MX platform ")
     
 else()
-    message(FATAL_ERROR "No platform defined! Use -DNVIDIA=ON, -DRPI=ON, or -DNXP=ON")
+    message(WARNING  "No platform defined - assuming host.")
 endif()
 
 # Generate platform_config.h from template
