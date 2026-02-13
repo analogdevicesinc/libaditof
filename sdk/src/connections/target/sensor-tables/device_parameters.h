@@ -175,6 +175,12 @@ static map<string, string> adtf3080_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"xyzEnable", "1"},
                                                  {"fps", "40"}};
 
+/**
+ * @brief Default depth computation parameters for ADTF3066 imager.
+ * 
+ * Contains 21 key-value pairs for ISP configuration including JBLF filtering,
+ * thresholds, and output format settings. Cloned from ADTF3080 configuration.
+ */
 static map<string, string> adtf3066_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"confThresh", "25.0"},
                                                  {"radialThreshMin", "100.0"},

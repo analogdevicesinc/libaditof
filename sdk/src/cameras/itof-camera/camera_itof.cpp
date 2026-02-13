@@ -3623,11 +3623,11 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
                 LOG(ERROR) << "ADSD3030 imager error detected: "
                            << m_adsdErrors.GetStringADSD3030(imagerStatus);
             } else if (m_imagerType == aditof::ImagerType::ADTF3080) {
-                LOG(ERROR) << "ADSD3030 imager error detected: "
-                           << m_adsdErrors.GetStringADSD3030(imagerStatus);
+                LOG(ERROR) << "ADTF3080 imager error detected: "
+                           << m_adsdErrors.GetStringADSD3080(imagerStatus);
             } else if (m_imagerType == aditof::ImagerType::ADTF3066) {
-                LOG(ERROR) << "ADSD3030 imager error detected: "
-                           << m_adsdErrors.GetStringADSD3030(imagerStatus);
+                LOG(ERROR) << "ADTF3066 imager error detected: "
+                           << m_adsdErrors.GetStringADTF3066(imagerStatus);
             } else {
                 LOG(ERROR) << "Imager error detected. Cannot be displayed "
                               "because imager type is unknown";
