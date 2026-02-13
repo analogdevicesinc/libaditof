@@ -59,7 +59,6 @@ elseif ( RPI )
     add_definitions(-DRPI)
 else()
     message(WARNING "Assuming host platform.")
-
     set(OS_SPECIFIC_DIR "connections/network")
 endif()
 
@@ -68,7 +67,7 @@ if (NOT APPLE AND NOT WIN32)
 endif()
 
 # Platform layer sources and headers (unified implementation)
-if(WITH_NETWORK)
+if(NOT ON_TARGET)
     set(PLATFORM_COMMON_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/platform_impl.cpp
     )
