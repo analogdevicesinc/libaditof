@@ -79,7 +79,7 @@ Adsd3500ModeSelector::setConfiguration(const std::string &configuration) {
  * @brief Retrieves available mode details based on current configuration and imager type.
  *
  * Returns a list of available DepthSensorModeDetails for the currently selected configuration
- * (e.g., "standard") and imager type (ADSD3100, ADSD3030, or ADTF3080). The returned modes
+ * (e.g., "standard") and imager type (ADSD3100, ADSD3030, ADTF3080, or ADTF3066). The returned modes
  * include resolution, phase count, and other sensor-specific parameters.
  *
  * @param[out] m_depthSensorModeDetails Vector to be populated with available mode details
@@ -100,6 +100,9 @@ aditof::Status Adsd3500ModeSelector::getAvailableModeDetails(
         } else if (m_controls["imagerType"] ==
                    imagerType.at(ImagerType::ADTF3080)) {
             m_depthSensorModeDetails = adtf3080_standardModes;
+        } else if (m_controls["imagerType"] ==
+                   imagerType.at(ImagerType::ADTF3066)) {
+            m_depthSensorModeDetails = adtf3066_standardModes;
         }
     }
 
@@ -142,6 +145,15 @@ aditof::Status Adsd3500ModeSelector::getConfigurationTable(
                    imagerType.at(ImagerType::ADTF3080)) {
             m_tableInUse = adtf3080_standardModes;
             for (auto &modes : adtf3080_standardModes) {
+                if (m_controls["mode"] == std::to_string(modes.modeNumber)) {
+                    configurationTable = modes;
+                    return aditof::Status::OK;
+                }
+            }
+        } else if (m_controls["imagerType"] ==
+                   imagerType.at(ImagerType::ADTF3066)) {
+            m_tableInUse = adtf3066_standardModes;
+            for (auto &modes : adtf3066_standardModes) {
                 if (m_controls["mode"] == std::to_string(modes.modeNumber)) {
                     configurationTable = modes;
                     return aditof::Status::OK;
@@ -256,6 +268,8 @@ aditof::Status Adsd3500ModeSelector::setControl(const std::string &control,
             m_tableInUse = adsd3030_standardModes;
         } else if (value == imagerType.at(ImagerType::ADTF3080)) {
             m_tableInUse = adtf3080_standardModes;
+        } else if (value == imagerType.at(ImagerType::ADTF3066)) {
+            m_tableInUse = adtf3066_standardModes;
         }
     }
 
