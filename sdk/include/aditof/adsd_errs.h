@@ -37,7 +37,7 @@ namespace aditof {
 
 /**
  * @class ADSDErrors
- * @brief Error codes from the ADSD3500, ADSD3100, ADSD3030
+ * @brief Error codes from the ADSD3500, ADSD3100, ADSD3030, ADTF3080, ADTF3066
  * Usage:
  * Included with aditof/camera.h
  * For example: 
@@ -153,6 +153,30 @@ class ADSDErrors {
      * @return Error string
      */
     std::string GetStringADSD3030(uint16_t value) {
+
+        std::string ret = "";
+
+        return ret;
+    }
+
+    /**
+     * @brief Returns a string for a given target (adsdType) and error code for the ADTF3080.
+     * @param[in] value - Error value
+     * @return Error string
+     */
+    std::string GetStringADSD3080(uint16_t value) {
+
+        std::string ret = "";
+
+        return ret;
+    }
+
+    /**
+     * @brief Returns a string for a given target (adsdType) and error code for the ADTF3066.
+     * @param[in] value - Error value
+     * @return Error string
+     */
+    std::string GetStringADTF3066(uint16_t value) {
 
         std::string ret = "";
 
