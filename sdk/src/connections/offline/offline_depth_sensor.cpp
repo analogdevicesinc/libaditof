@@ -225,6 +225,10 @@ aditof::Status OfflineDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     uint32_t sz = 0;
     Status status = readFrame((uint8_t *)buffer, sz, index);
 
+    if (status != Status::OK && index > 0) {
+        status = readFrame((uint8_t *)buffer, sz, index - 1);
+    }
+
     return status;
 }
 
@@ -861,7 +865,6 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
                                              uint32_t &bufferSize,
                                              uint32_t index) {
 
-    LOG(INFO) << "Reading frame index: " << index;
     if (m_state != ST_PLAYBACK) {
         LOG(ERROR) << "Not in playback mode";
         return aditof::Status::GENERIC_ERROR;
@@ -905,7 +908,6 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
                                   sizeof(_bufferSize));
 
             if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
-                LOG(ERROR) << "EOF or read error while reading buffer size";
                 return aditof::Status::GENERIC_ERROR;
             }
 
@@ -922,7 +924,6 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
             m_stream_file_in.read(reinterpret_cast<char *>(buffer), bufferSize);
 
             if (m_stream_file_in.eof() || m_stream_file_in.fail()) {
-                LOG(ERROR) << "EOF or read error while reading frame data";
                 return aditof::Status::GENERIC_ERROR;
             }
 
