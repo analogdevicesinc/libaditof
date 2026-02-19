@@ -9,6 +9,7 @@
 #include <aditof/status_definitions.h>
 #include <string>
 #include <vector>
+#include <cstdint>
 
 namespace aditof {
 namespace platform {
