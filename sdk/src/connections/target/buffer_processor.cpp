@@ -26,6 +26,7 @@
 
 #include "platform/platform_impl.h"
 #include <aditof/log.h>
+#include <aditof/utils.h>
 #include <algorithm>
 #include <arm_neon.h>
 #include <cmath>
@@ -1132,23 +1133,18 @@ void BufferProcessor::stopThreads() {
  *
  * @return Status::OK on success, Status::GENERIC_ERROR if folder creation or file open fails
  */
-aditof::Status BufferProcessor::startRecording(std::string &fileName,
+aditof::Status BufferProcessor::startRecording(std::string &filePath,
                                                uint8_t *parameters,
                                                uint32_t paramSize) {
 
     using namespace aditof;
 
     m_state = ST_STOP;
-    m_folder_path = m_folder_path_folder;
-    if (!aditof::Utils::folderExists(m_folder_path)) {
-        if (!aditof::Utils::createFolder(m_folder_path)) {
-            LOG(ERROR) << "Failed to create folder for recordings: "
-                       << m_folder_path;
-            return aditof::Status::GENERIC_ERROR;
-        }
-    }
 
-    fileName = m_folder_path + "/" + aditof::Utils::generateFileName();
+    if (Utils::generateRecordingPath(filePath) == false) {
+        LOG(ERROR) << "Failed to create output folder for recordings";
+        return aditof::Status::GENERIC_ERROR;
+    }
 
     if (m_stream_file_out.is_open()) {
         m_stream_file_out.close();
@@ -1156,7 +1152,7 @@ aditof::Status BufferProcessor::startRecording(std::string &fileName,
 
     m_frame_count = 0;
 
-    m_stream_file_out = std::ofstream(fileName, std::ios::binary);
+    m_stream_file_out = std::ofstream(filePath, std::ios::binary);
 
     m_state = ST_RECORD;
 

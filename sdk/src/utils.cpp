@@ -48,6 +48,8 @@
 using namespace std;
 using namespace aditof;
 
+const std::string recordingFolder = "recordings/";
+
 /**
  * @brief Splits a string into tokens based on a delimiter character.
  *
@@ -190,4 +192,60 @@ std::string Utils::generateFileName(const std::string &prefix,
     oss << extension;
 
     return oss.str();
+}
+
+/**
+ * @brief Splits a full Linux file path into directory path and filename.
+ *
+ * The directory path (if present) is returned with a trailing '/'.
+ *
+ * @param[in]  fullPath  Full path to split (e.g., "/home/user/file.txt" or "file.txt").
+ * @param[out] path      Output directory portion. Cleared if no '/' is present.
+ * @param[out] filename  Output filename portion. Empty if @p fullPath ends with '/'.
+ */
+void Utils::splitPath(const std::string &fullPath, std::string &path,
+                      std::string &filename) {
+    auto pos = fullPath.find_last_of('/');
+    if (pos == std::string::npos) {
+        path.clear();
+        filename = fullPath;
+        return;
+    }
+    path = fullPath.substr(0, pos + 1); // keep trailing '/'
+    filename = fullPath.substr(pos + 1);
+}
+
+/**
+ * @brief Gets the default folder for recording outputs.
+ *
+ * Returns the "recordings" directory located alongside the running
+ * executable. This does not create the directory; it only provides the path.
+ *
+ * @return Absolute path to the default recordings directory.
+ */
+std::string Utils::getDefaultRecordingFolder() {
+    std::string defaultFolder = getExecutableFolder() + "/" + recordingFolder;
+    return defaultFolder;
+}
+
+bool Utils::generateRecordingPath(std::string &filePath) {
+
+    std::string folderName = filePath;
+    std::string fileBaseName = aditof::Utils::generateFileName();
+
+    if (filePath.empty()) {
+        folderName = Utils::getDefaultRecordingFolder();
+    } else {
+        folderName = folderName + "/" + recordingFolder;
+    }
+
+    if (!aditof::Utils::folderExists(folderName)) {
+        if (!aditof::Utils::createFolder(folderName)) {
+            return false;
+        }
+    }
+
+    filePath = folderName + fileBaseName;
+
+    return true;
 }
