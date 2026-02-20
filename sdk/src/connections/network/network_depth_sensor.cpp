@@ -23,6 +23,7 @@
  */
 #include "network_depth_sensor.h"
 #include "connections/network/network.h"
+#include <aditof/utils.h>
 #include <aditof/log.h>
 #include <chrono>
 #include <unordered_map>
@@ -1415,21 +1416,18 @@ NetworkDepthSensor::getIniParamsArrayForMode(int mode, std::string &iniStr) {
 
 #include "aditof/utils.h"
 
-aditof::Status NetworkDepthSensor::startRecording(std::string &fileName,
-                                                  uint8_t *parameters,
-                                                  uint32_t paramSize) {
+aditof::Status NetworkDepthSensor::startRecording(std::string &filePath,
+                                               uint8_t *parameters,
+                                               uint32_t paramSize) {
+
+    using namespace aditof;
 
     m_state = ST_STOP;
-    m_folder_path = m_folder_path_folder;
-    if (!aditof::Utils::folderExists(m_folder_path)) {
-        if (!aditof::Utils::createFolder(m_folder_path)) {
-            LOG(ERROR) << "Failed to create folder for recordings: "
-                       << m_folder_path;
-            return aditof::Status::GENERIC_ERROR;
-        }
-    }
 
-    fileName = m_folder_path + "/" + aditof::Utils::generateFileName();
+    if (Utils::generateRecordingPath(filePath) == false) {
+        LOG(ERROR) << "Failed to create output folder for recordings";
+        return aditof::Status::GENERIC_ERROR;
+    }
 
     if (m_stream_file_out.is_open()) {
         m_stream_file_out.close();
@@ -1437,7 +1435,7 @@ aditof::Status NetworkDepthSensor::startRecording(std::string &fileName,
 
     m_frame_count = 0;
 
-    m_stream_file_out = std::ofstream(fileName, std::ios::binary);
+    m_stream_file_out = std::ofstream(filePath, std::ios::binary);
 
     m_state = ST_RECORD;
 
