@@ -23,8 +23,8 @@
  */
 #include "network_depth_sensor.h"
 #include "connections/network/network.h"
-#include <aditof/utils.h>
 #include <aditof/log.h>
+#include <aditof/utils.h>
 #include <chrono>
 #include <unordered_map>
 
@@ -1417,8 +1417,8 @@ NetworkDepthSensor::getIniParamsArrayForMode(int mode, std::string &iniStr) {
 #include "aditof/utils.h"
 
 aditof::Status NetworkDepthSensor::startRecording(std::string &filePath,
-                                               uint8_t *parameters,
-                                               uint32_t paramSize) {
+                                                  uint8_t *parameters,
+                                                  uint32_t paramSize) {
 
     using namespace aditof;
 

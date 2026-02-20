@@ -26,6 +26,7 @@
 
 #include "platform/platform_impl.h"
 #include <aditof/log.h>
+#include <aditof/utils.h>
 #include <algorithm>
 #include <arm_neon.h>
 #include <cmath>
@@ -40,7 +41,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <unordered_map>
-#include <aditof/utils.h>
 
 #include "buffer_processor.h"
 

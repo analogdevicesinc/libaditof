@@ -203,14 +203,15 @@ std::string Utils::generateFileName(const std::string &prefix,
  * @param[out] path      Output directory portion. Cleared if no '/' is present.
  * @param[out] filename  Output filename portion. Empty if @p fullPath ends with '/'.
  */
-void Utils::splitPath(const std::string& fullPath, std::string& path, std::string& filename) {
+void Utils::splitPath(const std::string &fullPath, std::string &path,
+                      std::string &filename) {
     auto pos = fullPath.find_last_of('/');
     if (pos == std::string::npos) {
         path.clear();
         filename = fullPath;
         return;
     }
-    path = fullPath.substr(0, pos + 1);   // keep trailing '/'
+    path = fullPath.substr(0, pos + 1); // keep trailing '/'
     filename = fullPath.substr(pos + 1);
 }
 
