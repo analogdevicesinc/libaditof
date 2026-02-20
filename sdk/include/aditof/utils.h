@@ -47,7 +47,8 @@ class SDK_API Utils {
     static std::string
     generateFileName(const std::string &prefix = "aditof_",
                      const std::string &extension = ".adcam");
-    static void splitPath(const std::string& fullPath, std::string& path, std::string& filename);
+    static void splitPath(const std::string &fullPath, std::string &path,
+                          std::string &filename);
     static std::string getDefaultRecordingFolder();
     static bool generateRecordingPath(std::string &filePath);
 };
