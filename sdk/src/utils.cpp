@@ -31,6 +31,7 @@
 #include <limits.h>
 #include <unistd.h>
 #endif
+#include "aditof/log.h"
 #include "aditof/utils.h"
 
 #include <sys/stat.h>
@@ -126,24 +127,86 @@ bool Utils::folderExists(const std::string &path) {
 }
 
 /**
- * @brief Creates a new folder at the specified path.
+ * @brief Creates a new folder at the specified path, including all parent directories.
  *
- * Attempts to create a directory at the given path. If the directory already
- * exists, the function returns true (success). Uses platform-specific APIs
- * to create the folder with appropriate permissions.
+ * Recursively creates all directories in the given path. If any directory in the path
+ * already exists, the function continues without error. Uses platform-specific APIs
+ * to create folders with appropriate permissions.
  *
- * @param path The filesystem path where the folder should be created.
- * @return true if the folder was created or already exists, false if creation
- *         failed for any other reason.
+ * @param path The filesystem path where the folder should be created (e.g., "output/recordings/").
+ * @return true if all folders were created or already exist, false if creation
+ *         failed for any reason.
  *
- * @note On Linux/macOS, the folder is created with permissions 0755 (rwxr-xr-x).
+ * @note On Linux/macOS, folders are created with permissions 0755 (rwxr-xr-x).
+ *       Handles both Windows (backslash) and Linux/macOS (forward slash) path separators.
  */
 bool Utils::createFolder(const std::string &path) {
+    if (path.empty()) {
+        return true;
+    }
+
+    std::string currentPath;
+    std::string pathToCreate = path;
+
+    // Normalize path separators for the current platform
 #ifdef _WIN32
-    return _mkdir(path.c_str()) == 0 || errno == EEXIST;
+    for (char &c : pathToCreate) {
+        if (c == '/') {
+            c = '\\';
+        }
+    }
 #else
-    return mkdir(path.c_str(), 0755) == 0 || errno == EEXIST;
+    for (char &c : pathToCreate) {
+        if (c == '\\') {
+            c = '/';
+        }
+    }
 #endif
+
+    // Remove trailing separator if present
+    if (!pathToCreate.empty() &&
+        (pathToCreate.back() == '/' || pathToCreate.back() == '\\')) {
+        pathToCreate.pop_back();
+    }
+
+    // Iterate through path and create each directory
+#ifdef _WIN32
+    char separator = '\\';
+#else
+    char separator = '/';
+#endif
+
+    for (size_t i = 0; i < pathToCreate.length(); ++i) {
+        if (pathToCreate[i] == separator) {
+            currentPath = pathToCreate.substr(0, i);
+            if (!currentPath.empty() && !folderExists(currentPath)) {
+#ifdef _WIN32
+                if (_mkdir(currentPath.c_str()) != 0 && errno != EEXIST) {
+                    return false;
+                }
+#else
+                if (mkdir(currentPath.c_str(), 0755) != 0 && errno != EEXIST) {
+                    return false;
+                }
+#endif
+            }
+        }
+    }
+
+    // Create the final directory
+    if (!folderExists(pathToCreate)) {
+#ifdef _WIN32
+        if (_mkdir(pathToCreate.c_str()) != 0 && errno != EEXIST) {
+            return false;
+        }
+#else
+        if (mkdir(pathToCreate.c_str(), 0755) != 0 && errno != EEXIST) {
+            return false;
+        }
+#endif
+    }
+
+    return true;
 }
 
 /**
@@ -241,6 +304,7 @@ bool Utils::generateRecordingPath(std::string &filePath) {
 
     if (!aditof::Utils::folderExists(folderName)) {
         if (!aditof::Utils::createFolder(folderName)) {
+            LOG(ERROR) << "Failed to create folder: " << folderName;
             return false;
         }
     }
