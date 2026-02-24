@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -euxo pipefail
+set -euo pipefail
 
 # Script to clone, build, and run full test suite for libaditof
 # Usage: ./run_test_suite.sh repo_name branch_or_tag output_dir csv1 [csv2] [csv3] ...
