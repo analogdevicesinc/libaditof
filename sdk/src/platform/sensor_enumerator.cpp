@@ -24,12 +24,7 @@
 #include "sensor_enumerator.h"
 #include "connections/target/adsd3500_interrupt_notifier.h"
 #include "connections/target/adsd3500_sensor.h"
-
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 
 using namespace aditof;
 

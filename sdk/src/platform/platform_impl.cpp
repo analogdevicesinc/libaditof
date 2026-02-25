@@ -10,11 +10,7 @@
 #include "raspberrypi/rpi_media_config.h"
 #endif
 
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 
 #include <algorithm>
 #include <cstdio>

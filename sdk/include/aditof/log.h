@@ -23,7 +23,7 @@
  */
 #ifdef USE_GLOG
 
-#include <glog/logging.h>
+#error "USE_GLOG is not allowed in this build. Disable it to proceed."
 
 #else
 

@@ -4,12 +4,7 @@
  * Copyright (c) 2025 Analog Devices, Inc.
  */
 #include "rpi_media_config.h"
-
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 
 #include <array>
 #include <cstdio>
