@@ -611,6 +611,17 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         m_iniKeyValPairs = m_depth_params_map[mode];
         configureSensorModeDetails();
+
+        // Apply raw bypass mode setting before configuring V4L2 driver
+        auto rawBypassIt = m_iniKeyValPairs.find("rawBypassMode");
+        bool rawBypassEnabled = (rawBypassIt != m_iniKeyValPairs.end() &&
+                                 rawBypassIt->second == "1");
+        status = adsd3500SetRawBypassMode(rawBypassEnabled);
+        if (status != Status::OK) {
+            LOG(WARNING) << "Failed to set raw bypass mode";
+            return status;
+        }
+
         status = m_depthSensor->setMode(mode);
         if (status != Status::OK) {
             LOG(WARNING) << "Failed to set frame type";
@@ -2046,6 +2057,17 @@ void CameraItof::configureSensorModeDetails() {
             LOG(WARNING) << "inputFormat was not found in parameter list";
         }
 
+        // Raw bypass mode control (default to 0 if not in config)
+        it = m_iniKeyValPairs.find("rawBypassMode");
+        if (it != m_iniKeyValPairs.end()) {
+            value = it->second;
+            m_depthSensor->setControl("rawBypassMode", value);
+            LOG(INFO) << "Raw bypass mode set to " << value;
+        } else {
+            // Default to standard depth mode
+            m_depthSensor->setControl("rawBypassMode", "0");
+        }
+
         // XYZ set through camera control takes precedence over the setting from parameter list
         if (!m_xyzSetViaApi) {
             it = m_iniKeyValPairs.find("xyzEnable");
@@ -2984,6 +3006,42 @@ aditof::Status CameraItof::adsd3500SetMIPIOutputSpeed(uint16_t speed) {
     assert(!m_isOffline);
 
     status = m_depthSensor->adsd3500_write_cmd(0x0031, speed);
+
+    return status;
+}
+
+/**
+ * @brief Enables or disables raw bypass mode on ADSD3500.
+ *
+ * Writes to register 0x0033 to control raw bypass mode. When enabled (0x0001),
+ * the ISP outputs unprocessed raw Bayer sensor data instead of computing
+ * depth/AB/confidence frames. When disabled (0x0000), standard depth computation
+ * occurs.
+ *
+ * @param[in] enable true to enable raw bypass mode; false for standard depth mode.
+ *
+ * @return aditof::Status::OK if register write succeeds;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Register 0x0033 must be written before V4L2 driver configuration.
+ */
+aditof::Status CameraItof::adsd3500SetRawBypassMode(bool enable) {
+
+    using namespace aditof;
+    Status status = Status::OK;
+
+    assert(!m_isOffline);
+
+    uint16_t value = enable ? 0x0001 : 0x0000;
+    status = m_depthSensor->adsd3500_write_cmd(0x0033, value);
+
+    if (status == Status::OK) {
+        LOG(INFO) << "Raw bypass mode " << (enable ? "enabled" : "disabled");
+    } else {
+        LOG(ERROR) << "Failed to set raw bypass mode to "
+                   << (enable ? "enabled" : "disabled");
+    }
 
     return status;
 }

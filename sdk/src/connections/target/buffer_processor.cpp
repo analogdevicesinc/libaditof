@@ -96,6 +96,7 @@ BufferProcessor::BufferProcessor()
     m_outputFrameHeight = 0;
     m_processorPropSet = false;
     m_vidPropSet = false;
+    m_isRawBypassMode = false;
     stopThreadsFlag = true;
     stopThreadsFlag.store(true, std::memory_order_release);
     streamRunning = false;
@@ -220,7 +221,7 @@ aditof::Status BufferProcessor::setInputDevice(VideoDev *inputVideoDev) {
  */
 aditof::Status BufferProcessor::setVideoProperties(
     int frameWidth, int frameHeight, int WidthInBytes, int HeightInBytes,
-    int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf) {
+    int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf, bool isRawBypass) {
 
     // Clear all queues to prevent memory leaks if setVideoProperties is called multiple times
     if (!stopThreadsFlag.load(std::memory_order_acquire)) {
@@ -247,6 +248,7 @@ aditof::Status BufferProcessor::setVideoProperties(
     m_vidPropSet = true;
 
     m_currentModeNumber = modeNumber;
+    m_isRawBypassMode = isRawBypass;
 
     m_outputFrameWidth = frameWidth;
     m_outputFrameHeight = frameHeight;
@@ -619,6 +621,55 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext->p_ab_frame = tempAbFrame;
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
             }
+
+            // Raw bypass mode: copy raw Bayer data directly, skip ToFi processing
+            if (m_isRawBypassMode) {
+                const size_t bufferSizeBytes = process_frame.size;
+                const size_t maxBufferSize =
+                    m_tofiBufferSize * sizeof(uint16_t);
+
+                if (bufferSizeBytes <= maxBufferSize) {
+                    // Copy raw V4L2 data into ToFi output buffer
+                    memcpy(tofi_compute_io_buff.get(), process_frame.data.get(),
+                           bufferSizeBytes);
+
+                    // Restore original pointers
+                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
+                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
+
+                    // Package processed frame for output (same pattern as normal flow)
+                    process_frame.tofiBuffer = tofi_compute_io_buff;
+                    process_frame.size = bufferSizeBytes / sizeof(uint16_t);
+
+                    // Push to done queue
+                    if (!m_process_done_Q.push(std::move(process_frame))) {
+                        LOG(WARNING) << "processThread: Failed to push raw "
+                                        "bypass frame to done queue";
+                        // Restore buffers on error
+                        m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                        m_v4l2_input_buffer_Q.push(process_frame.data);
+                    }
+
+                    continue; // Skip ToFi computation
+                } else {
+                    LOG(ERROR)
+                        << "processThread: Raw bypass buffer size mismatch: "
+                        << bufferSizeBytes << " > " << maxBufferSize;
+
+                    // Restore original pointers
+                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
+                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
+
+                    // Restore buffers and continue
+                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                    m_v4l2_input_buffer_Q.push(process_frame.data);
+
+                    continue;
+                }
+            }
+
 #ifdef DUAL
             // For dual pulsatrix mode 1 and 0, data comes deinterleaved from ISP
             // Copy only the frames that are actually allocated based on m_tofiBufferSize
