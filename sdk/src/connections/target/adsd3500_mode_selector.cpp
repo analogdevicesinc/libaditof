@@ -185,19 +185,20 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
     // Check if raw bypass mode is enabled
     if (m_controls["rawBypassMode"] == "1") {
         // In raw bypass mode, search the raw bypass table
+        // Only match on resolution, not phases (raw bypass always uses single frame)
         for (auto driverConf : m_adsd3500rawBypass) {
             if (driverConf.baseWidth ==
                     std::to_string(configurationTable.baseResolutionWidth) &&
                 driverConf.baseHeigth ==
-                    std::to_string(configurationTable.baseResolutionHeight) &&
-                std::stoi(driverConf.noOfPhases) ==
-                    configurationTable.numberOfPhases) {
+                    std::to_string(configurationTable.baseResolutionHeight)) {
 
                 configurationTable.frameWidthInBytes = driverConf.driverWidth;
                 configurationTable.frameHeightInBytes = driverConf.driverHeigth;
                 configurationTable.pixelFormatIndex =
                     driverConf.pixelFormatIndex;
                 configurationTable.isRawBypass = 1;
+                configurationTable.numberOfPhases =
+                    1; // Raw bypass always single frame
                 configurationTable.frameContent = {"raw_bayer"};
 
                 LOG(INFO) << "Raw bypass configuration applied: "
@@ -235,14 +236,21 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
         }
     }
 
-    int depth_i = std::stoi(m_controls["depthBits"]);
-    int ab_i = std::stoi(m_controls["abBits"]);
-    int conf_i = std::stoi(m_controls["confBits"]);
+    // Skip bits validation for raw bypass mode (uses all-zero bits)
+    int depth_i = 0;
+    int ab_i = 0;
+    int conf_i = 0;
 
-    std::string key = make_key(depth_i, conf_i, ab_i);
-    if (m_bitsPerPixelTable.find(key) == m_bitsPerPixelTable.end()) {
-        LOG(ERROR) << "Invalid bits combination";
-        return aditof::Status::INVALID_ARGUMENT;
+    if (m_controls["rawBypassMode"] != "1") {
+        depth_i = std::stoi(m_controls["depthBits"]);
+        ab_i = std::stoi(m_controls["abBits"]);
+        conf_i = std::stoi(m_controls["confBits"]);
+
+        std::string key = make_key(depth_i, conf_i, ab_i);
+        if (m_bitsPerPixelTable.find(key) == m_bitsPerPixelTable.end()) {
+            LOG(ERROR) << "Invalid bits combination";
+            return aditof::Status::INVALID_ARGUMENT;
+        }
     }
 
     int totalBits = depth_i + ab_i + conf_i;

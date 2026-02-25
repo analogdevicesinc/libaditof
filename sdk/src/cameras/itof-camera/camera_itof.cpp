@@ -688,11 +688,12 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         // Store the frame details in camera details
         m_details.mode = mode;
-        m_details.frameType.width = (*modeIt).baseResolutionWidth;
-        m_details.frameType.height = (*modeIt).baseResolutionHeight;
+        m_details.frameType.width = m_modeDetailsCache.baseResolutionWidth;
+        m_details.frameType.height = m_modeDetailsCache.baseResolutionHeight;
         m_details.frameType.totalCaptures = 1;
         m_details.frameType.dataDetails.clear();
-        for (const auto &item : (*modeIt).frameContent) {
+        // Use m_modeDetailsCache.frameContent (updated by getModeDetails) not (*modeIt).frameContent (stale)
+        for (const auto &item : m_modeDetailsCache.frameContent) {
             if (item == "xyz" && !m_xyzEnabled) {
                 continue;
             }
@@ -709,7 +710,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
             if (item == "xyz") {
                 fDataDetails.subelementsPerElement = 3;
-            } else if (item == "raw") {
+            } else if (item == "raw" || item == "raw_bayer") {
                 fDataDetails.width = m_modeDetailsCache.frameWidthInBytes;
                 fDataDetails.height = m_modeDetailsCache.frameHeightInBytes;
                 fDataDetails.subelementSize = 1;
@@ -729,7 +730,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         }
 
         // We want computed frames (Depth & AB). Tell target to initialize depth compute
-        if (!m_pcmFrame) {
+        // Skip this for raw bypass mode (no ToF processing)
+        LOG(INFO) << "ToFi init check: m_pcmFrame=" << m_pcmFrame
+                  << ", isRawBypass=" << m_modeDetailsCache.isRawBypass;
+        if (!m_pcmFrame && !m_modeDetailsCache.isRawBypass) {
             size_t dataSize = 0;
             std::string s;
 
@@ -998,9 +1002,13 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         LOG(INFO) << "[RECORDING] Original frameContent has "
                   << m_modeDetailsCache.frameContent.size() << " items";
         for (std::string val : m_modeDetailsCache.frameContent) {
-            if (val == "raw") {
-                LOG(INFO) << "[RECORDING] Skipping raw (not supported)";
-                continue; // raw not supported
+            LOG(INFO) << "[RECORDING] frameContent item: \"" << val << "\"";
+            if (val == "raw" || val == "raw_bayer") {
+                LOG(INFO) << "[RECORDING] Including raw/raw_bayer in header";
+                memcpy((char *)m_offline_parameters.modeDetailsCache
+                           .frameContent[idx++],
+                       val.c_str(), val.length());
+                continue; // Add raw_bayer to header but skip detailed processing below
             }
 
             LOG(INFO) << "[RECORDING] Adding to header: " << val;
@@ -1030,7 +1038,9 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         m_offline_parameters.details.height = (*modeIt).baseResolutionHeight;
         m_offline_parameters.details.totalCaptures = 1;
         LOG(INFO) << "[RECORDING] Building fDataDetails from frameContent...";
-        for (const auto &item : (*modeIt).frameContent) {
+        // Use m_modeDetailsCache.frameContent instead of (*modeIt).frameContent
+        // because it has the updated raw_bayer content for raw bypass mode
+        for (const auto &item : m_modeDetailsCache.frameContent) {
 
             if (m_offline_parameters.fdatadetailsCount >
                 m_offline_parameters.MAX_FRAME_DATA_DETAILS_SAVE) {
@@ -1039,7 +1049,7 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
                 break;
             }
 
-            if (item == "raw") { // "raw" is not supported right now
+            if (item == "raw") { // "raw" is not supported (deprecated)
                 LOG(INFO) << "[RECORDING] Skipping raw from fDataDetails (not "
                              "supported)";
                 continue;
@@ -1066,6 +1076,13 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
             if (item == "xyz") {
                 m_offline_parameters.fDataDetails[idx].subelementsPerElement =
                     3;
+            } else if (item == "raw_bayer") {
+                // Raw bypass: use driver dimensions, 1 byte per pixel (RG12 format)
+                m_offline_parameters.fDataDetails[idx].width =
+                    m_modeDetailsCache.frameWidthInBytes;
+                m_offline_parameters.fDataDetails[idx].height =
+                    m_modeDetailsCache.frameHeightInBytes;
+                m_offline_parameters.fDataDetails[idx].subelementSize = 1;
             } else if (item == "metadata") {
                 m_offline_parameters.fDataDetails[idx].subelementSize = 1;
                 m_offline_parameters.fDataDetails[idx].width = 128;
@@ -1272,6 +1289,12 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get frame from device";
         return status;
+    }
+
+    // For raw bypass mode, frame is already complete (raw Bayer data)
+    // Skip all post-processing (XYZ, metadata, etc.)
+    if (m_modeDetailsCache.isRawBypass) {
+        return Status::OK;
     }
 
     // The incoming sensor frames are already processed. Need to just create XYZ data
@@ -2098,7 +2121,8 @@ void CameraItof::configureSensorModeDetails() {
         // Rebuild frameContent based on enabled frame types
         // This ensures recording/playback respects config overrides
         // Only rebuild if we have INI params (not during early initialization)
-        if (!m_iniKeyValPairs.empty()) {
+        // Skip for raw bypass mode (frameContent already set to "raw_bayer")
+        if (!m_iniKeyValPairs.empty() && !m_modeDetailsCache.isRawBypass) {
             m_modeDetailsCache.frameContent.clear();
             if (m_depthEnabled) {
                 m_modeDetailsCache.frameContent.emplace_back("depth");

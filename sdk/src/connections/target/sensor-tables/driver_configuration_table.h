@@ -122,26 +122,26 @@ const std::vector<DepthSensorModeDetails> adtf3066_standardModes = {
  * Format: {baseWidth, baseHeight, phases, depthBits, abBits, confBits, pixelFormat, driverWidth, driverHeight, pixelFormatIndex}
  */
 const std::vector<DriverConfiguration> m_adsd3500rawBypass = {
-    /* Mode 0: MP raw frame 2048×3072 */
-    {"1024", "1024", "1", "0", "0", "0", "RG12", 2048, 3072, 2},
+    /* Mode 0: MP raw frame 2048×3072 - pixelFormatIndex=1 for V4L2_PIX_FMT_SBGGR12 */
+    {"1024", "1024", "1", "0", "0", "0", "RG12", 2048, 3072, 1},
 
     /* Mode 1: MP raw frame 2048×3072 */
-    {"1024", "1024", "1", "0", "0", "0", "RG12", 2048, 3072, 2},
+    {"1024", "1024", "1", "0", "0", "0", "RG12", 2048, 3072, 1},
 
     /* Mode 2: QMP raw frame 1024×4608 */
-    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 2},
+    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
 
     /* Mode 3: QMP raw frame 1024×4608 */
-    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 2},
+    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
 
     /* Mode 4: QMP raw frame 1024×4608 */
-    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 2},
+    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
 
     /* Mode 5: QMP raw frame 1024×4608 */
-    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 2},
+    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
 
     /* Mode 6: QMP raw frame 1024×4608 */
-    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 2},
+    {"512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
 };
 
 #endif
