@@ -132,7 +132,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status setVideoProperties(int frameWidth, int frameHeight,
                                       int WidthInBytes, int HeightInBytes,
                                       int modeNumber, uint8_t bitsInAB,
-                                      uint8_t bitsInConf);
+                                      uint8_t bitsInConf,
+                                      bool isRawBypass = false);
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
@@ -179,6 +180,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     uint16_t m_outputFrameWidth;
     uint16_t m_outputFrameHeight;
+    uint16_t m_driverFrameWidth;
+    uint16_t m_driverFrameHeight;
 
     TofiConfig *m_tofiConfig;
     TofiComputeContext *m_tofiComputeContext;
@@ -223,6 +226,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     int m_maxTries = 3;
 
     uint8_t m_currentModeNumber;
+    bool m_isRawBypassMode;
 
   public:
     // Stream record and playback support

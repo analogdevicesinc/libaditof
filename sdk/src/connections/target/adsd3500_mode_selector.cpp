@@ -48,6 +48,7 @@ Adsd3500ModeSelector::Adsd3500ModeSelector() : m_configuration("standard") {
     m_controls.emplace("confBits", "");
 
     m_controls.emplace("inputFormat", "");
+    m_controls.emplace("rawBypassMode", "0");
 }
 
 /**
@@ -79,7 +80,7 @@ Adsd3500ModeSelector::setConfiguration(const std::string &configuration) {
  * @brief Retrieves available mode details based on current configuration and imager type.
  *
  * Returns a list of available DepthSensorModeDetails for the currently selected configuration
- * (e.g., "standard") and imager type (ADSD3100, ADSD3030, or ADTF3080). The returned modes
+ * (e.g., "standard") and imager type (ADSD3100, ADSD3030, ADTF3080, or ADTF3066). The returned modes
  * include resolution, phase count, and other sensor-specific parameters.
  *
  * @param[out] m_depthSensorModeDetails Vector to be populated with available mode details
@@ -100,6 +101,9 @@ aditof::Status Adsd3500ModeSelector::getAvailableModeDetails(
         } else if (m_controls["imagerType"] ==
                    imagerType.at(ImagerType::ADTF3080)) {
             m_depthSensorModeDetails = adtf3080_standardModes;
+        } else if (m_controls["imagerType"] ==
+                   imagerType.at(ImagerType::ADTF3066)) {
+            m_depthSensorModeDetails = adtf3066_standardModes;
         }
     }
 
@@ -147,6 +151,15 @@ aditof::Status Adsd3500ModeSelector::getConfigurationTable(
                     return aditof::Status::OK;
                 }
             }
+        } else if (m_controls["imagerType"] ==
+                   imagerType.at(ImagerType::ADTF3066)) {
+            m_tableInUse = adtf3066_standardModes;
+            for (auto &modes : adtf3066_standardModes) {
+                if (m_controls["mode"] == std::to_string(modes.modeNumber)) {
+                    configurationTable = modes;
+                    return aditof::Status::OK;
+                }
+            }
         }
     }
 
@@ -169,6 +182,41 @@ aditof::Status Adsd3500ModeSelector::getConfigurationTable(
 aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
     DepthSensorModeDetails &configurationTable) {
 
+    // Check if raw bypass mode is enabled
+    if (m_controls["rawBypassMode"] == "1") {
+        // In raw bypass mode, search the raw bypass table
+        // Only match on resolution, not phases (raw bypass always uses single frame)
+        for (auto driverConf : m_adsd3500rawBypass) {
+            if (driverConf.baseWidth ==
+                    std::to_string(configurationTable.baseResolutionWidth) &&
+                driverConf.baseHeigth ==
+                    std::to_string(configurationTable.baseResolutionHeight)) {
+
+                configurationTable.frameWidthInBytes = driverConf.driverWidth;
+                configurationTable.frameHeightInBytes = driverConf.driverHeigth;
+                configurationTable.pixelFormatIndex =
+                    driverConf.pixelFormatIndex;
+                configurationTable.isRawBypass = 1;
+                configurationTable.numberOfPhases =
+                    1; // Raw bypass always single frame
+                configurationTable.frameContent = {"raw_bayer"};
+
+                LOG(INFO) << "Raw bypass configuration applied: "
+                          << driverConf.driverWidth << "x"
+                          << driverConf.driverHeigth;
+
+                return aditof::Status::OK;
+            }
+        }
+
+        LOG(ERROR) << "No matching raw bypass configuration found for mode "
+                   << "with resolution "
+                   << configurationTable.baseResolutionWidth << "x"
+                   << configurationTable.baseResolutionHeight;
+        return aditof::Status::INVALID_ARGUMENT;
+    }
+
+    // Standard depth mode processing
     for (auto driverConf : m_adsd3500standard) {
         if (driverConf.baseWidth ==
                 std::to_string(configurationTable.baseResolutionWidth) &&
@@ -188,14 +236,21 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
         }
     }
 
-    int depth_i = std::stoi(m_controls["depthBits"]);
-    int ab_i = std::stoi(m_controls["abBits"]);
-    int conf_i = std::stoi(m_controls["confBits"]);
+    // Skip bits validation for raw bypass mode (uses all-zero bits)
+    int depth_i = 0;
+    int ab_i = 0;
+    int conf_i = 0;
 
-    std::string key = make_key(depth_i, conf_i, ab_i);
-    if (m_bitsPerPixelTable.find(key) == m_bitsPerPixelTable.end()) {
-        LOG(ERROR) << "Invalid bits combination";
-        return aditof::Status::INVALID_ARGUMENT;
+    if (m_controls["rawBypassMode"] != "1") {
+        depth_i = std::stoi(m_controls["depthBits"]);
+        ab_i = std::stoi(m_controls["abBits"]);
+        conf_i = std::stoi(m_controls["confBits"]);
+
+        std::string key = make_key(depth_i, conf_i, ab_i);
+        if (m_bitsPerPixelTable.find(key) == m_bitsPerPixelTable.end()) {
+            LOG(ERROR) << "Invalid bits combination";
+            return aditof::Status::INVALID_ARGUMENT;
+        }
     }
 
     int totalBits = depth_i + ab_i + conf_i;
@@ -256,6 +311,8 @@ aditof::Status Adsd3500ModeSelector::setControl(const std::string &control,
             m_tableInUse = adsd3030_standardModes;
         } else if (value == imagerType.at(ImagerType::ADTF3080)) {
             m_tableInUse = adtf3080_standardModes;
+        } else if (value == imagerType.at(ImagerType::ADTF3066)) {
+            m_tableInUse = adtf3066_standardModes;
         }
     }
 

@@ -32,7 +32,7 @@
  *
  * @param[out] iniFileStructList Vector to be populated with INI file structures for each mode
  * @param[in] modeDetailsList Vector of mode details describing available sensor modes
- * @param[in] imagerType Imager type identifier ("adsd3100", "adsd3030", or "adtf3080")
+ * @param[in] imagerType Imager type identifier ("adsd3100", "adsd3030", "adtf3080", or "adtf3066")
  * @param[in] chipID Chip identifier to differentiate single vs dual ISP configurations
  *
  * @return Status::OK on success
@@ -65,6 +65,8 @@ aditof::Status DeviceParameters::createIniParams(
             iniF.iniKeyValPairs = adsd3030_fullDepth;
         } else if (imagerType == "adtf3080") {
             iniF.iniKeyValPairs = adtf3080_fullDepth;
+        } else if (imagerType == "adtf3066") {
+            iniF.iniKeyValPairs = adtf3066_fullDepth;
         }
 
         iniFileStructList.emplace_back(iniF);

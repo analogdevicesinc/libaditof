@@ -195,6 +195,8 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
                 m_imagerType = ImagerType::ADSD3030;
             } else if (controlValue == ControlValue.at(ImagerType::ADTF3080)) {
                 m_imagerType = ImagerType::ADTF3080;
+            } else if (controlValue == ControlValue.at(ImagerType::ADTF3066)) {
+                m_imagerType = ImagerType::ADTF3066;
             } else {
                 m_imagerType = ImagerType::UNSET;
                 LOG(ERROR) << "Unkown imager type: " << controlValue;
@@ -609,6 +611,17 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         m_iniKeyValPairs = m_depth_params_map[mode];
         configureSensorModeDetails();
+
+        // Apply raw bypass mode setting before configuring V4L2 driver
+        auto rawBypassIt = m_iniKeyValPairs.find("rawBypassMode");
+        bool rawBypassEnabled = (rawBypassIt != m_iniKeyValPairs.end() &&
+                                 rawBypassIt->second == "1");
+        status = adsd3500SetRawBypassMode(rawBypassEnabled);
+        if (status != Status::OK) {
+            LOG(WARNING) << "Failed to set raw bypass mode";
+            return status;
+        }
+
         status = m_depthSensor->setMode(mode);
         if (status != Status::OK) {
             LOG(WARNING) << "Failed to set frame type";
@@ -673,11 +686,12 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         // Store the frame details in camera details
         m_details.mode = mode;
-        m_details.frameType.width = (*modeIt).baseResolutionWidth;
-        m_details.frameType.height = (*modeIt).baseResolutionHeight;
+        m_details.frameType.width = m_modeDetailsCache.baseResolutionWidth;
+        m_details.frameType.height = m_modeDetailsCache.baseResolutionHeight;
         m_details.frameType.totalCaptures = 1;
         m_details.frameType.dataDetails.clear();
-        for (const auto &item : (*modeIt).frameContent) {
+        // Use m_modeDetailsCache.frameContent (updated by getModeDetails) not (*modeIt).frameContent (stale)
+        for (const auto &item : m_modeDetailsCache.frameContent) {
             if (item == "xyz" && !m_xyzEnabled) {
                 continue;
             }
@@ -694,7 +708,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
             if (item == "xyz") {
                 fDataDetails.subelementsPerElement = 3;
-            } else if (item == "raw") {
+            } else if (item == "raw" || item == "raw_bayer") {
                 fDataDetails.width = m_modeDetailsCache.frameWidthInBytes;
                 fDataDetails.height = m_modeDetailsCache.frameHeightInBytes;
                 fDataDetails.subelementSize = 1;
@@ -714,7 +728,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         }
 
         // We want computed frames (Depth & AB). Tell target to initialize depth compute
-        if (!m_pcmFrame) {
+        // Skip this for raw bypass mode (no ToF processing)
+        LOG(INFO) << "ToFi init check: m_pcmFrame=" << m_pcmFrame
+                  << ", isRawBypass=" << m_modeDetailsCache.isRawBypass;
+        if (!m_pcmFrame && !m_modeDetailsCache.isRawBypass) {
             size_t dataSize = 0;
             std::string s;
 
@@ -981,9 +998,13 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         LOG(INFO) << "[RECORDING] Original frameContent has "
                   << m_modeDetailsCache.frameContent.size() << " items";
         for (std::string val : m_modeDetailsCache.frameContent) {
-            if (val == "raw") {
-                LOG(INFO) << "[RECORDING] Skipping raw (not supported)";
-                continue; // raw not supported
+            LOG(INFO) << "[RECORDING] frameContent item: \"" << val << "\"";
+            if (val == "raw" || val == "raw_bayer") {
+                LOG(INFO) << "[RECORDING] Including raw/raw_bayer in header";
+                memcpy((char *)m_offline_parameters.modeDetailsCache
+                           .frameContent[idx++],
+                       val.c_str(), val.length());
+                continue; // Add raw_bayer to header but skip detailed processing below
             }
 
             LOG(INFO) << "[RECORDING] Adding to header: " << val;
@@ -1013,7 +1034,9 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         m_offline_parameters.details.height = (*modeIt).baseResolutionHeight;
         m_offline_parameters.details.totalCaptures = 1;
         LOG(INFO) << "[RECORDING] Building fDataDetails from frameContent...";
-        for (const auto &item : (*modeIt).frameContent) {
+        // Use m_modeDetailsCache.frameContent instead of (*modeIt).frameContent
+        // because it has the updated raw_bayer content for raw bypass mode
+        for (const auto &item : m_modeDetailsCache.frameContent) {
 
             if (m_offline_parameters.fdatadetailsCount >
                 m_offline_parameters.MAX_FRAME_DATA_DETAILS_SAVE) {
@@ -1022,7 +1045,7 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
                 break;
             }
 
-            if (item == "raw") { // "raw" is not supported right now
+            if (item == "raw") { // "raw" is not supported (deprecated)
                 LOG(INFO) << "[RECORDING] Skipping raw from fDataDetails (not "
                              "supported)";
                 continue;
@@ -1049,6 +1072,13 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
             if (item == "xyz") {
                 m_offline_parameters.fDataDetails[idx].subelementsPerElement =
                     3;
+            } else if (item == "raw_bayer") {
+                // Raw bypass: use driver dimensions, 1 byte per pixel (RG12 format)
+                m_offline_parameters.fDataDetails[idx].width =
+                    m_modeDetailsCache.frameWidthInBytes;
+                m_offline_parameters.fDataDetails[idx].height =
+                    m_modeDetailsCache.frameHeightInBytes;
+                m_offline_parameters.fDataDetails[idx].subelementSize = 1;
             } else if (item == "metadata") {
                 m_offline_parameters.fDataDetails[idx].subelementSize = 1;
                 m_offline_parameters.fDataDetails[idx].width = 128;
@@ -1255,6 +1285,12 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get frame from device";
         return status;
+    }
+
+    // For raw bypass mode, frame is already complete (raw Bayer data)
+    // Skip all post-processing (XYZ, metadata, etc.)
+    if (m_modeDetailsCache.isRawBypass) {
+        return Status::OK;
     }
 
     // The incoming sensor frames are already processed. Need to just create XYZ data
@@ -2044,6 +2080,17 @@ void CameraItof::configureSensorModeDetails() {
             LOG(WARNING) << "inputFormat was not found in parameter list";
         }
 
+        // Raw bypass mode control (default to 0 if not in config)
+        it = m_iniKeyValPairs.find("rawBypassMode");
+        if (it != m_iniKeyValPairs.end()) {
+            value = it->second;
+            m_depthSensor->setControl("rawBypassMode", value);
+            LOG(INFO) << "Raw bypass mode set to " << value;
+        } else {
+            // Default to standard depth mode
+            m_depthSensor->setControl("rawBypassMode", "0");
+        }
+
         // XYZ set through camera control takes precedence over the setting from parameter list
         if (!m_xyzSetViaApi) {
             it = m_iniKeyValPairs.find("xyzEnable");
@@ -2070,7 +2117,8 @@ void CameraItof::configureSensorModeDetails() {
         // Rebuild frameContent based on enabled frame types
         // This ensures recording/playback respects config overrides
         // Only rebuild if we have INI params (not during early initialization)
-        if (!m_iniKeyValPairs.empty()) {
+        // Skip for raw bypass mode (frameContent already set to "raw_bayer")
+        if (!m_iniKeyValPairs.empty() && !m_modeDetailsCache.isRawBypass) {
             m_modeDetailsCache.frameContent.clear();
             if (m_depthEnabled) {
                 m_modeDetailsCache.frameContent.emplace_back("depth");
@@ -2987,6 +3035,42 @@ aditof::Status CameraItof::adsd3500SetMIPIOutputSpeed(uint16_t speed) {
 }
 
 /**
+ * @brief Enables or disables raw bypass mode on ADSD3500.
+ *
+ * Writes to register 0x0033 to control raw bypass mode. When enabled (0x0001),
+ * the ISP outputs unprocessed raw Bayer sensor data instead of computing
+ * depth/AB/confidence frames. When disabled (0x0000), standard depth computation
+ * occurs.
+ *
+ * @param[in] enable true to enable raw bypass mode; false for standard depth mode.
+ *
+ * @return aditof::Status::OK if register write succeeds;
+ *         aditof::Status error codes if sensor write fails.
+ *
+ * @note This function asserts that the camera is not in offline mode.
+ * @note Register 0x0033 must be written before V4L2 driver configuration.
+ */
+aditof::Status CameraItof::adsd3500SetRawBypassMode(bool enable) {
+
+    using namespace aditof;
+    Status status = Status::OK;
+
+    assert(!m_isOffline);
+
+    uint16_t value = enable ? 0x0001 : 0x0000;
+    status = m_depthSensor->adsd3500_write_cmd(0x0033, value);
+
+    if (status == Status::OK) {
+        LOG(INFO) << "Raw bypass mode " << (enable ? "enabled" : "disabled");
+    } else {
+        LOG(ERROR) << "Failed to set raw bypass mode to "
+                   << (enable ? "enabled" : "disabled");
+    }
+
+    return status;
+}
+
+/**
  * @brief Enables or disables hardware deskew on stream start.
  *
  * Configures whether the ADSD3500 applies image deskew correction when
@@ -3037,7 +3121,7 @@ aditof::Status CameraItof::adsd3500GetMIPIOutputSpeed(uint16_t &speed) {
 /**
  * @brief Retrieves the imager error status code.
  *
- * Reads the error register from the paired imager (ADTF3080, ADSD3100, etc.)
+ * Reads the error register from the paired imager (ADTF3080, ADTF3066, ADSD3100, etc.)
  * to diagnose hardware issues.
  *
  * @param[out] errcode Error code from the imager.
@@ -3621,8 +3705,11 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
                 LOG(ERROR) << "ADSD3030 imager error detected: "
                            << m_adsdErrors.GetStringADSD3030(imagerStatus);
             } else if (m_imagerType == aditof::ImagerType::ADTF3080) {
-                LOG(ERROR) << "ADSD3030 imager error detected: "
-                           << m_adsdErrors.GetStringADSD3030(imagerStatus);
+                LOG(ERROR) << "ADTF3080 imager error detected: "
+                           << m_adsdErrors.GetStringADSD3080(imagerStatus);
+            } else if (m_imagerType == aditof::ImagerType::ADTF3066) {
+                LOG(ERROR) << "ADTF3066 imager error detected: "
+                           << m_adsdErrors.GetStringADTF3066(imagerStatus);
             } else {
                 LOG(ERROR) << "Imager error detected. Cannot be displayed "
                               "because imager type is unknown";
@@ -3948,7 +4035,7 @@ void CameraItof::cleanupXYZtables() {
  * @brief Retrieves the imager type (sensor model) in use with ADSD3500.
  *
  * Returns the specific depth imager model paired with the ADSD3500 ISP.
- * Common imagers: ADSD3100, ADSD3030, ADTF3080.
+ * Common imagers: ADSD3100, ADSD3030, ADTF3080, ADTF3066.
  *
  * @param[out] imagerType ImagerType enum value representing the sensor.
  *

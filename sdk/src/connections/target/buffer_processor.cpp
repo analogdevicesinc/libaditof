@@ -97,6 +97,7 @@ BufferProcessor::BufferProcessor()
     m_outputFrameHeight = 0;
     m_processorPropSet = false;
     m_vidPropSet = false;
+    m_isRawBypassMode = false;
     stopThreadsFlag = true;
     stopThreadsFlag.store(true, std::memory_order_release);
     streamRunning = false;
@@ -221,7 +222,7 @@ aditof::Status BufferProcessor::setInputDevice(VideoDev *inputVideoDev) {
  */
 aditof::Status BufferProcessor::setVideoProperties(
     int frameWidth, int frameHeight, int WidthInBytes, int HeightInBytes,
-    int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf) {
+    int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf, bool isRawBypass) {
 
     // Clear all queues to prevent memory leaks if setVideoProperties is called multiple times
     if (!stopThreadsFlag.load(std::memory_order_acquire)) {
@@ -248,9 +249,14 @@ aditof::Status BufferProcessor::setVideoProperties(
     m_vidPropSet = true;
 
     m_currentModeNumber = modeNumber;
+    m_isRawBypassMode = isRawBypass;
 
     m_outputFrameWidth = frameWidth;
     m_outputFrameHeight = frameHeight;
+
+    // Store driver dimensions for raw bypass buffer calculation
+    m_driverFrameWidth = WidthInBytes;
+    m_driverFrameHeight = HeightInBytes;
 
     m_rawFrameBufferSize =
         aditof::platform::Platform::getInstance().calculateBufferSize(
@@ -312,7 +318,19 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     /* | AB Frame ( W * H (type: uint16_t)) |    */
     /* | Confidance Frame ( W * H * 2 (type: float)) | */
 
-    uint32_t depthSize = m_outputFrameWidth * m_outputFrameHeight;
+    // For raw bypass mode, use driver dimensions (full raw buffer size)
+    // For normal ToF mode, use output dimensions (processed frame size)
+    uint32_t width =
+        m_isRawBypassMode ? m_driverFrameWidth : m_outputFrameWidth;
+    uint32_t height =
+        m_isRawBypassMode ? m_driverFrameHeight : m_outputFrameHeight;
+
+    LOG(INFO) << "calculateFrameSize: isRawBypass=" << m_isRawBypassMode
+              << ", width=" << width << ", height=" << height
+              << ", bitsInAB=" << (int)bitsInAB
+              << ", bitsInConf=" << (int)bitsInConf;
+
+    uint32_t depthSize = width * height;
     uint32_t abSize = 0;
     uint32_t confSize = 0;
 
@@ -320,20 +338,24 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     // for 0 bit configuration, it'll not contribute in framesize
     if ((bitsInAB != 0) && (bitsInConf == 0)) {
         // Conf bit is set to 0
-        abSize = m_outputFrameWidth * m_outputFrameHeight;
+        abSize = width * height;
 
     } else if ((bitsInAB == 0) && (bitsInConf != 0)) {
         // AB bit is set to 0
-        confSize = m_outputFrameWidth * m_outputFrameHeight * 2;
+        confSize = width * height * 2;
     } else if ((bitsInAB == 0) && (bitsInConf == 0)) {
         // No need to add size
     } else {
 
-        abSize = m_outputFrameWidth * m_outputFrameHeight;
-        confSize = m_outputFrameWidth * m_outputFrameHeight * 2;
+        abSize = width * height;
+        confSize = width * height * 2;
     }
 
     m_tofiBufferSize = depthSize + abSize + confSize;
+
+    LOG(INFO) << "calculateFrameSize: depthSize=" << depthSize
+              << ", abSize=" << abSize << ", confSize=" << confSize
+              << ", m_tofiBufferSize=" << m_tofiBufferSize << " (uint16_t)";
 }
 
 /**
@@ -576,6 +598,57 @@ void BufferProcessor::processThread() {
             continue;
         }
 
+        // Raw bypass mode: Simple copy path, no ToFi processing
+        // Must handle before accessing m_tofiComputeContext (which is nullptr for raw bypass)
+        if (m_isRawBypassMode) {
+            const size_t bufferSizeBytes = process_frame.size;
+            const size_t maxBufferSize = m_tofiBufferSize * sizeof(uint16_t);
+
+            LOG(INFO) << "Raw bypass: V4L2 buffer size=" << bufferSizeBytes
+                      << " bytes, maxBufferSize=" << maxBufferSize << " bytes";
+
+            if (bufferSizeBytes <= maxBufferSize) {
+                // Copy raw V4L2 data into ToFi output buffer
+                memcpy(tofi_compute_io_buff.get(), process_frame.data.get(),
+                       bufferSizeBytes);
+
+                // Record frame if recording is active
+                if (m_state == ST_RECORD && m_stream_file_out.is_open()) {
+                    aditof::Status writeStatus = writeFrame(
+                        (uint8_t *)tofi_compute_io_buff.get(), bufferSizeBytes);
+                    if (writeStatus != aditof::Status::OK) {
+                        LOG(WARNING) << "Failed to write raw bypass frame "
+                                        "during recording";
+                    }
+                }
+
+                // Package processed frame for output
+                process_frame.tofiBuffer = tofi_compute_io_buff;
+                process_frame.size = bufferSizeBytes / sizeof(uint16_t);
+
+                // Push to done queue
+                if (!m_process_done_Q.push(std::move(process_frame))) {
+                    LOG(WARNING) << "processThread: Failed to push raw "
+                                    "bypass frame to done queue";
+                    // Restore buffers on error
+                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                    m_v4l2_input_buffer_Q.push(process_frame.data);
+                }
+
+                continue; // Skip ToFi computation
+            } else {
+                LOG(ERROR) << "processThread: Raw bypass buffer size mismatch: "
+                           << bufferSizeBytes << " > " << maxBufferSize;
+
+                // Restore buffers and continue
+                m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                m_v4l2_input_buffer_Q.push(process_frame.data);
+
+                continue;
+            }
+        }
+
+        // Standard ToF mode: Save m_tofiComputeContext pointers before modifying
         uint16_t *tempDepthFrame = m_tofiComputeContext->p_depth_frame;
         uint16_t *tempAbFrame = m_tofiComputeContext->p_ab_frame;
         float *tempConfFrame = m_tofiComputeContext->p_conf_frame;
@@ -620,6 +693,7 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext->p_ab_frame = tempAbFrame;
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
             }
+
 #ifdef DUAL
             // For dual pulsatrix mode 1 and 0, data comes deinterleaved from ISP
             // Copy only the frames that are actually allocated based on m_tofiBufferSize

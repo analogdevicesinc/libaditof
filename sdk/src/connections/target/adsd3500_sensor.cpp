@@ -122,7 +122,8 @@ enum class SensorImagerType {
     IMAGER_UNKNOWN,
     IMAGER_ADSD3100,
     IMAGER_ADSD3030,
-    IMAGER_ADTF3080
+    IMAGER_ADTF3080,
+    IMAGER_ADTF3066
 };
 
 enum class CCBVersion {
@@ -147,8 +148,8 @@ struct Adsd3500Sensor::ImplData {
         ctrlBuf; /**< Buffer for ISP control commands and responses */
 
     ImplData()
-        : numVideoDevs(1),
-          videoDevs(nullptr), modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
+        : numVideoDevs(1), videoDevs(nullptr),
+          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
         ccbVersion = CCBVersion::CCB_UNKNOWN;
         imagerType = SensorImagerType::IMAGER_UNKNOWN;
     }
@@ -233,6 +234,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_controls.emplace("depthComputeOpenSource", "0");
     m_controls.emplace("disableCCBM", "0");
     m_controls.emplace("availableCCBM", "0");
+    m_controls.emplace("rawBypassMode", "0");
 
     // Define the commands that correspond to the sensor controls
     m_implData->controlsCommands["abAveraging"] = CTRL_AB_AVG;
@@ -792,6 +794,17 @@ aditof::Status Adsd3500Sensor::setMode(const uint8_t &mode) {
         return aditof::Status::GENERIC_ERROR;
     }
 
+    // Update m_availableModes with the modified modeTable (includes isRawBypass flag)
+    for (auto &availableMode : m_availableModes) {
+        if (availableMode.modeNumber == mode) {
+            availableMode.isRawBypass = modeTable.isRawBypass;
+            availableMode.frameWidthInBytes = modeTable.frameWidthInBytes;
+            availableMode.frameHeightInBytes = modeTable.frameHeightInBytes;
+            availableMode.frameContent = modeTable.frameContent;
+            break;
+        }
+    }
+
     status = setMode(modeTable);
     if (status != aditof::Status::OK) {
         LOG(ERROR) << "Failed to set mode for the current configuration!";
@@ -893,10 +906,64 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
         struct v4l2_control ctrl;
 
+        // For raw bypass mode, set subdev bit controls to 0 BEFORE setting mode
+        // This matches the v4l2-ctl script sequence that successfully captures raw frames
+        if (type.isRawBypass) {
+            LOG(INFO) << "Raw bypass: Setting subdev bit controls to 0 BEFORE mode";
+            
+            // phase_depth_bits = 0
+            memset(&ctrl, 0, sizeof(ctrl));
+            ctrl.id = CTRL_PHASE_DEPTH_BITS;
+            ctrl.value = 0;
+            if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
+                LOG(WARNING) << "Failed to set phase_depth_bits=0, errno: " << errno;
+            }
+            
+            // ab_bits = 0
+            memset(&ctrl, 0, sizeof(ctrl));
+            ctrl.id = CTRL_AB_BITS;
+            ctrl.value = 0;
+            if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
+                LOG(WARNING) << "Failed to set ab_bits=0, errno: " << errno;
+            }
+            
+            // confidence_bits = 0
+            memset(&ctrl, 0, sizeof(ctrl));
+            ctrl.id = aditof::platform::Platform::getInstance().getV4L2ConfidenceBitsControlId();
+            ctrl.value = 0;
+            if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
+                LOG(WARNING) << "Failed to set confidence_bits=0, errno: " << errno;
+            }
+            
+            // ab_averaging = 0
+            memset(&ctrl, 0, sizeof(ctrl));
+            ctrl.id = aditof::platform::Platform::getInstance().getV4L2AbAvgControlId();
+            ctrl.value = 0;
+            if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
+                LOG(WARNING) << "Failed to set ab_averaging=0, errno: " << errno;
+            }
+            
+            // depth_enable = 0
+            memset(&ctrl, 0, sizeof(ctrl));
+            ctrl.id = aditof::platform::Platform::getInstance().getV4L2DepthEnControlId();
+            ctrl.value = 0;
+            if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
+                LOG(WARNING) << "Failed to set depth_enable=0, errno: " << errno;
+            }
+            
+            LOG(INFO) << "Raw bypass: Subdev controls configured, now setting mode";
+        }
+
         memset(&ctrl, 0, sizeof(ctrl));
 
-        ctrl.id = CTRL_SET_MODE;
-        ctrl.value = type.modeNumber;
+        // For raw bypass mode: The v4l2-ctl script doesn't set any mode control,
+        // only operating_mode=0. Setting CTRL_SET_MODE might override our resolution.
+        // For standard ToF modes: Set the actual mode number
+        if (!type.isRawBypass) {
+            ctrl.id = CTRL_SET_MODE;
+            ctrl.value = type.modeNumber;
+            
+            LOG(INFO) << "Setting CTRL_SET_MODE: value=" << ctrl.value;
 
         if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
             LOG(ERROR) << "Setting Mode error "
@@ -962,11 +1029,26 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         fmt.fmt.pix.pixelformat = pixelFormat;
         fmt.fmt.pix.width = type.frameWidthInBytes;
         fmt.fmt.pix.height = type.frameHeightInBytes;
+        LOG(INFO) << "V4L2 setMode: width=" << type.frameWidthInBytes
+                  << " height=" << type.frameHeightInBytes
+                  << " pixelFormat=" << std::hex << pixelFormat
+                  << " isRawBypass=" << type.isRawBypass;
         if (xioctl(dev->fd, VIDIOC_S_FMT, &fmt) == -1) {
             LOG(WARNING) << "Setting Pixel Format error, errno: " << errno
                          << " error: " << strerror(errno);
             status = Status::GENERIC_ERROR;
             goto cleanup_on_error;
+        }
+
+        // Query back the actual format set by the driver        CLEAR(fmt);
+        fmt.type = dev->videoBuffersType;
+        if (xioctl(dev->fd, VIDIOC_G_FMT, &fmt) == -1) {
+            LOG(WARNING) << "Getting Pixel Format error, errno: " << errno;
+        } else {
+            LOG(INFO) << "V4L2 actual format: width=" << std::dec
+                      << fmt.fmt.pix.width << " height=" << fmt.fmt.pix.height
+                      << " bytesperline=" << fmt.fmt.pix.bytesperline
+                      << " sizeimage=" << fmt.fmt.pix.sizeimage;
         }
 
         /* Allocate the video buffers in the driver */
@@ -1033,10 +1115,16 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     if (!type.isPCM) {
 
+        // For raw bypass mode, always use 0 bits (no ToF processing)
+        // For standard modes, use the bits from configuration
+        uint8_t bitsInAB = type.isRawBypass ? 0 : m_bitsInAB[type.modeNumber];
+        uint8_t bitsInConf =
+            type.isRawBypass ? 0 : m_bitsInConf[type.modeNumber];
+
         status = m_bufferProcessor->setVideoProperties(
             type.baseResolutionWidth, type.baseResolutionHeight,
             type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
-            m_bitsInAB[type.modeNumber], m_bitsInConf[type.modeNumber]);
+            bitsInAB, bitsInConf, type.isRawBypass);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             goto cleanup_on_error;
@@ -1265,6 +1353,12 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
         m_modeSelector.setControl("inputFormat", value);
         return Status::OK;
     }
+
+    if (control == "rawBypassMode") {
+        m_modeSelector.setControl("rawBypassMode", value);
+        return Status::OK;
+    }
+
     if (control == "netlinktest") {
         return Status::OK;
     }
@@ -2374,6 +2468,11 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                 m_modeSelector.setControl("imagerType", "adtf3080");
                 break;
             }
+            case 4: {
+                m_implData->imagerType = SensorImagerType::IMAGER_ADTF3066;
+                m_modeSelector.setControl("imagerType", "adtf3066");
+                break;
+            }
             default: {
                 LOG(WARNING) << "Unknown imager type read from ADSD3500: "
                              << imager_version;
@@ -2526,6 +2625,9 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
     } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3080) {
         status = DeviceParameters::createIniParams(
             m_iniFileStructList, m_availableModes, "adtf3080", m_chipId);
+    } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3066) {
+        status = DeviceParameters::createIniParams(
+            m_iniFileStructList, m_availableModes, "adtf3066", m_chipId);
     }
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to populate ini params struct!";
@@ -3042,6 +3144,8 @@ aditof::Status Adsd3500Sensor::getIniParamsArrayForMode(int mode,
         imager = "adsd3100";
     } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3080) {
         imager = "adtf3080";
+    } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3066) {
+        imager = "adtf3066";
     }
 
     auto it = std::find_if(

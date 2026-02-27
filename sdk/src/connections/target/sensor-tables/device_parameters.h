@@ -175,4 +175,32 @@ static map<string, string> adtf3080_fullDepth = {{"abThreshMin", "3.0"},
                                                  {"xyzEnable", "1"},
                                                  {"fps", "40"}};
 
+/**
+ * @brief Default depth computation parameters for ADTF3066 imager.
+ * 
+ * Contains 21 key-value pairs for ISP configuration including JBLF filtering,
+ * thresholds, and output format settings. Cloned from ADTF3080 configuration.
+ */
+static map<string, string> adtf3066_fullDepth = {{"abThreshMin", "3.0"},
+                                                 {"confThresh", "25.0"},
+                                                 {"radialThreshMin", "100.0"},
+                                                 {"radialThreshMax", "10000.0"},
+                                                 {"jblfApplyFlag", "1"},
+                                                 {"jblfWindowSize", "7"},
+                                                 {"jblfGaussianSigma", "10.0"},
+                                                 {"jblfExponentialTerm", "5.0"},
+                                                 {"jblfMaxEdge", "12.0"},
+                                                 {"jblfABThreshold", "10.0"},
+                                                 {"headerSize", "128"},
+                                                 {"inputFormat", "raw8"},
+                                                 {"depthComputeIspEnable", "1"},
+                                                 {"partialDepthEnable", "0"},
+                                                 {"interleavingEnable", "1"},
+                                                 {"bitsInPhaseOrDepth", "16"},
+                                                 {"bitsInConf", "8"},
+                                                 {"bitsInAB", "16"},
+                                                 {"phaseInvalid", "0"},
+                                                 {"xyzEnable", "1"},
+                                                 {"fps", "40"}};
+
 #endif
