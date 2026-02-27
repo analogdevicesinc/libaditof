@@ -225,10 +225,6 @@ aditof::Status OfflineDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     uint32_t sz = 0;
     Status status = readFrame((uint8_t *)buffer, sz, index);
 
-    if (status != Status::OK && index > 0) {
-        status = readFrame((uint8_t *)buffer, sz, index - 1);
-    }
-
     return status;
 }
 
