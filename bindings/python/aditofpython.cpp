@@ -164,6 +164,12 @@ PYBIND11_MODULE(aditofpython, m) {
         .value("OnTarget", aditof::ConnectionType::ON_TARGET)
         .value("Offline", aditof::ConnectionType::OFFLINE);
 
+    py::enum_<aditof::ImagerType>(m, "ImagerType")
+        .value("UNSET", aditof::ImagerType::UNSET)
+        .value("ADSD3100", aditof::ImagerType::ADSD3100)
+        .value("ADSD3030", aditof::ImagerType::ADSD3030)
+        .value("ADTF3080", aditof::ImagerType::ADTF3080);
+
     py::class_<aditof::IntrinsicParameters>(m, "IntrinsicParameters")
         .def(py::init<>())
         .def_readwrite("fx", &aditof::IntrinsicParameters::fx)
@@ -629,7 +635,30 @@ PYBIND11_MODULE(aditofpython, m) {
                     camera.readSerialNumber(serialNumber, useCacheValue);
                 return std::make_pair(status, serialNumber);
             },
-            py::arg("serialNumber"), py::arg("useCacheValue"));
+            py::arg("serialNumber"), py::arg("useCacheValue"))
+        .def("getImagerType",
+             [](aditof::Camera &camera) {
+                 aditof::ImagerType imagerType;
+                 aditof::Status status = camera.getImagerType(imagerType);
+                 return std::make_pair(status, imagerType);
+             })
+        .def("dropFirstFrame", &aditof::Camera::dropFirstFrame,
+             py::arg("dropFrame"))
+        .def(
+            "getDepthParamtersMap",
+            [](aditof::Camera &camera, uint16_t mode) {
+                std::map<std::string, std::string> params;
+                aditof::Status status =
+                    camera.getDepthParamtersMap(mode, params);
+                py::dict pyParams;
+                for (const auto &pair : params) {
+                    pyParams[py::str(pair.first)] = py::str(pair.second);
+                }
+                return std::make_pair(status, pyParams);
+            },
+            py::arg("mode"))
+        .def("resetDepthProcessParams",
+             &aditof::Camera::resetDepthProcessParams);
 
     // Frame
     py::class_<aditof::Frame>(m, "Frame")
@@ -651,11 +680,13 @@ PYBIND11_MODULE(aditofpython, m) {
                 return f;
             },
             py::arg("dataType"))
-        .def("getMetadataStruct", [](aditof::Frame &frame) {
-            aditof::Metadata metadata;
-            aditof::Status status = frame.getMetadataStruct(metadata);
-            return std::make_pair(status, metadata);
-        });
+        .def("getMetadataStruct",
+             [](aditof::Frame &frame) {
+                 aditof::Metadata metadata;
+                 aditof::Status status = frame.getMetadataStruct(metadata);
+                 return std::make_pair(status, metadata);
+             })
+        .def("haveDataType", &aditof::Frame::haveDataType, py::arg("dataType"));
 
     // DepthSensorInterface
     py::class_<aditof::DepthSensorInterface,
@@ -832,7 +863,80 @@ PYBIND11_MODULE(aditofpython, m) {
                 return std::make_tuple(status, iniFilePtr, calDataPtr);
             },
             py::arg("iniFile"), py::arg("iniFileLength"), py::arg("calData"),
-            py::arg("calDataLength"));
+            py::arg("calDataLength"))
+        .def("adsd3500_getInterruptandReset",
+             &aditof::DepthSensorInterface::adsd3500_getInterruptandReset)
+        .def("adsd3500_get_status",
+             [](aditof::DepthSensorInterface &device) {
+                 int chipStatus, imagerStatus;
+                 aditof::Status status =
+                     device.adsd3500_get_status(chipStatus, imagerStatus);
+                 return std::make_tuple(status, chipStatus, imagerStatus);
+             })
+        .def("getDepthComputeParams",
+             [](aditof::DepthSensorInterface &device) {
+                 std::map<std::string, std::string> params;
+                 aditof::Status status = device.getDepthComputeParams(params);
+                 py::dict pyParams;
+                 for (const auto &pair : params) {
+                     pyParams[py::str(pair.first)] = py::str(pair.second);
+                 }
+                 return std::make_pair(status, pyParams);
+             })
+        .def(
+            "setDepthComputeParams",
+            [](aditof::DepthSensorInterface &device, py::dict params) {
+                std::map<std::string, std::string> cppParams;
+                for (std::pair<py::handle, py::handle> item : params) {
+                    auto key = item.first.cast<std::string>();
+                    auto value = item.second.cast<std::string>();
+                    cppParams[key] = value;
+                }
+                return device.setDepthComputeParams(cppParams);
+            },
+            py::arg("params"))
+        .def("setSensorConfiguration",
+             &aditof::DepthSensorInterface::setSensorConfiguration,
+             py::arg("sensorConf"))
+        .def(
+            "getIniParamsArrayForMode",
+            [](aditof::DepthSensorInterface &device, int mode) {
+                std::string iniStr;
+                aditof::Status status =
+                    device.getIniParamsArrayForMode(mode, iniStr);
+                return std::make_pair(status, iniStr);
+            },
+            py::arg("mode"))
+        .def(
+            "startRecording",
+            [](aditof::DepthSensorInterface &device, std::string &fileName,
+               py::array_t<uint8_t> parameters) {
+                py::buffer_info paramBuffInfo = parameters.request();
+                uint8_t *paramPtr = static_cast<uint8_t *>(paramBuffInfo.ptr);
+                aditof::Status status = device.startRecording(
+                    fileName, paramPtr, paramBuffInfo.size);
+                return status;
+            },
+            py::arg("fileName"), py::arg("parameters"))
+        .def("stopRecording", &aditof::DepthSensorInterface::stopRecording)
+        .def("setPlaybackFile", &aditof::DepthSensorInterface::setPlaybackFile,
+             py::arg("filePath"))
+        .def("stopPlayback", &aditof::DepthSensorInterface::stopPlayback)
+        .def(
+            "getHeader",
+            [](aditof::DepthSensorInterface &device,
+               py::array_t<uint8_t> buffer) {
+                py::buffer_info buffInfo = buffer.request();
+                uint8_t *ptr = static_cast<uint8_t *>(buffInfo.ptr);
+                aditof::Status status = device.getHeader(ptr, buffInfo.size);
+                return status;
+            },
+            py::arg("buffer"))
+        .def("getFrameCount", [](aditof::DepthSensorInterface &device) {
+            uint32_t frameCount;
+            aditof::Status status = device.getFrameCount(frameCount);
+            return std::make_pair(status, frameCount);
+        });
 
     // FrameHandler
     py::class_<aditof::FrameHandler>(m, "FrameHandler")
@@ -854,7 +958,22 @@ PYBIND11_MODULE(aditofpython, m) {
         .def("storeFramesToSingleFile",
              &aditof::FrameHandler::storeFramesToSingleFile, py::arg("enable"))
         .def("setFrameContent", &aditof::FrameHandler::setFrameContent,
-             py::arg("frameContent"));
+             py::arg("frameContent"))
+        .def(
+            "SnapShotFrames",
+            [](aditof::FrameHandler &handler, const char *baseFileName,
+               aditof::Frame &frame, py::array_t<uint8_t> ab,
+               py::array_t<uint8_t> depth) {
+                py::buffer_info abBuffInfo = ab.request();
+                uint8_t *abPtr = static_cast<uint8_t *>(abBuffInfo.ptr);
+                py::buffer_info depthBuffInfo = depth.request();
+                uint8_t *depthPtr = static_cast<uint8_t *>(depthBuffInfo.ptr);
+                aditof::Status status = handler.SnapShotFrames(
+                    baseFileName, &frame, abPtr, depthPtr);
+                return status;
+            },
+            py::arg("baseFileName"), py::arg("frame"), py::arg("ab"),
+            py::arg("depth"));
 
     //SDK version
     m.def("getKitVersion", &aditof::getKitVersion);
