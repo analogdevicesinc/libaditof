@@ -50,7 +50,9 @@ class SDK_API Utils {
     static void splitPath(const std::string &fullPath, std::string &path,
                           std::string &filename);
     static std::string getDefaultRecordingFolder();
-    static bool generateRecordingPath(std::string &filePath);
+    static bool generateRecordingPath(std::string &filePath,
+                                      bool strict_storage_check = true);
+    static bool removeFolder(const std::string &path);
 };
 } // namespace aditof
 

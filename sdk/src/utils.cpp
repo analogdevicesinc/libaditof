@@ -41,15 +41,368 @@
 #endif
 #include <cstdlib>
 #include <ctime>
+#include <dirent.h>
 #include <iomanip>
 #include <iostream>
+#include <limits.h>
+#include <mntent.h>
 #include <random>
 #include <sstream>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
+#include <unistd.h>
+
+#include <algorithm>
+#include <cstring>
+#include <fstream>
+#include <iostream>
+#include <regex>
+#include <string>
+#include <vector>
 
 using namespace std;
 using namespace aditof;
 
 const std::string recordingFolder = "recordings/";
+
+// detect_storage_class.cpp
+// Compile:
+//   g++ -std=c++14 detect_storage_class.cpp -o detect_storage_class
+// For standalone test (includes main), add -DSTANDALONE_DETECT_STORAGE
+//   g++ -std=c++14 -DSTANDALONE_DETECT_STORAGE detect_storage_class.cpp -o detect_storage_class
+class StorageDetector {
+  public:
+    // Return codes:
+    //  -1 : error (couldn't resolve device / other failure)
+    //   0 : unknown
+    //   1 : Micro-SD/SD (mmc/mmcblk detected)
+    //   2 : NVMe or HDD (nvme or rotational HDD)
+    int detect(const std::string &path) {
+        clear_state();
+        src_ = findDeviceForPath(path);
+        if (src_.empty())
+            return -1;
+
+        devname_ = basenameOfDevice(src_);
+        base_ = baseBlockName(devname_);
+
+        // read rotational flag
+        std::string rotPath = "/sys/block/" + base_ + "/queue/rotational";
+        rotational_ = readFile(rotPath);
+        if (rotational_.empty()) {
+            rotPath = "/sys/class/block/" + base_ + "/queue/rotational";
+            rotational_ = readFile(rotPath);
+        }
+        rotational_.erase(
+            std::remove_if(rotational_.begin(), rotational_.end(), ::isspace),
+            rotational_.end());
+
+        // sysfs device link for additional hints
+        std::string devlink = "/sys/block/" + base_ + "/device";
+        char linkbuf[PATH_MAX];
+        ssize_t r = readlink(devlink.c_str(), linkbuf, sizeof(linkbuf) - 1);
+        if (r > 0) {
+            linkbuf[r] = '\0';
+            std::string rel(linkbuf);
+            devlink_full_ = std::string("/sys/block/") + base_ + "/" + rel;
+        } else {
+            std::string alt = "/sys/class/block/" + base_ + "/device";
+            r = readlink(alt.c_str(), linkbuf, sizeof(linkbuf) - 1);
+            if (r > 0) {
+                linkbuf[r] = '\0';
+                devlink_full_ = std::string("/sys/class/block/") + base_ + "/" +
+                                std::string(linkbuf);
+            }
+        }
+
+        bool likely_mmc = false;
+        bool likely_nvme = false;
+        if (base_.rfind("mmcblk", 0) == 0)
+            likely_mmc = true;
+        if (base_.rfind("nvme", 0) == 0)
+            likely_nvme = true;
+
+        if (!devlink_full_.empty() &&
+            devlink_full_.find("/mmc") != std::string::npos)
+            likely_mmc = true;
+        if (!devlink_full_.empty() &&
+            devlink_full_.find("/nvme") != std::string::npos)
+            likely_nvme = true;
+
+        if (likely_mmc)
+            return 1;
+        if (likely_nvme)
+            return 2;
+        if (!rotational_.empty() && rotational_ == "1")
+            return 2; // rotational => HDD
+
+        return 0; // ambiguous / unknown (e.g. non-rotational USB / SATA SSD / SD in USB reader)
+    }
+
+    // Diagnostics getters:
+    std::string lastResolvedDevice() const { return src_; }
+    std::string lastBaseDevice() const { return base_; }
+    std::string lastRotational() const { return rotational_; }
+    std::string lastDevlink() const { return devlink_full_; }
+
+  private:
+    // State
+    std::string src_;
+    std::string devname_;
+    std::string base_;
+    std::string rotational_;
+    std::string devlink_full_;
+
+    void clear_state() {
+        src_.clear();
+        devname_.clear();
+        base_.clear();
+        rotational_.clear();
+        devlink_full_.clear();
+    }
+
+    static std::string readFile(const std::string &path) {
+        std::ifstream f(path.c_str());
+        if (!f)
+            return {};
+        std::string s;
+        std::getline(f, s);
+        return s;
+    }
+
+    static bool fileExists(const std::string &path) {
+        struct stat st;
+        return stat(path.c_str(), &st) == 0;
+    }
+
+    static bool isBlockDevice(const std::string &path) {
+        struct stat st;
+        if (stat(path.c_str(), &st) != 0)
+            return false;
+        return S_ISBLK(st.st_mode);
+    }
+
+    static std::string canonicalizePath(const std::string &p) {
+        char buf[PATH_MAX];
+        if (realpath(p.c_str(), buf))
+            return std::string(buf);
+        return std::string();
+    }
+
+    static std::string resolveDevSymlink(const std::string &devpath) {
+        struct stat st;
+        if (lstat(devpath.c_str(), &st) != 0)
+            return {};
+        if (!S_ISLNK(st.st_mode))
+            return {}; // not a symlink
+
+        char buf[PATH_MAX];
+        ssize_t r = readlink(devpath.c_str(), buf, sizeof(buf) - 1);
+        if (r <= 0)
+            return {};
+        buf[r] = '\0';
+        std::string link(buf);
+
+        std::string target;
+        if (!link.empty() && link[0] != '/') {
+            std::string dir;
+            auto pos = devpath.find_last_of('/');
+            if (pos == std::string::npos)
+                dir = ".";
+            else
+                dir = devpath.substr(0, pos);
+            target = dir + "/" + link;
+        } else {
+            target = link;
+        }
+
+        std::string canon = canonicalizePath(target);
+        if (!canon.empty())
+            return canon;
+        return target;
+    }
+
+    static std::string resolveByDiskBy(const std::string &prefix,
+                                       const std::string &id) {
+        std::string p = prefix + "/" + id;
+        if (!fileExists(p))
+            return {};
+        std::string canon = canonicalizePath(p);
+        if (!canon.empty())
+            return canon;
+        return p;
+    }
+
+    static std::string findBlockDeviceByDevNumbers(dev_t devnum) {
+        unsigned int maj = major(devnum);
+        unsigned int min = minor(devnum);
+        std::string want = std::to_string(maj) + ":" + std::to_string(min);
+
+        const char *sysclass = "/sys/class/block";
+        DIR *d = opendir(sysclass);
+        if (!d)
+            return {};
+        struct dirent *ent;
+        while ((ent = readdir(d)) != nullptr) {
+            if (ent->d_name[0] == '.')
+                continue;
+            std::string devfile =
+                std::string(sysclass) + "/" + ent->d_name + "/dev";
+            std::string content = readFile(devfile);
+            if (!content.empty()) {
+                content.erase(
+                    std::remove_if(content.begin(), content.end(), ::isspace),
+                    content.end());
+                if (content == want) {
+                    closedir(d);
+                    return std::string("/dev/") + ent->d_name;
+                }
+            }
+        }
+        closedir(d);
+        return {};
+    }
+
+    static std::string findDeviceForPath(const std::string &path) {
+        struct stat stTarget;
+        if (stat(path.c_str(), &stTarget) != 0) {
+            return {};
+        }
+
+        FILE *mnt = setmntent("/proc/mounts", "r");
+        if (!mnt) {
+            return {};
+        }
+
+        const struct mntent *ent;
+        std::string bestFsname;
+        size_t bestLen = 0;
+        std::string bestMountPoint;
+        while ((ent = getmntent(mnt)) != nullptr) {
+            struct stat st;
+            if (stat(ent->mnt_dir, &st) != 0)
+                continue;
+            if (st.st_dev == stTarget.st_dev) {
+                size_t len =
+                    std::string(ent->mnt_dir ? ent->mnt_dir : "").size();
+                if (len > bestLen) {
+                    bestLen = len;
+                    bestFsname = ent->mnt_fsname ? ent->mnt_fsname : "";
+                    bestMountPoint = ent->mnt_dir ? ent->mnt_dir : "";
+                }
+            }
+        }
+        endmntent(mnt);
+
+        if (bestFsname.empty())
+            return {};
+
+        // If fsname is absolute path like /dev/mmcblk0p2
+        if (!bestFsname.empty() && bestFsname[0] == '/') {
+            if (isBlockDevice(bestFsname))
+                return bestFsname;
+            if (fileExists(bestFsname)) {
+                std::string resolved = resolveDevSymlink(bestFsname);
+                if (!resolved.empty() && isBlockDevice(resolved))
+                    return resolved;
+            }
+        }
+
+        // Handle UUID=, LABEL=, PARTUUID=, PARTLABEL=
+        std::vector<std::pair<std::string, std::string>> byprefix = {
+            {"UUID=", "/dev/disk/by-uuid"},
+            {"LABEL=", "/dev/disk/by-label"},
+            {"PARTUUID=", "/dev/disk/by-partuuid"},
+            {"PARTLABEL=", "/dev/disk/by-partlabel"},
+        };
+        for (size_t i = 0; i < byprefix.size(); ++i) {
+            const auto &pre = byprefix[i].first;
+            const auto &prefixdir = byprefix[i].second;
+            if (bestFsname.rfind(pre, 0) == 0) {
+                std::string id = bestFsname.substr(pre.size());
+                std::string d = resolveByDiskBy(prefixdir, id);
+                if (!d.empty()) {
+                    if (isBlockDevice(d))
+                        return d;
+                    return d;
+                }
+            }
+        }
+
+        // /dev/root special
+        if (bestFsname == "/dev/root") {
+            std::string resolved = resolveDevSymlink("/dev/root");
+            if (!resolved.empty() && isBlockDevice(resolved))
+                return resolved;
+        }
+
+        // Fallback: match mountpoint dev numbers to /sys/class/block/*/dev
+        if (!bestMountPoint.empty()) {
+            struct stat stMount;
+            if (stat(bestMountPoint.c_str(), &stMount) == 0) {
+                std::string dd = findBlockDeviceByDevNumbers(stMount.st_dev);
+                if (!dd.empty())
+                    return dd;
+            }
+        }
+
+        return {};
+    }
+
+    static std::string basenameOfDevice(const std::string &devpath) {
+        auto pos = devpath.find_last_of('/');
+        if (pos == std::string::npos)
+            return devpath;
+        return devpath.substr(pos + 1);
+    }
+
+    static std::string baseBlockName(const std::string &name) {
+        if (name.rfind("mmcblk", 0) == 0)
+            return name;
+        if (std::regex_match(name, std::regex("^nvme\\d+n\\d+$")))
+            return name;
+
+        std::smatch m;
+        if (std::regex_match(name, m, std::regex("^(.+?)p(\\d+)$"))) {
+            return m[1].str();
+        }
+        if (std::regex_match(name, m, std::regex("^([a-z]+)(\\d+)$"))) {
+            return m[1].str();
+        }
+        return name;
+    }
+};
+
+#ifdef STANDALONE_DETECT_STORAGE
+int main(int argc, char **argv) {
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " /path/to/check\n";
+        return 2;
+    }
+    StorageDetector sd;
+    int rc = sd.detect(argv[1]);
+    std::cout << "detect('" << argv[1] << "') = " << rc << "\n";
+    std::cout << "resolved device: " << sd.lastResolvedDevice() << "\n";
+    std::cout << "base device:     " << sd.lastBaseDevice() << "\n";
+    std::cout << "rotational:      " << sd.lastRotational() << "\n";
+    std::cout << "devlink:         " << sd.lastDevlink() << "\n";
+    switch (rc) {
+    case -1:
+        std::cout << "Error resolving device or insufficient info\n";
+        break;
+    case 0:
+        std::cout << "Unknown (ambiguous/non-rotational non-mmc device)\n";
+        break;
+    case 1:
+        std::cout << "Micro-SD / SD (mmc)\n";
+        break;
+    case 2:
+        std::cout << "NVMe or HDD\n";
+        break;
+    }
+    return 0;
+}
+#endif
 
 /**
  * @brief Splits a string into tokens based on a delimiter character.
@@ -291,7 +644,8 @@ std::string Utils::getDefaultRecordingFolder() {
     return defaultFolder;
 }
 
-bool Utils::generateRecordingPath(std::string &filePath) {
+bool Utils::generateRecordingPath(std::string &filePath,
+                                  bool strict_storage_check) {
 
     std::string folderName = filePath;
     std::string fileBaseName = aditof::Utils::generateFileName();
@@ -309,7 +663,154 @@ bool Utils::generateRecordingPath(std::string &filePath) {
         }
     }
 
+    StorageDetector sd;
+    int storageType = sd.detect(folderName);
+
+    if (storageType != 2 && strict_storage_check) {
+        LOG(ERROR) << "Recording folder '" << folderName
+                   << "' is not on NVMe or HDD storage. Detected type: "
+                   << storageType
+                   << " (1=mmc/SD, 2=NVMe/HDD, 0=unknown, -1=error)";
+        removeFolder(
+            folderName); // Clean up the created folder if it was created
+        return false;
+    }
+
     filePath = folderName + fileBaseName;
 
     return true;
+}
+
+/**
+ * @brief Recursively removes a folder and all its contents.
+ *
+ * This function removes a folder directory and all files/subdirectories contained
+ * within it. Works on both Linux and Windows.
+ *
+ * @param[in] path  The path to the folder to remove.
+ * @return true if removal was successful, false otherwise.
+ */
+bool Utils::removeFolder(const std::string &path) {
+    if (path.empty()) {
+        LOG(ERROR) << "Cannot remove folder: path is empty";
+        return false;
+    }
+
+#ifdef _WIN32
+    // Windows implementation using RemoveDirectoryW
+    // Note: RemoveDirectoryW only works on empty directories,
+    // so we need to recursively delete contents first
+
+    WIN32_FIND_DATAA findData;
+    HANDLE findHandle;
+
+    // First, delete all files and subdirectories
+    std::string searchPath = path;
+    if (searchPath.back() != '\\' && searchPath.back() != '/') {
+        searchPath += "\\";
+    }
+    std::string searchPattern = searchPath + "*";
+
+    findHandle = FindFirstFileA(searchPattern.c_str(), &findData);
+    if (findHandle == INVALID_HANDLE_VALUE) {
+        // Folder might be empty or doesn't exist
+        if (RemoveDirectoryA(path.c_str())) {
+            return true;
+        }
+        LOG(ERROR) << "Failed to remove folder: " << path;
+        return false;
+    }
+
+    do {
+        std::string fileName = findData.cFileName;
+        if (fileName == "." || fileName == "..") {
+            continue;
+        }
+
+        std::string fullPath = searchPath + fileName;
+
+        if (findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            // Recursively remove subdirectory
+            if (!removeFolder(fullPath)) {
+                FindClose(findHandle);
+                return false;
+            }
+        } else {
+            // Delete file
+            if (!DeleteFileA(fullPath.c_str())) {
+                LOG(ERROR) << "Failed to delete file: " << fullPath;
+                FindClose(findHandle);
+                return false;
+            }
+        }
+    } while (FindNextFileA(findHandle, &findData));
+
+    FindClose(findHandle);
+
+    // Now remove the empty folder
+    if (!RemoveDirectoryA(path.c_str())) {
+        LOG(ERROR) << "Failed to remove directory: " << path;
+        return false;
+    }
+
+    return true;
+
+#elif defined(__linux__)
+    // Linux implementation using dirent and unlink/rmdir
+    DIR *dir = opendir(path.c_str());
+    if (!dir) {
+        LOG(ERROR) << "Failed to open directory: " << path;
+        return false;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != nullptr) {
+        std::string entryName = entry->d_name;
+        if (entryName == "." || entryName == "..") {
+            continue;
+        }
+
+        std::string fullPath = path;
+        if (fullPath.back() != '/') {
+            fullPath += "/";
+        }
+        fullPath += entryName;
+
+        struct stat entryStat;
+        if (stat(fullPath.c_str(), &entryStat) == -1) {
+            LOG(ERROR) << "Failed to stat: " << fullPath;
+            closedir(dir);
+            return false;
+        }
+
+        if (S_ISDIR(entryStat.st_mode)) {
+            // Recursively remove subdirectory
+            if (!removeFolder(fullPath)) {
+                closedir(dir);
+                return false;
+            }
+        } else {
+            // Delete file
+            if (unlink(fullPath.c_str()) == -1) {
+                LOG(ERROR) << "Failed to delete file: " << fullPath;
+                closedir(dir);
+                return false;
+            }
+        }
+    }
+
+    closedir(dir);
+
+    // Remove the empty directory
+    if (rmdir(path.c_str()) == -1) {
+        LOG(ERROR) << "Failed to remove directory: " << path;
+        return false;
+    }
+
+    return true;
+
+#else
+    LOG(ERROR) << "removeFolder() not implemented for this platform";
+    return false;
+#endif
 }
