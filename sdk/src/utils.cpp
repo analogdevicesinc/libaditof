@@ -644,6 +644,52 @@ std::string Utils::getDefaultRecordingFolder() {
     return defaultFolder;
 }
 
+/**
+ * @brief Expands the tilde (~) in a path to the user's home directory.
+ *
+ * On Linux/Unix systems, expands ~ at the beginning of a path to the value
+ * of the HOME environment variable. On Windows, uses USERPROFILE.
+ * Handles both ~ and ~/remaining/path formats.
+ *
+ * @param[in] path The path that may contain a tilde.
+ * @return The expanded path with ~ replaced by home directory, or original
+ *         path if ~ is not present or HOME/USERPROFILE cannot be determined.
+ */
+static std::string expandTildePath(const std::string &path) {
+    if (path.empty() || path[0] != '~') {
+        return path;
+    }
+
+    const char *homeDir = nullptr;
+
+#ifdef _WIN32
+    // Windows: use USERPROFILE
+    homeDir = getenv("USERPROFILE");
+#else
+    // Linux/macOS: use HOME
+    homeDir = getenv("HOME");
+#endif
+
+    if (!homeDir) {
+        return path; // Can't expand, return as-is
+    }
+
+    std::string home(homeDir);
+
+    // Handle just "~"
+    if (path.length() == 1) {
+        return home;
+    }
+
+    // Handle "~/..." or "~\" format
+    if (path[1] == '/' || path[1] == '\\') {
+        return home + path.substr(1);
+    }
+
+    // Path starts with ~ but not followed by / or \, return as-is
+    return path;
+}
+
 bool Utils::generateRecordingPath(std::string &filePath,
                                   bool strict_storage_check) {
 
@@ -656,6 +702,9 @@ bool Utils::generateRecordingPath(std::string &filePath,
         folderName = folderName + "/" + recordingFolder;
     }
 
+    // Expand tilde (~) to home directory on Linux/Unix
+    folderName = expandTildePath(folderName);
+
     if (!aditof::Utils::folderExists(folderName)) {
         if (!aditof::Utils::createFolder(folderName)) {
             LOG(ERROR) << "Failed to create folder: " << folderName;
@@ -667,13 +716,10 @@ bool Utils::generateRecordingPath(std::string &filePath,
     int storageType = sd.detect(folderName);
 
     if (storageType != 2 && strict_storage_check) {
-        LOG(ERROR) << "Recording folder '" << folderName
-                   << "' is not on NVMe or HDD storage. Detected type: "
-                   << storageType
-                   << " (1=mmc/SD, 2=NVMe/HDD, 0=unknown, -1=error)";
-        removeFolder(
-            folderName); // Clean up the created folder if it was created
-        return false;
+        LOG(WARNING) << "Recording folder '" << folderName
+                     << "' is not on NVMe or HDD storage. Detected type: "
+                     << storageType
+                     << " (1=mmc/SD, 2=NVMe/HDD, 0=unknown, -1=error)";
     }
 
     filePath = folderName + fileBaseName;
