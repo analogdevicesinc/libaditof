@@ -26,7 +26,128 @@
 #include "connections/target/adsd3500_sensor.h"
 #include <aditof/log.h>
 
+#include <dirent.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <cstdio>
+#include <cstdlib>
+#include <iostream>
+#include <string>
+#include <vector>
+
 using namespace aditof;
+
+struct Holder {
+    pid_t pid;
+    std::string cmdline; // may be empty if unreadable
+    std::string fdpath;  // path to the /proc/<pid>/fd/N symlink
+};
+
+// Read a small text file and return content with NULs converted to spaces for cmdline.
+static std::string read_proc_cmdline(const std::string &path) {
+    std::string s;
+    FILE *f = fopen(path.c_str(), "r");
+    if (!f)
+        return s;
+    char buf[4096];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0)
+        s.append(buf, buf + n);
+    fclose(f);
+    // Convert embedded NULs to spaces and trim trailing newlines.
+    for (size_t i = 0; i < s.size(); ++i)
+        if (s[i] == '\0')
+            s[i] = ' ';
+    while (!s.empty() && (s.back() == '\n' || s.back() == '\r'))
+        s.pop_back();
+    return s;
+}
+
+// Return true and fill 'st' if stat succeeds, false otherwise.
+static bool stat_fill(const std::string &path, struct stat *st) {
+    if (!st)
+        return false;
+    if (stat(path.c_str(), st) != 0)
+        return false;
+    return true;
+}
+
+// Scan /proc/*/fd and find processes holding an open fd to `device`.
+// If `holders_out` is non-null, append found Holder entries to it.
+// Returns true if at least one holder is found.
+static bool is_device_in_use(const std::string &device,
+                             std::vector<Holder> *holders_out = NULL) {
+    struct stat devst;
+    if (!stat_fill(device, &devst)) {
+        // device does not exist or cannot be stat()'ed; treat as not in use.
+        return false;
+    }
+
+    DIR *proc = opendir("/proc");
+    if (!proc) {
+        // Could not open /proc; conservatively return false.
+        return false;
+    }
+
+    bool found = false;
+    struct dirent *ent;
+    while ((ent = readdir(proc)) != NULL) {
+        // Only numeric directory names are PIDs.
+        char *endptr = NULL;
+        long pid = strtol(ent->d_name, &endptr, 10);
+        if (!endptr || *endptr != '\0')
+            continue;
+
+        std::string fd_dir = std::string("/proc/") + ent->d_name + "/fd";
+        DIR *fdd = opendir(fd_dir.c_str());
+        if (!fdd)
+            continue; // permission denied or process went away
+
+        struct dirent *fde;
+        while ((fde = readdir(fdd)) != NULL) {
+            if (fde->d_name[0] == '.')
+                continue;
+            std::string fdpath = fd_dir + "/" + fde->d_name;
+
+            // stat on /proc/<pid>/fd/N follows the symlink and gives the target's stat.
+            struct stat fdst;
+            if (stat(fdpath.c_str(), &fdst) != 0)
+                continue;
+
+            // Compare device (st_dev) and inode (st_ino) to detect same node.
+            if (fdst.st_dev == devst.st_dev && fdst.st_ino == devst.st_ino) {
+                found = true;
+                if (holders_out) {
+                    Holder h;
+                    h.pid = (pid_t)pid;
+                    h.fdpath = fdpath;
+                    // Try cmdline first; fallback to comm.
+                    h.cmdline = read_proc_cmdline(std::string("/proc/") +
+                                                  ent->d_name + "/cmdline");
+                    if (h.cmdline.empty()) {
+                        // comm is single-line process name
+                        char comm_path[64];
+                        snprintf(comm_path, sizeof(comm_path), "/proc/%ld/comm",
+                                 pid);
+                        h.cmdline = read_proc_cmdline(comm_path);
+                    }
+                    holders_out->push_back(h);
+                } else {
+                    // Not collecting holders, we can return early.
+                    closedir(fdd);
+                    closedir(proc);
+                    return true;
+                }
+            }
+        }
+        closedir(fdd);
+    }
+    closedir(proc);
+    return found;
+}
 
 /**
  * @brief Constructor for PlatformSensorEnumerator.
@@ -39,13 +160,8 @@ using namespace aditof;
 PlatformSensorEnumerator::PlatformSensorEnumerator() {
 
     auto info = m_platform.getPlatformInfo();
-#ifdef USE_GLOG
     LOG(INFO) << "Initialized platform: " << info.name << " ("
               << info.architecture << ")";
-#else
-    LOG(INFO) << "Initialized platform: " << info.name << " ("
-              << info.architecture << ")";
-#endif
 }
 
 /**
@@ -69,19 +185,11 @@ Status PlatformSensorEnumerator::searchSensors() {
     // Find ToF sensors
     status = m_platform.findToFSensors(m_sensorsInfo);
     if (status != Status::OK) {
-#ifdef USE_GLOG
         LOG(WARNING) << "Failed to find ToF sensors";
-#else
-        LOG(WARNING) << "Failed to find ToF sensors";
-#endif
         return status;
     }
 
-#ifdef USE_GLOG
     LOG(INFO) << "Found " << m_sensorsInfo.size() << " ToF sensor(s)";
-#else
-    LOG(INFO) << "Found " << m_sensorsInfo.size() << " ToF sensor(s)";
-#endif
 
     // Retrieve version information
     m_uBootVersion = m_platform.getBootloaderVersion();
@@ -113,20 +221,25 @@ Status PlatformSensorEnumerator::getDepthSensors(
 
     for (const auto &sensorInfo : m_sensorsInfo) {
         if (sensorInfo.sensorType == platform::SensorType::SENSOR_ADSD3500) {
-            auto sensor = std::make_shared<Adsd3500Sensor>(
-                sensorInfo.driverPath, sensorInfo.subDevPath,
-                sensorInfo.captureDev);
-            depthSensors.push_back(sensor);
 
-            // Enable interrupt support
-            auto &interruptNotifier = Adsd3500InterruptNotifier::getInstance();
-            interruptNotifier.enableInterrupts();
+            if (is_device_in_use(sensorInfo.driverPath)) {
+                LOG(INFO)
+                    << "Device " << sensorInfo.driverPath
+                    << " is currently in use by another process. Skipping.";
+            } else {
+                auto sensor = std::make_shared<Adsd3500Sensor>(
+                    sensorInfo.driverPath, sensorInfo.subDevPath,
+                    sensorInfo.captureDev);
+                depthSensors.push_back(sensor);
 
-#ifdef USE_GLOG
-            LOG(INFO) << "Created ADSD3500 sensor at " << sensorInfo.driverPath;
-#else
-            LOG(INFO) << "Created ADSD3500 sensor at " << sensorInfo.driverPath;
-#endif
+                // Enable interrupt support
+                auto &interruptNotifier =
+                    Adsd3500InterruptNotifier::getInstance();
+                interruptNotifier.enableInterrupts();
+
+                LOG(INFO) << "Created ADSD3500 sensor at "
+                          << sensorInfo.driverPath;
+            }
         }
     }
 
