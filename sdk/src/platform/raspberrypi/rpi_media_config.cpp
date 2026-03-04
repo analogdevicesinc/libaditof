@@ -42,22 +42,13 @@ std::string detectRpiMediaDevice() {
                           " -p 2>/dev/null | grep -q 'driver.*rp1-cfe'";
 
         if (system(cmd.c_str()) == 0) {
-#ifdef USE_GLOG
             LOG(INFO) << "Detected RP1 CFE media device: " << mediaDevice;
-#else
-            LOG(INFO) << "Detected RP1 CFE media device: " << mediaDevice;
-#endif
             return mediaDevice;
         }
     }
 
-#ifdef USE_GLOG
     LOG(WARNING)
         << "Could not detect RP1 CFE media device, using default /dev/media3";
-#else
-    LOG(WARNING)
-        << "Could not detect RP1 CFE media device, using default /dev/media3";
-#endif
     return "/dev/media3"; // Fallback
 }
 
@@ -75,21 +66,12 @@ std::string detectSensorEntity(const std::string &mediaDevice) {
     }
 
     if (!result.empty()) {
-#ifdef USE_GLOG
         LOG(INFO) << "Detected sensor entity: " << result;
-#else
-        LOG(INFO) << "Detected sensor entity: " << result;
-#endif
         return result;
     }
 
-#ifdef USE_GLOG
     LOG(WARNING)
         << "Could not detect sensor entity, using default 'adsd3500 10-0038'";
-#else
-    LOG(WARNING)
-        << "Could not detect sensor entity, using default 'adsd3500 10-0038'";
-#endif
     return "adsd3500 10-0038"; // Fallback
 }
 
@@ -98,13 +80,8 @@ bool configureMediaPipeline(const std::string &mediaDevice,
                             const std::string &sensorEntity, int width,
                             int height, int bitDepth) {
 
-#ifdef USE_GLOG
     LOG(INFO) << "Configuring RP1 CFE media pipeline: " << width << "x"
               << height << " @ " << bitDepth << "-bit";
-#else
-    LOG(INFO) << "Configuring RP1 CFE media pipeline: " << width << "x"
-              << height << " @ " << bitDepth << "-bit";
-#endif
 
     // Determine media bus code and pixel format based on bit depth
     std::string mbusCode;
@@ -117,11 +94,7 @@ bool configureMediaPipeline(const std::string &mediaDevice,
         mbusCode = "SRGGB8_1X8";
         pixelFormats = {"RGGB", "BA81", "GRBG", "GBRG"};
     } else {
-#ifdef USE_GLOG
         LOG(ERROR) << "Unsupported bit depth: " << bitDepth;
-#else
-        LOG(ERROR) << "Unsupported bit depth: " << bitDepth;
-#endif
         return false;
     }
 
@@ -130,21 +103,13 @@ bool configureMediaPipeline(const std::string &mediaDevice,
         "field:none colorspace:raw xfer:none ycbcr:601 quantization:full-range";
 
     // Step 1: Reset media links
-#ifdef USE_GLOG
     DLOG(INFO) << "Resetting media links...";
-#else
-    DLOG(INFO) << "Resetting media links...";
-#endif
     std::string cmd = "media-ctl -d " + mediaDevice + " -r 2>/dev/null";
     execCommand(cmd);
     usleep(500000); // 0.5s delay
 
     // Step 2: Configure sensor format
-#ifdef USE_GLOG
     DLOG(INFO) << "Configuring sensor format...";
-#else
-    DLOG(INFO) << "Configuring sensor format...";
-#endif
     std::ostringstream oss;
     oss << "media-ctl -d " << mediaDevice << " -V '\"" << sensorEntity << "\":0"
         << "[fmt:" << mbusCode << "/" << width << "x" << height << " "
@@ -152,11 +117,7 @@ bool configureMediaPipeline(const std::string &mediaDevice,
     execCommand(oss.str());
 
     // Step 3: Configure CSI2 sink pad (pad 0)
-#ifdef USE_GLOG
     DLOG(INFO) << "Configuring CSI2 sink pad...";
-#else
-    DLOG(INFO) << "Configuring CSI2 sink pad...";
-#endif
     oss.str("");
     oss << "media-ctl -d " << mediaDevice << " -V '\"" << csi2Entity << "\":0"
         << "[fmt:" << mbusCode << "/" << width << "x" << height << " "
@@ -164,11 +125,7 @@ bool configureMediaPipeline(const std::string &mediaDevice,
     execCommand(oss.str());
 
     // Step 4: Configure CSI2 source pad (pad 4)
-#ifdef USE_GLOG
     DLOG(INFO) << "Configuring CSI2 source pad...";
-#else
-    DLOG(INFO) << "Configuring CSI2 source pad...";
-#endif
     oss.str("");
     oss << "media-ctl -d " << mediaDevice << " -V '\"" << csi2Entity << "\":4"
         << "[fmt:" << mbusCode << "/" << width << "x" << height << " "
@@ -176,11 +133,7 @@ bool configureMediaPipeline(const std::string &mediaDevice,
     execCommand(oss.str());
 
     // Step 5: Re-establish media links
-#ifdef USE_GLOG
     DLOG(INFO) << "Re-establishing media links...";
-#else
-    DLOG(INFO) << "Re-establishing media links...";
-#endif
     oss.str("");
     oss << "media-ctl -d " << mediaDevice << " -l '\"" << sensorEntity
         << "\":0->\"" << csi2Entity << "\":0[1]' 2>/dev/null";
@@ -193,11 +146,7 @@ bool configureMediaPipeline(const std::string &mediaDevice,
 
     // Step 6: Configure video device format
     // Try each pixel format until one succeeds
-#ifdef USE_GLOG
     DLOG(INFO) << "Configuring video device format...";
-#else
-    DLOG(INFO) << "Configuring video device format...";
-#endif
 
     bool formatSet = false;
     std::string finalPixFmt;
@@ -217,21 +166,13 @@ bool configureMediaPipeline(const std::string &mediaDevice,
             result.find("Error") == std::string::npos) {
             formatSet = true;
             finalPixFmt = pixfmt;
-#ifdef USE_GLOG
             LOG(INFO) << "Successfully set pixel format: " << pixfmt;
-#else
-            LOG(INFO) << "Successfully set pixel format: " << pixfmt;
-#endif
             break;
         }
     }
 
     if (!formatSet) {
-#ifdef USE_GLOG
         LOG(ERROR) << "Failed to set any pixel format for video device";
-#else
-        LOG(ERROR) << "Failed to set any pixel format for video device";
-#endif
         return false;
     }
 
@@ -240,17 +181,9 @@ bool configureMediaPipeline(const std::string &mediaDevice,
     oss << "v4l2-ctl -d " << videoDevice << " --get-fmt-video 2>/dev/null";
     std::string fmtInfo = execCommand(oss.str());
 
-#ifdef USE_GLOG
     DLOG(INFO) << "Video device format: " << fmtInfo;
-#else
-    DLOG(INFO) << "Video device format: " << fmtInfo;
-#endif
 
-#ifdef USE_GLOG
     LOG(INFO) << "RP1 CFE media pipeline configured successfully";
-#else
-    LOG(INFO) << "RP1 CFE media pipeline configured successfully";
-#endif
 
     return true;
 }
