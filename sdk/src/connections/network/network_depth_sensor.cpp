@@ -521,8 +521,8 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
                                  .depth_sensor_mode_details()
                                  .number_of_phases();
     details.numberOfFrequencies = net->recv_buff[m_sensorIndex]
-                                 .depth_sensor_mode_details()
-                                 .number_of_frequencies();
+                                      .depth_sensor_mode_details()
+                                      .number_of_frequencies();
     details.frameContent.clear();
     for (int i = 0; i < net->recv_buff[m_sensorIndex]
                             .depth_sensor_mode_details()
