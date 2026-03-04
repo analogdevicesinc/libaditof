@@ -145,7 +145,6 @@ struct DepthSensorModeDetails {
     */
     uint8_t numberOfFrequencies;
 
-
     /**
      * @brief Index of two possbile values sensor values (8bit, 12/16bit) 
     */
