@@ -516,6 +516,8 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         m_modeDetailsCache.modeNumber =
             m_offline_parameters.modeDetailsCache.modeNumber;
+        m_modeDetailsCache.numberOfFrequencies =
+            m_offline_parameters.modeDetailsCache.numberOfFrequencies;
         m_modeDetailsCache.numberOfPhases =
             m_offline_parameters.modeDetailsCache.numberOfPhases;
         m_modeDetailsCache.pixelFormatIndex =
@@ -954,6 +956,8 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         // modeDetailsCache
         m_offline_parameters.modeDetailsCache.modeNumber =
             m_modeDetailsCache.modeNumber;
+        m_offline_parameters.modeDetailsCache.numberOfFrequencies =
+            m_modeDetailsCache.numberOfFrequencies;
         m_offline_parameters.modeDetailsCache.numberOfPhases =
             m_modeDetailsCache.numberOfPhases;
         m_offline_parameters.modeDetailsCache.pixelFormatIndex =

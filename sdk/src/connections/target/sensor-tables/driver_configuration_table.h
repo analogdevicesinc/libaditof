@@ -42,19 +42,19 @@ using namespace aditof;
 const std::vector<DriverConfiguration> m_adsd3500standard = {
     /* imagerType  mode depth  ab   conf  pixelF dWidth dHeight pixFIndex
    sr-native */
-    {"1024", "1024", "2", "16", "16", "0", "raw16", 2048, 3072, 0},
-    {"1024", "1024", "2", "12", "12", "0", "raw16_bits12_shift4", 1024, 3072,
+    {"1024", "1024", "3", "2", "16", "16", "0", "raw16", 2048, 3072, 0},
+    {"1024", "1024", "3", "2", "12", "12", "0", "raw16_bits12_shift4", 1024, 3072,
      1},
-    {"1024", "1024", "2", "12", "0", "0", "raw16_bits12_shift4", 1024, 1024, 1},
-    {"1024", "1024", "2", "12", "16", "0", "mipiRaw12_8", 2048, 2560, 0},
-    {"1024", "1024", "3", "16", "16", "0", "raw16", 2048, 3072, 0},
-    {"1024", "1024", "3", "12", "12", "0", "raw16_bits12_shift4", 1024, 4096,
+    {"1024", "1024", "3", "2", "12", "0", "0", "raw16_bits12_shift4", 1024, 1024, 1},
+    {"1024", "1024", "3", "2", "12", "16", "0", "mipiRaw12_8", 2048, 2560, 0},
+    {"1024", "1024", "3", "3", "16", "16", "0", "raw16", 2048, 3072, 0},
+    {"1024", "1024", "3", "3", "12", "12", "0", "raw16_bits12_shift4", 1024, 4096,
      1},
-    {"1024", "1024", "3", "12", "0", "0", "raw16_bits12_shift4", 1024, 1024, 1},
-    {"1024", "1024", "3", "12", "16", "0", "mipiRaw12_8", 2048, 3328, 0},
-    {"1024", "1024", "3", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
-    {"1024", "1024", "2", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
-    {"1024", "1024", "2", "16", "0", "0", "mipiRaw12_8", 1024, 4096, 0},
+    {"1024", "1024", "3", "3", "12", "0", "0", "raw16_bits12_shift4", 1024, 1024, 1},
+    {"1024", "1024", "3", "3", "12", "16", "0", "mipiRaw12_8", 2048, 3328, 0},
+    {"1024", "1024", "3", "3", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
+    {"1024", "1024", "3", "2", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
+    {"1024", "1024", "3", "2", "16", "0", "0", "mipiRaw12_8", 1024, 4096, 0},
 };
 
 // All supported valid bitsPerPixel combination : {bitsInDepth, bitsInConf, bitsInAB}
@@ -64,32 +64,32 @@ const std::vector<BitsConfiguration> m_validbitsperpixel = {
     {16, 0, 0},  {12, 4, 16}, {12, 4, 8}, {12, 4, 0}};
 
 const std::vector<DepthSensorModeDetails> adsd3100_standardModes = {
-    {0, {}, 2, 0, 0, 0, 1024, 1024, 128, 0, DriverConfiguration()},
-    {1, {}, 3, 0, 0, 0, 1024, 1024, 128, 0, DriverConfiguration()},
-    {4, {}, 1, 0, 0, 0, 1024, 1024, 128, 1, DriverConfiguration()},
-    {2, {}, 2, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()},
-    {3, {}, 3, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()},
-    {6, {}, 2, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()},
-    {5, {}, 3, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()}};
+    {0, {}, 3, 2, 0, 0, 0, 1024, 1024, 128, 0, DriverConfiguration()},
+    {1, {}, 3, 3, 0, 0, 0, 1024, 1024, 128, 0, DriverConfiguration()},
+    {4, {}, 1, 1, 0, 0, 0, 1024, 1024, 128, 1, DriverConfiguration()},
+    {2, {}, 3, 2, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()},
+    {3, {}, 3, 3, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()},
+    {6, {}, 3, 2, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()},
+    {5, {}, 3, 3, 0, 0, 0, 512, 512, 128, 0, DriverConfiguration()}};
 
 const std::vector<DepthSensorModeDetails> adsd3030_standardModes = {
-    {0, {}, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
-    {1, {}, 3, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
-    {4, {}, 1, 0, 0, 0, 512, 640, 128, 1, DriverConfiguration()},
-    {2, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
-    {3, {}, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
-    {6, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
-    {5, {}, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()}};
+    {0, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
+    {1, {}, 3, 3, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
+    {4, {}, 3, 1, 0, 0, 0, 512, 640, 128, 1, DriverConfiguration()},
+    {2, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {3, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {6, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {5, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()}};
 
 const std::vector<DepthSensorModeDetails> adtf3080_standardModes = {
-    {0, {}, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
-    {1, {}, 3, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
-    {4, {}, 1, 0, 0, 0, 512, 640, 128, 1, DriverConfiguration()},
-    {7, {}, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
-    {3, {}, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
-    {6, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
-    {5, {}, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
-    {8, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
-    {9, {}, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()}};
+    {0, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
+    {1, {}, 3, 3, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
+    {4, {}, 3, 1, 0, 0, 0, 512, 640, 128, 1, DriverConfiguration()},
+    {7, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, DriverConfiguration()},
+    {3, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {6, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {5, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {8, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()},
+    {9, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, DriverConfiguration()}};
 
 #endif
