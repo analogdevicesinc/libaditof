@@ -225,6 +225,8 @@ PYBIND11_MODULE(aditofpython, m) {
 
     py::class_<aditof::DepthSensorModeDetails>(m, "DepthSensorModeDetails")
         .def(py::init<>())
+        .def_readwrite("numberOfFrequencies",
+                       &aditof::DepthSensorModeDetails::numberOfFrequencies)
         .def_readwrite("numberOfPhases",
                        &aditof::DepthSensorModeDetails::numberOfPhases)
         .def_readwrite("frameContent",

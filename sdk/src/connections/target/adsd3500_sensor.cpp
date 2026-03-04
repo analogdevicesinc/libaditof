@@ -2432,6 +2432,7 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                 modeDetails.baseResolutionHeight = modeStruct[i].heigth;
                 modeDetails.baseResolutionWidth = modeStruct[i].width;
                 modeDetails.numberOfPhases = modeStruct[i].noOfPhases;
+                modeDetails.numberOfFrequencies = modeStruct[i].nFreq;
                 modeDetails.isPCM = modeStruct[i].isPCM;
 
                 if (modeDetails.baseResolutionWidth == 0 ||

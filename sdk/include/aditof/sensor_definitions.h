@@ -81,6 +81,10 @@ struct DriverConfiguration {
     */
     std::string noOfPhases;
     /**
+     * @brief Number of frequencies
+    */
+    std::string noOfFrequencies;
+    /**
      * @brief Stores depth data
     */
     std::string depthBits;
@@ -131,11 +135,16 @@ struct DepthSensorModeDetails {
      * @brief Stores the content of each frame
     */
     std::vector<std::string> frameContent;
-
     /**
      * @brief Number of phases
     */
     uint8_t numberOfPhases;
+
+    /**
+     * @brief Number of frequencies
+    */
+    uint8_t numberOfFrequencies;
+
 
     /**
      * @brief Index of two possbile values sensor values (8bit, 12/16bit) 

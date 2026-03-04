@@ -265,6 +265,7 @@ class CameraItof : public aditof::Camera {
         struct {
             uint8_t modeNumber;
             char frameContent[MAX_FRAME_CONTENT][16];
+            uint8_t numberOfFrequencies;
             uint8_t numberOfPhases;
             int pixelFormatIndex;
             int frameWidthInBytes;
