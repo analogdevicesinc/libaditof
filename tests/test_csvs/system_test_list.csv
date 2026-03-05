@@ -1,0 +1,227 @@
+TestID,Execute,TestName,TestParameters
+# ============================================================
+# SYSTEM TESTS - CSV Test Configuration
+# ============================================================
+# Format: TestID,Execute,TestName,TestParameters
+# Execute: Y = run, N = skip
+# Lines starting with # are comments
+# ============================================================
+
+# --- Basic System Tests ---
+# Run all camera list tests together (faster)
+SY000001,Y,system-get_camera_list,
+
+# Or run individual test cases (uncomment for granular results)
+#SY000101,Y,system-get_camera_list,--gtest_filter=SystemTest.SystemInstantiation
+#SY000102,Y,system-get_camera_list,--gtest_filter=SystemTest.GetCameraListCameras
+#SY000103,Y,system-get_camera_list,--gtest_filter=SystemTest.LocalCameraDetection
+#SY000104,Y,system-get_camera_list,--gtest_filter=SystemTest.CameraListNotEmpty
+#SY000105,Y,system-get_camera_list,--gtest_filter=SystemTest.CameraPointerValid
+#SY000106,Y,system-get_camera_list,--gtest_filter=SystemTest.MultipleCameraListCalls
+#SY000107,Y,system-get_camera_list,--gtest_filter=SystemTest.ConnectionTypeDetection
+
+# --- System Integration Tests (Individual Test Cases) ---
+# Run all tests together (faster)
+SY000002,Y,system-integration_test,
+
+# Or run individual test cases (uncomment for granular results)
+# SystemInstantiationTest suite
+#SY000010,Y,system-integration_test,--gtest_filter=SystemInstantiationTest.SystemCreation
+#SY000011,Y,system-integration_test,--gtest_filter=SystemInstantiationTest.GetCameraListWithoutCamera
+#SY000012,Y,system-integration_test,--gtest_filter=SystemInstantiationTest.GetCameraListWithIP
+#SY000013,Y,system-integration_test,--gtest_filter=SystemInstantiationTest.MultipleCameraListCalls
+#SY000014,Y,system-integration_test,--gtest_filter=SystemInstantiationTest.CameraListDifferentURIs
+
+# SystemIntegrationTest suite
+#SY000020,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.CameraInitialization
+#SY000021,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.CameraProperties
+#SY000022,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.GetAvailableFrameTypes
+#SY000023,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.SetFrameType
+#SY000024,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.GetDeviceOptions
+#SY000025,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.CameraFactoryPattern
+#SY000026,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.ErrorHandlingUninitializedCamera
+#SY000027,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.CameraStartStop
+#SY000028,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.RequestFrameAfterStart
+#SY000029,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.MultipleFrameCaptures
+#SY000030,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.MultipleStartStopCycles
+#SY000031,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.ValidateFrameDetails
+#SY000032,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.CameraReinitialization
+#SY000033,Y,system-integration_test,--gtest_filter=SystemIntegrationTest.ModeSwitching
+
+# Run system-integration_test multiple times
+SY000003,Y,system-integration_test,
+SY000004,Y,system-integration_test,
+
+# --- End-to-End Workflow Tests (7 tests) ---
+SY001001,Y,system-e2e_workflow_test,
+
+# Or run individual test cases (uncomment for granular results)
+#SY001101,Y,system-e2e_workflow_test,--gtest_filter=E2ECameraWorkflowTest.DiscoveryToInitializeToDetails
+#SY001102,Y,system-e2e_workflow_test,--gtest_filter=E2ECameraWorkflowTest.InitializeToModeSelection
+#SY001103,Y,system-e2e_workflow_test,--gtest_filter=E2ECameraWorkflowTest.InitializeToStartStop
+#SY001104,Y,system-e2e_workflow_test,--gtest_filter=E2ECameraWorkflowTest.CompleteWorkflowSingleFrame
+#SY001105,Y,system-e2e_workflow_test,--gtest_filter=E2ECameraWorkflowTest.CompleteWorkflowMultipleFrames
+#SY001106,Y,system-e2e_workflow_test,--gtest_filter=E2ECameraWorkflowTest.ModeSwitchingWorkflow
+#SY001107,Y,system-e2e_workflow_test,--gtest_filter=E2ECameraWorkflowTest.RestartStreamingWorkflow
+
+# --- Frame Data Pipeline Tests (9 tests) ---
+SY001002,Y,system-frame_data_pipeline_test,
+
+# Or run individual test cases (uncomment for granular results)
+#SY001201,Y,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.FrameCaptureHasDetails
+#SY001202,Y,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.FrameHasDepthData
+#SY001203,Y,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.FrameHasABData
+#SY001204,Y,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.FrameHasConfidenceData
+#SY001205,Y,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.FrameDataDimensionsConsistent
+#SY001206,Y,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.FrameMetadataAccessible
+#SY001207,Y,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.FrameMetadataFrameNumberIncrements
+#SY001208,Y,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.ConsecutiveFrameCaptures
+#SY001209,Y,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.FrameHaveDataTypeCheck
+
+# --- ADSD3500 Sensor Integration Tests (9 tests) ---
+SY002001,Y,system-adsd3500_integration_test,
+
+# Or run individual test cases (uncomment for granular results)
+#SY002101,Y,system-adsd3500_integration_test,--gtest_filter=ADSD3500IntegrationTest.GetFirmwareVersion
+#SY002102,Y,system-adsd3500_integration_test,--gtest_filter=ADSD3500IntegrationTest.ABInvalidationThreshold
+#SY002103,Y,system-adsd3500_integration_test,--gtest_filter=ADSD3500IntegrationTest.ConfidenceThreshold
+#SY002104,Y,system-adsd3500_integration_test,--gtest_filter=ADSD3500IntegrationTest.JBLFFilterEnableState
+#SY002105,Y,system-adsd3500_integration_test,--gtest_filter=ADSD3500IntegrationTest.JBLFFilterSize
+#SY002106,Y,system-adsd3500_integration_test,--gtest_filter=ADSD3500IntegrationTest.RadialThresholds
+#SY002107,Y,system-adsd3500_integration_test,--gtest_filter=ADSD3500IntegrationTest.GetSensorTemperature
+#SY002108,Y,system-adsd3500_integration_test,--gtest_filter=ADSD3500IntegrationTest.GetLaserTemperature
+#SY002109,Y,system-adsd3500_integration_test,--gtest_filter=ADSD3500IntegrationTest.FrameCaptureAfterConfiguration
+
+# --- Frame Handler Tests (8 tests) ---
+SY003001,Y,system-frame_handler_test,
+
+# Or run individual test cases (uncomment for granular results)
+#SY003101,Y,system-frame_handler_test,--gtest_filter=FrameHandlerIntegrationTest.SetOutputFilePath
+#SY003102,Y,system-frame_handler_test,--gtest_filter=FrameHandlerIntegrationTest.SaveSingleFrame
+#SY003103,Y,system-frame_handler_test,--gtest_filter=FrameHandlerIntegrationTest.SaveMultipleFrames
+#SY003104,Y,system-frame_handler_test,--gtest_filter=FrameHandlerIntegrationTest.SaveAndLoadRoundTrip
+#SY003105,Y,system-frame_handler_test,--gtest_filter=FrameHandlerIntegrationTest.DataIntegrityAfterSaveLoad
+#SY003106,Y,system-frame_handler_test,--gtest_filter=FrameHandlerIntegrationTest.FrameCompareOperations
+#SY003107,Y,system-frame_handler_test,--gtest_filter=FrameOperationsTest.FrameCopyIndependence
+#SY003108,Y,system-frame_handler_test,--gtest_filter=FrameOperationsTest.FrameAssignmentOperator
+
+# --- Connection Type Tests (11 tests) ---
+SY004001,Y,system-connection_types_test,
+
+# Or run individual test cases (uncomment for granular results)
+#SY004101,Y,system-connection_types_test,--gtest_filter=ConnectionTypesTest.LocalCameraDiscovery
+#SY004102,Y,system-connection_types_test,--gtest_filter=ConnectionTypesTest.NetworkCameraDiscovery
+#SY004103,Y,system-connection_types_test,--gtest_filter=ConnectionTypesTest.OfflineModeDiscovery
+#SY004104,Y,system-connection_types_test,--gtest_filter=ConnectionTypesTest.InvalidURIHandling
+#SY004105,Y,system-connection_types_test,--gtest_filter=ConnectionTypesTest.EmptyURIHandling
+#SY004106,Y,system-connection_types_test,--gtest_filter=NetworkCameraIntegrationTest.Initialize
+#SY004107,Y,system-connection_types_test,--gtest_filter=NetworkCameraIntegrationTest.FullStreamingWorkflow
+#SY004108,Y,system-connection_types_test,--gtest_filter=NetworkCameraIntegrationTest.MultipleFrameCaptureLatency
+#SY004109,Y,system-connection_types_test,--gtest_filter=LocalCameraIntegrationTest.Initialize
+#SY004110,Y,system-connection_types_test,--gtest_filter=LocalCameraIntegrationTest.FullStreamingWorkflow
+#SY004111,Y,system-connection_types_test,--gtest_filter=LocalCameraIntegrationTest.HighFrameCountCapture
+
+# ============================================================
+# CAMERA FOLDER TESTS
+# ============================================================
+
+# --- Camera Functional Tests (13 tests) ---
+SY005001,Y,camera-functional_test,
+
+# Or run individual test cases (uncomment for granular results)
+#SY005101,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.CompleteInitializationWorkflow
+#SY005102,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.FrameTypeWorkflow
+#SY005103,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.MultipleInitializationCycles
+#SY005104,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.ModeSwitching
+#SY005105,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.FrameAllocationWorkflow
+#SY005106,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.AcquisitionTimeMeasurement
+#SY005107,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.ParameterValidation
+#SY005108,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.ConcurrentInitialization
+#SY005109,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.LongRunningOperationStability
+#SY005110,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.ErrorRecovery
+#SY005111,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.StatusPropagation
+#SY005112,Y,camera-functional_test,--gtest_filter=CameraFunctionalTest.ResourceCleanupOnException
+
+# --- Camera ADSD3500 Reset Enhanced Tests (15 tests) ---
+SY006001,Y,camera-adsd3500_reset_enhanced,
+
+# Or run individual test cases (uncomment for granular results)
+#SY006101,Y,camera-adsd3500_reset_enhanced,--gtest_filter=SystemTest.SystemInstantiation
+#SY006102,Y,camera-adsd3500_reset_enhanced,--gtest_filter=SystemTest.GetCameraListWithoutCameras
+#SY006103,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.SystemHasCameraListMethod
+#SY006104,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.CameraDetailsAccessible
+#SY006105,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset
+#SY006106,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset_StateTransitions
+#SY006107,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset_SequentialResets
+#SY006108,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset_WithoutInitialization
+#SY006109,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset_InvalidFrameRates
+#SY006110,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset_InvalidTemplateAddress
+#SY006111,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset_PerformanceMetrics
+#SY006112,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset_RepeatedPerformance
+#SY006113,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset_CallbackVerification
+#SY006114,Y,camera-adsd3500_reset_enhanced,--gtest_filter=CameraTestFixture.adsd3500SoftReset_MultipleCallbackInvocations
+#SY006115,Y,camera-adsd3500_reset_enhanced,--gtest_filter=ParameterizedResetTest.MultipleResetScenarios
+
+# --- Camera ADSD3500 Reset Basic Tests (4 tests) ---
+SY007001,Y,camera-adsd3500_reset,
+
+# Or run individual test cases (uncomment for granular results)
+#SY007101,Y,camera-adsd3500_reset,--gtest_filter=SystemTest.SystemInstantiation
+#SY007102,Y,camera-adsd3500_reset,--gtest_filter=SystemTest.GetCameraListWithoutCameras
+#SY007103,Y,camera-adsd3500_reset,--gtest_filter=CameraTestFixture.SystemHasCameraListMethod
+#SY007104,Y,camera-adsd3500_reset,--gtest_filter=CameraTestFixture.CameraDetailsAccessible
+#SY007105,Y,camera-adsd3500_reset,--gtest_filter=CameraTestFixture.adsd3500SoftReset
+
+# --- Camera Get Frames Tests (3 tests) ---
+SY008001,Y,camera-get_frames,
+
+# Or run individual test cases (uncomment for granular results)
+#SY008101,Y,camera-get_frames,--gtest_filter=CameraTestFixture.SystemHasCameraListMethod
+#SY008102,Y,camera-get_frames,--gtest_filter=CameraTestFixture.CameraDetailsAccessible
+#SY008103,Y,camera-get_frames,--gtest_filter=CameraTestFixture.CameraGetFrames
+
+# --- Camera Parameters Tests (6 tests) ---
+SY009001,Y,camera-parameters,
+
+# Or run individual test cases (uncomment for granular results)
+#SY009101,Y,camera-parameters,--gtest_filter=SystemTest.SystemInstantiation
+#SY009102,Y,camera-parameters,--gtest_filter=SystemTest.GetCameraListWithoutCameras
+#SY009103,Y,camera-parameters,--gtest_filter=CameraTestFixture.SystemHasCameraListMethod
+#SY009104,Y,camera-parameters,--gtest_filter=CameraTestFixture.CameraDetailsAccessible
+#SY009105,Y,camera-parameters,--gtest_filter=CameraTestFixture.parametercomparedefault
+#SY009106,Y,camera-parameters,--gtest_filter=CameraTestFixture.parameterchangevalues
+
+# ============================================================
+# GENERIC FOLDER TESTS
+# ============================================================
+
+# --- SDK Source Integration Tests (13 tests) ---
+SY010001,Y,generic-sdk_source_integration_test,
+
+# Or run individual test cases (uncomment for granular results)
+#SY010101,Y,generic-sdk_source_integration_test,--gtest_filter=SystemCppIntegrationTest.SystemImplementation
+#SY010102,Y,generic-sdk_source_integration_test,--gtest_filter=StatusCppIntegrationTest.StatusImplementation
+#SY010103,Y,generic-sdk_source_integration_test,--gtest_filter=FrameCppIntegrationTest.FrameImplementation
+#SY010104,Y,generic-sdk_source_integration_test,--gtest_filter=UtilsCppIntegrationTest.UtilsImplementation
+#SY010105,Y,generic-sdk_source_integration_test,--gtest_filter=SDKSourceIntegrationTest.FrameAndSystemIntegration
+#SY010106,Y,generic-sdk_source_integration_test,--gtest_filter=SDKSourceIntegrationTest.StatusPropagation
+#SY010107,Y,generic-sdk_source_integration_test,--gtest_filter=SDKSourceIntegrationTest.FrameHandlingWorkflow
+#SY010108,Y,generic-sdk_source_integration_test,--gtest_filter=SDKSourceIntegrationTest.UtilsInFrameConfig
+#SY010109,Y,generic-sdk_source_integration_test,--gtest_filter=SystemUtilsIntegrationTest.CameraListProcessing
+#SY010110,Y,generic-sdk_source_integration_test,--gtest_filter=ErrorHandlingIntegrationTest.ErrorHandlingAcrossFiles
+#SY010111,Y,generic-sdk_source_integration_test,--gtest_filter=FrameOperationsIntegrationTest.MultipleFrameOperations
+#SY010112,Y,generic-sdk_source_integration_test,--gtest_filter=SystemFrameIntegrationTest.SystemFrameDetails
+#SY010113,Y,generic-sdk_source_integration_test,--gtest_filter=SDKSourceIntegrationTest.FullWorkflow
+
+# --- SDK Version Tests (2 tests) ---
+SY011001,Y,generic-sdk_version_test,
+
+# Or run individual test cases (uncomment for granular results)
+#SY011101,Y,generic-sdk_version_test,--gtest_filter=VersionTest.VersionMacrosAreDefined
+#SY011102,Y,generic-sdk_version_test,--gtest_filter=VersionTest.ApiVersionReturnsNonEmptyString
+
+# ============================================================
+# DISABLED TESTS (change N to Y to enable)
+# ============================================================
+# SY005001,N,system-e2e_workflow_test,--gtest_filter=E2EWorkflowTest.CompleteWorkflowMultipleFrames
+# SY005002,N,system-frame_data_pipeline_test,--gtest_filter=FrameDataPipelineTest.FrameHasDepthData
