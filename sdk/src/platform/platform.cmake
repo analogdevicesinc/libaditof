@@ -1,7 +1,7 @@
 # Platform configuration for ADCAM SDK
 # Sets platform-specific variables for generating platform_config.h
 
-message(STATUS "Platform configuration: NVIDIA=${NVIDIA}, RPI=${RPI}, NXP=${NXP}")
+message(STATUS "Platform configuration: NVIDIA=${NVIDIA}, RPI=${RPI}, NXP=${NXP}, WSL2=${WSL2}")
 
 if(NVIDIA)
     set(PLATFORM_NAME "NVIDIA Jetson Orin Nano")
@@ -35,6 +35,17 @@ elseif(NXP)
     set(PLATFORM_RESET_PULSE_US 1000000) # 1s low pulse
     set(PLATFORM_RESET_DELAY_US 7000000) # 7s default delay
     message(STATUS "Configured for NXP i.MX platform ")
+    
+elseif(WSL2)
+    set(PLATFORM_NAME "Windows Subsystem for Linux 2 (WSL2)")
+    set(PLATFORM_CAPTURE_DEVICE "")  # Host/development build - not connected to physical hardware
+    set(PLATFORM_VIDEO_PREFIX "")
+    set(PLATFORM_MEDIA_CONTROLLER "")
+    set(PLATFORM_RESET_GPIO "")
+    set(PLATFORM_RESET_GPIO_PIN 0)
+    set(PLATFORM_RESET_PULSE_US 0)
+    set(PLATFORM_RESET_DELAY_US 0)
+    message(STATUS "Configured for WSL2 development environment")
     
 else()
     message(WARNING  "No platform defined - assuming host.")
