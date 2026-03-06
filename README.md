@@ -47,6 +47,26 @@ See the documents:
 
 ### Linux Build
 
+#### Pre-requisites
+* CMake
+* g++
+* Python 3 - note, we are assuming Python 3.10 in this document, change as needed for your setup
+* Doxygen - for documentation generation
+* Graphviz - for documentation generation
+
+#### Installing the pre-requisites
+
+Note, *python3.10-dev* is specific to the NVIDIA Jetson Orin Nano Dev Kit Jetpack 6.2.
+
+If your Linux does not use Python 3.10 you will need to change *python3.10-dev* to reflect the version of Linux on your system.
+
+```console
+sudo apt update
+sudo apt install cmake g++ \
+     doxygen graphviz \
+     python3.10-dev
+```
+
 #### Dependencies
 
 In addition the depth compute libraries are required. 
