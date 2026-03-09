@@ -576,9 +576,7 @@ aditof::Status FrameHandlerImpl::SaveFloatAsJPEG(const char *filename,
     auto result =
         stbi_write_jpg(filename, width, height, 1, img_8bit.data(), 100);
 
-    if (result) {
-        LOG(INFO) << __func__ << ":  " << filename;
-    } else {
+    if (!result) {
         LOG(ERROR) << __func__ << ":  Failed to save JPEG " << filename;
     }
 
@@ -628,9 +626,7 @@ aditof::Status FrameHandlerImpl::SaveUint16AsJPEG(const char *filename,
     auto result =
         stbi_write_jpg(filename, width, height, 1, img_8bit.data(), 100);
 
-    if (result) {
-        LOG(INFO) << __func__ << ":  " << filename;
-    } else {
+    if (!result) {
         LOG(ERROR) << __func__ << ":  Failed to save JPEG " << filename;
     }
 
@@ -663,13 +659,9 @@ aditof::Status FrameHandlerImpl::SaveRGBAsJPEG(const char *filename,
         return aditof::Status::GENERIC_ERROR;
     }
 
-    LOG(INFO) << __func__ << ":  " << filename;
-
     auto result = stbi_write_jpg(filename, width, height, 3, data, 100);
 
-    if (result) {
-        LOG(INFO) << __func__ << ":  " << filename;
-    } else {
+    if (!result) {
         LOG(ERROR) << __func__ << ":  Failed to save JPEG " << filename;
     }
 
@@ -748,7 +740,6 @@ aditof::Status FrameHandlerImpl::SavePointCloudPLYBinary(const char *filename,
 
     file.close();
 
-    LOG(INFO) << __func__ << ":  " << filename;
     return aditof::Status::OK;
 }
 
@@ -814,8 +805,6 @@ aditof::Status FrameHandlerImpl::SaveMetaAsTxt(const char *filename,
     out << "laserTemperature: " << data->laserTemperature << " C" << '\n';
 
     out.close();
-
-    LOG(INFO) << __func__ << ":  " << filename;
 
     return aditof::Status::OK;
 }
