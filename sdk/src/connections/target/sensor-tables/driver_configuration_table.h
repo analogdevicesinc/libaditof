@@ -122,7 +122,6 @@ const std::vector<DepthSensorModeDetails> adtf3066_standardModes = {
  * Format: {baseWidth, baseHeight, phases, depthBits, abBits, confBits, pixelFormat, driverWidth, driverHeight, pixelFormatIndex}
  */
 const std::vector<DriverConfiguration> m_adsd3500rawBypass = {
-    /* Mode 0: MP raw frame 2048×3072 - pixelFormatIndex=1 for V4L2_PIX_FMT_SBGGR12 */
     {"1024", "1024", "1", "0", "0", "0", "RG12", 2048, 3072, 1},
 
     /* Mode 1: MP raw frame 2048×3072 */

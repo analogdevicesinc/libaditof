@@ -325,11 +325,6 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     uint32_t height =
         m_isRawBypassMode ? m_driverFrameHeight : m_outputFrameHeight;
 
-    LOG(INFO) << "calculateFrameSize: isRawBypass=" << m_isRawBypassMode
-              << ", width=" << width << ", height=" << height
-              << ", bitsInAB=" << (int)bitsInAB
-              << ", bitsInConf=" << (int)bitsInConf;
-
     uint32_t depthSize = width * height;
     uint32_t abSize = 0;
     uint32_t confSize = 0;
@@ -353,9 +348,13 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
 
     m_tofiBufferSize = depthSize + abSize + confSize;
 
-    LOG(INFO) << "calculateFrameSize: depthSize=" << depthSize
-              << ", abSize=" << abSize << ", confSize=" << confSize
-              << ", m_tofiBufferSize=" << m_tofiBufferSize << " (uint16_t)";
+    // For raw bypass, ensure ToFi buffer can hold the complete V4L2 buffer including NVIDIA alignment
+    if (m_isRawBypassMode) {
+        size_t rawBufferSizeInUint16 = (m_rawFrameBufferSize + sizeof(uint16_t) - 1) / sizeof(uint16_t);
+        if (rawBufferSizeInUint16 > m_tofiBufferSize) {
+            m_tofiBufferSize = rawBufferSizeInUint16;
+        }
+    }
 }
 
 /**
@@ -602,10 +601,8 @@ void BufferProcessor::processThread() {
         // Must handle before accessing m_tofiComputeContext (which is nullptr for raw bypass)
         if (m_isRawBypassMode) {
             const size_t bufferSizeBytes = process_frame.size;
-            const size_t maxBufferSize = m_tofiBufferSize * sizeof(uint16_t);
-
-            LOG(INFO) << "Raw bypass: V4L2 buffer size=" << bufferSizeBytes
-                      << " bytes, maxBufferSize=" << maxBufferSize << " bytes";
+            // Use raw frame buffer size for comparison (includes NVIDIA alignment)
+            const size_t maxBufferSize = m_rawFrameBufferSize;
 
             if (bufferSizeBytes <= maxBufferSize) {
                 // Copy raw V4L2 data into ToFi output buffer
