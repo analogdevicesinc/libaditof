@@ -192,14 +192,17 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
                 driverConf.baseHeigth ==
                     std::to_string(configurationTable.baseResolutionHeight)) {
 
-                configurationTable.frameWidthInBytes = driverConf.driverWidth;
+                // Convert pixel dimensions to bytes: RG12 uses 2 bytes/pixel
+                int bytesPerPixel = (driverConf.pixelFormatIndex == 1) ? 2 : 1;
+                configurationTable.frameWidthInBytes =
+                    driverConf.driverWidth * bytesPerPixel;
                 configurationTable.frameHeightInBytes = driverConf.driverHeigth;
                 configurationTable.pixelFormatIndex =
                     driverConf.pixelFormatIndex;
                 configurationTable.isRawBypass = 1;
                 configurationTable.numberOfPhases =
                     1; // Raw bypass always single frame
-                configurationTable.frameContent = {"raw_bayer"};
+                configurationTable.frameContent = {"raw"};
 
                 LOG(INFO) << "Raw bypass configuration applied: "
                           << driverConf.driverWidth << "x"
