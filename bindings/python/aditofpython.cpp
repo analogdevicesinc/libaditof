@@ -964,18 +964,31 @@ PYBIND11_MODULE(aditofpython, m) {
         .def(
             "SnapShotFrames",
             [](aditof::FrameHandler &handler, const char *baseFileName,
-               aditof::Frame &frame, py::array_t<uint8_t> ab,
-               py::array_t<uint8_t> depth) {
-                py::buffer_info abBuffInfo = ab.request();
-                uint8_t *abPtr = static_cast<uint8_t *>(abBuffInfo.ptr);
-                py::buffer_info depthBuffInfo = depth.request();
-                uint8_t *depthPtr = static_cast<uint8_t *>(depthBuffInfo.ptr);
+            aditof::Frame &frame, py::object ab, py::object depth) {
+                uint8_t *abPtr = nullptr;
+                uint8_t *depthPtr = nullptr;
+
+                if (!ab.is_none()) {
+                    auto abArray = ab.cast<py::array_t<uint8_t>>();
+                    py::buffer_info abBuffInfo = abArray.request();
+                    abPtr = static_cast<uint8_t *>(abBuffInfo.ptr);
+                }
+
+                if (!depth.is_none()) {
+                    auto depthArray = depth.cast<py::array_t<uint8_t>>();
+                    py::buffer_info depthBuffInfo = depthArray.request();
+                    depthPtr = static_cast<uint8_t *>(depthBuffInfo.ptr);
+                }
+
                 aditof::Status status = handler.SnapShotFrames(
                     baseFileName, &frame, abPtr, depthPtr);
                 return status;
             },
-            py::arg("baseFileName"), py::arg("frame"), py::arg("ab"),
-            py::arg("depth"));
+            py::arg("baseFileName"),
+            py::arg("frame"),
+            py::arg("ab").none(true) = py::none(),
+            py::arg("depth").none(true) = py::none()
+        );
 
     //SDK version
     m.def("getKitVersion", &aditof::getKitVersion);
