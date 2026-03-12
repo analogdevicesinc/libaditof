@@ -613,13 +613,24 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         configureSensorModeDetails();
 
         // Apply raw bypass mode setting before configuring V4L2 driver
-        auto rawBypassIt = m_iniKeyValPairs.find("rawBypassMode");
-        bool rawBypassEnabled = (rawBypassIt != m_iniKeyValPairs.end() &&
-                                 rawBypassIt->second == "1");
+        // Raw bypass is enabled when lensScatterCompensationEnabled is set to "1"
+        auto lensScatteringIt =
+            m_iniKeyValPairs.find("lensScatterCompensationEnabled");
+        bool rawBypassEnabled = (lensScatteringIt != m_iniKeyValPairs.end() &&
+                                 lensScatteringIt->second == "1");
         status = adsd3500SetRawBypassMode(rawBypassEnabled);
         if (status != Status::OK) {
             LOG(WARNING) << "Failed to set raw bypass mode";
             return status;
+        }
+
+        // Set lens scatter compensation flag for buffer allocation
+        if (rawBypassEnabled) {
+            LOG(INFO) << "Setting lens scatter compensation flag to enabled";
+            m_depthSensor->setControl("lensScatterCompensationEnabled", "1");
+        } else {
+            LOG(INFO) << "Setting lens scatter compensation flag to disabled";
+            m_depthSensor->setControl("lensScatterCompensationEnabled", "0");
         }
 
         status = m_depthSensor->setMode(mode);
@@ -632,6 +643,28 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to get frame type details!";
             return status;
+        }
+
+        // For lens scatter mode: update mode cache to reflect actual output (processed frames, not raw)
+        // Generic calculation: Use baseResolutionWidth/Height which remain as processed dimensions
+        // even when raw bypass is enabled (mode selector preserves them)
+        if (rawBypassEnabled) {
+            LOG(INFO) << "Lens scatter mode: processed output dimensions are "
+                      << m_modeDetailsCache.baseResolutionWidth << "×"
+                      << m_modeDetailsCache.baseResolutionHeight
+                      << " (raw bypass captures at "
+                      << (m_modeDetailsCache.frameWidthInBytes / 2) << "×"
+                      << m_modeDetailsCache.frameHeightInBytes << ")";
+            // Update frameContent to reflect what's actually saved (depth, AB, conf)
+            m_modeDetailsCache.frameContent.clear();
+            m_modeDetailsCache.frameContent.push_back("depth");
+            m_modeDetailsCache.frameContent.push_back("ab");
+            // Only add conf if bits configured (check INI parameters)
+            auto confBitsIt = m_iniKeyValPairs.find("confidenceBits");
+            if (confBitsIt != m_iniKeyValPairs.end() &&
+                confBitsIt->second != "0") {
+                m_modeDetailsCache.frameContent.push_back("conf");
+            }
         }
 
         m_pcmFrame = m_modeDetailsCache.isPCM;
@@ -726,7 +759,14 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         // We want computed frames (Depth & AB). Tell target to initialize depth compute
         // Skip this for raw bypass mode (no ToF processing)
-        if (!m_pcmFrame && !m_modeDetailsCache.isRawBypass) {
+        // Exception: lens scatter mode needs TofiCompute to process raw Bayer input
+        auto lensScatterIt =
+            m_iniKeyValPairs.find("lensScatterCompensationEnabled");
+        bool lensScatterEnabled = (lensScatterIt != m_iniKeyValPairs.end() &&
+                                   lensScatterIt->second == "1");
+
+        if (!m_pcmFrame &&
+            (!m_modeDetailsCache.isRawBypass || lensScatterEnabled)) {
             size_t dataSize = 0;
             std::string s;
 
@@ -736,6 +776,13 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                            << " not found in depth params map";
                 return Status::INVALID_ARGUMENT;
             }
+            
+            // For lens scatter mode, update inputFormat to RG12 for TofiCompute initialization
+            if (lensScatterEnabled) {
+                iniParamsMode->second["inputFormat"] = "RG12";
+                LOG(INFO) << "Lens scatter mode: TofiCompute will be initialized with inputFormat=RG12";
+            }
+            
             // Create a string from the ini parameters
             for (auto &param : iniParamsMode->second) {
                 s += param.first + "=" + param.second + "\n";
@@ -994,12 +1041,11 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
                   << m_modeDetailsCache.frameContent.size() << " items";
         for (std::string val : m_modeDetailsCache.frameContent) {
             LOG(INFO) << "[RECORDING] frameContent item: \"" << val << "\"";
+            // Skip raw from frameContent header - it's handled in fDataDetails
             if (val == "raw") {
-                LOG(INFO) << "[RECORDING] Including raw in header";
-                memcpy((char *)m_offline_parameters.modeDetailsCache
-                           .frameContent[idx++],
-                       val.c_str(), val.length());
-                continue; // Add raw to header but skip detailed processing below
+                LOG(INFO) << "[RECORDING] Skipping raw in frameContent "
+                             "(handled in fDataDetails)";
+                continue;
             }
 
             LOG(INFO) << "[RECORDING] Adding to header: " << val;
@@ -1061,11 +1107,13 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
                 m_offline_parameters.fDataDetails[idx].subelementsPerElement =
                     3;
             } else if (item == "raw") {
-                // Raw bypass: use driver dimensions, 1 byte per pixel (RG12 format)
-                m_offline_parameters.fDataDetails[idx].width =
+                // Raw bypass: V4L2 buffer with NVIDIA padding (width × height + width bytes)
+                size_t rawBufferSize =
+                    m_modeDetailsCache.frameWidthInBytes *
+                        m_modeDetailsCache.frameHeightInBytes +
                     m_modeDetailsCache.frameWidthInBytes;
-                m_offline_parameters.fDataDetails[idx].height =
-                    m_modeDetailsCache.frameHeightInBytes;
+                m_offline_parameters.fDataDetails[idx].width = rawBufferSize;
+                m_offline_parameters.fDataDetails[idx].height = 1;
                 m_offline_parameters.fDataDetails[idx].subelementSize = 1;
             } else if (item == "metadata") {
                 m_offline_parameters.fDataDetails[idx].subelementSize = 1;
@@ -1977,31 +2025,55 @@ void CameraItof::configureSensorModeDetails() {
     } else {
         std::string value;
 
+        // Check for lens scatter compensation and enable raw bypass mode if needed
+        auto lens_scattering_it =
+            m_iniKeyValPairs.find("lensScatterCompensationEnabled");
+        if (lens_scattering_it != m_iniKeyValPairs.end() &&
+            lens_scattering_it->second == "1") {
+            LOG(INFO) << "Lens scatter compensation enabled - sensor will "
+                         "output raw frames";
+            m_depthSensor->setControl("rawBypassMode", "1");
+            m_iniKeyValPairs["partialDepthEnable"] =
+                "1"; // Disable ISP depth computation
+        } else {
+            m_depthSensor->setControl("rawBypassMode", "0");
+        }
+
         m_depthEnabled = true;
         m_abEnabled = true;
         m_confEnabled = true;
         //m_xyzEnabled = false;
         //m_xyzSetViaApi = true;
 
+        // Check if lens scatter compensation is enabled to determine sensor bit configuration
+        bool lensScatterEnabled =
+            (m_iniKeyValPairs.find("lensScatterCompensationEnabled") !=
+                 m_iniKeyValPairs.end() &&
+             m_iniKeyValPairs["lensScatterCompensationEnabled"] == "1");
+
         auto it = m_iniKeyValPairs.find("bitsInPhaseOrDepth");
         if (it != m_iniKeyValPairs.end()) {
             value = it->second;
             m_depthBitsPerPixel = std::stoi(value);
-            if (value == "16")
-                value = "6";
-            else if (value == "14")
-                value = "5";
-            else if (value == "12")
-                value = "4";
-            else if (value == "10")
-                value = "3";
-            else if (value == "8")
-                value = "2";
+            // For lens scatter: sensor gets 0 (raw capture), INI keeps original (TofiCompute output format)
+            std::string sensorValue =
+                (lensScatterEnabled && value != "0") ? "0" : value;
+            if (sensorValue == "16")
+                sensorValue = "6";
+            else if (sensorValue == "14")
+                sensorValue = "5";
+            else if (sensorValue == "12")
+                sensorValue = "4";
+            else if (sensorValue == "10")
+                sensorValue = "3";
+            else if (sensorValue == "8")
+                sensorValue = "2";
             else {
-                value = "0";
-                m_depthEnabled = false;
+                sensorValue = "0";
+                if (!lensScatterEnabled)
+                    m_depthEnabled = false;
             }
-            m_depthSensor->setControl("phaseDepthBits", value);
+            m_depthSensor->setControl("phaseDepthBits", sensorValue);
         } else {
             LOG(WARNING)
                 << "bitsInPhaseOrDepth was not found in parameter list";
@@ -2011,15 +2083,19 @@ void CameraItof::configureSensorModeDetails() {
         if (it != m_iniKeyValPairs.end()) {
             value = it->second;
             m_confBitsPerPixel = std::stoi(value);
-            if (value == "8")
-                value = "2";
-            else if (value == "4")
-                value = "1";
+            // For lens scatter: sensor gets 0 (raw capture), INI keeps original
+            std::string sensorValue =
+                (lensScatterEnabled && value != "0") ? "0" : value;
+            if (sensorValue == "8")
+                sensorValue = "2";
+            else if (sensorValue == "4")
+                sensorValue = "1";
             else {
-                value = "0";
-                m_confEnabled = false;
+                sensorValue = "0";
+                if (!lensScatterEnabled)
+                    m_confEnabled = false;
             }
-            m_depthSensor->setControl("confidenceBits", value);
+            m_depthSensor->setControl("confidenceBits", sensorValue);
         } else {
             LOG(WARNING) << "bitsInConf was not found in parameter list";
         }
@@ -2029,21 +2105,25 @@ void CameraItof::configureSensorModeDetails() {
             value = it->second;
             m_abEnabled = true;
             m_abBitsPerPixel = std::stoi(value);
-            if (value == "16")
-                value = "6";
-            else if (value == "14")
-                value = "5";
-            else if (value == "12")
-                value = "4";
-            else if (value == "10")
-                value = "3";
-            else if (value == "8")
-                value = "2";
+            // For lens scatter: sensor gets 0 (raw capture), INI keeps original
+            std::string sensorValue =
+                (lensScatterEnabled && value != "0") ? "0" : value;
+            if (sensorValue == "16")
+                sensorValue = "6";
+            else if (sensorValue == "14")
+                sensorValue = "5";
+            else if (sensorValue == "12")
+                sensorValue = "4";
+            else if (sensorValue == "10")
+                sensorValue = "3";
+            else if (sensorValue == "8")
+                sensorValue = "2";
             else {
-                value = "0";
-                m_abEnabled = false;
+                sensorValue = "0";
+                if (!lensScatterEnabled)
+                    m_abEnabled = false;
             }
-            m_depthSensor->setControl("abBits", value);
+            m_depthSensor->setControl("abBits", sensorValue);
         } else {
             LOG(WARNING) << "bitsInAB was not found in parameter list";
         }
@@ -2063,20 +2143,16 @@ void CameraItof::configureSensorModeDetails() {
         it = m_iniKeyValPairs.find("inputFormat");
         if (it != m_iniKeyValPairs.end()) {
             value = it->second;
+            // For lens scatter compensation, force RG12 format for raw Bayer capture
+            if (lensScatterEnabled) {
+                value = "RG12";
+                // Update INI parameter for TofiCompute initialization
+                m_iniKeyValPairs["inputFormat"] = "RG12";
+                LOG(INFO) << "Lens scatter mode: updated inputFormat to RG12 for TofiCompute";
+            }
             m_depthSensor->setControl("inputFormat", value);
         } else {
             LOG(WARNING) << "inputFormat was not found in parameter list";
-        }
-
-        // Raw bypass mode control (default to 0 if not in config)
-        it = m_iniKeyValPairs.find("rawBypassMode");
-        if (it != m_iniKeyValPairs.end()) {
-            value = it->second;
-            m_depthSensor->setControl("rawBypassMode", value);
-            LOG(INFO) << "Raw bypass mode set to " << value;
-        } else {
-            // Default to standard depth mode
-            m_depthSensor->setControl("rawBypassMode", "0");
         }
 
         // XYZ set through camera control takes precedence over the setting from parameter list
