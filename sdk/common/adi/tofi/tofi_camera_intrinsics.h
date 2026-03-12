@@ -96,6 +96,7 @@ typedef struct {
     float jblf_max_edge;
     float jblf_ab_threshold;
     int ab_filter_enable;
+    int lens_scatter_compensation_enabled;
 } JBLFConfigParams;
 typedef struct {
     float ab_thresh_min;

@@ -235,6 +235,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_controls.emplace("disableCCBM", "0");
     m_controls.emplace("availableCCBM", "0");
     m_controls.emplace("rawBypassMode", "0");
+    m_controls.emplace("lensScatterCompensationEnabled", "0");
 
     // Define the commands that correspond to the sensor controls
     m_implData->controlsCommands["abAveraging"] = CTRL_AB_AVG;
@@ -1050,16 +1051,47 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     if (!type.isPCM) {
 
-        // for raw bypass mode, always use 0 bits (no ToF processing)
-        // for standard mode, use the configured bits for AB and confidence
-        uint8_t bitsInAB = type.isRawBypass ? 0 : m_bitsInAB[type.modeNumber];
-        uint8_t bitsInConf =
-            type.isRawBypass ? 0 : m_bitsInConf[type.modeNumber];
+        // For lens scatter compensation: use configured bits (TofiCompute needs proper output buffer size)
+        // For pure raw bypass: use 0 bits (no ToF processing)
+        // For standard mode: use configured bits (ISP outputs processed frames)
+        bool lensScatterMode =
+            m_bufferProcessor->getLensScatterCompensationEnabled();
+        uint8_t bitsInAB = (type.isRawBypass && !lensScatterMode)
+                               ? 0
+                               : m_bitsInAB[type.modeNumber];
+        uint8_t bitsInConf = (type.isRawBypass && !lensScatterMode)
+                                 ? 0
+                                 : m_bitsInConf[type.modeNumber];
+
+        // For lens scatter mode with raw bypass: use processed output dimensions, not raw sensor dimensions
+        // Generic calculation: ToF raw frame contains 2×2 pattern per pixel + multiple phase captures
+        // Raw dimensions are in frameWidthInBytes (includes bytes per pixel) and frameHeightInBytes
+        // Processed width = (frameWidthInBytes / bytesPerPixel) / 2
+        // Processed height = frameHeightInBytes / number_of_phases (calculated from ratio)
+        int outputWidth = type.baseResolutionWidth;
+        int outputHeight = type.baseResolutionHeight;
+        if (lensScatterMode && type.isRawBypass) {
+            // For RG12: 2 bytes per pixel, ToF uses 2×2 pattern per processed pixel
+            int bytesPerPixel =
+                (type.pixelFormatIndex == 1) ? 2 : 1; // 1=RG12, 0=raw8
+            int rawPixelWidth = type.frameWidthInBytes / bytesPerPixel;
+            int rawPixelHeight = type.frameHeightInBytes;
+
+            // Calculate processed dimensions
+            outputWidth = rawPixelWidth / 2;
+            outputHeight =
+                rawPixelHeight / (rawPixelHeight / type.baseResolutionHeight);
+
+            LOG(INFO) << "Lens scatter mode: adjusting output dimensions from "
+                      << rawPixelWidth << "×" << rawPixelHeight << " (raw, "
+                      << bytesPerPixel << "B/px) to " << outputWidth << "×"
+                      << outputHeight << " (processed)";
+        }
 
         status = m_bufferProcessor->setVideoProperties(
-            type.baseResolutionWidth, type.baseResolutionHeight,
-            type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
-            bitsInAB, bitsInConf, type.isRawBypass);
+            outputWidth, outputHeight, type.frameWidthInBytes,
+            type.frameHeightInBytes, type.modeNumber, bitsInAB, bitsInConf,
+            type.isRawBypass);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             goto cleanup_on_error;
@@ -1290,6 +1322,12 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
     }
     if (control == "rawBypassMode") {
         m_modeSelector.setControl("rawBypassMode", value);
+        return Status::OK;
+    }
+    if (control == "lensScatterCompensationEnabled") {
+        bool enabled = (value == "1");
+        m_bufferProcessor->setLensScatterCompensationEnabled(enabled);
+        LOG(INFO) << "Lens scatter compensation flag set to: " << enabled;
         return Status::OK;
     }
     if (control == "netlinktest") {
@@ -2056,6 +2094,8 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
         std::to_string(jblf_params.jblf_exponential_term);
     params["jblfMaxEdge"] = std::to_string(jblf_params.jblf_max_edge);
     params["jblfABThreshold"] = std::to_string(jblf_params.jblf_ab_threshold);
+    params["lensScatterCompensationEnabled"] = std::to_string(
+        static_cast<float>(jblf_params.lens_scatter_compensation_enabled));
 
     InputRawDataParams ir_params;
     type = 1;
@@ -2078,6 +2118,17 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
  * @param[in] params Map of depth compute parameter key-value pairs
  *
  * @return Status::OK on success
+ */
+/**
+ * @brief Sets depth computation parameters for ToFi library.
+ *
+ * Configures ToFi computation parameters for depth processing. The bit parameters
+ * (bitsInPhaseOrDepth, bitsInAB, bitsInConf) define the output format, not the
+ * sensor capture format (which is controlled separately via setControl).
+ *
+ * @param[in] params Map of depth compute parameter key-value pairs
+ *
+ * @return Status::OK on success, error codes on failure
  */
 aditof::Status Adsd3500Sensor::setDepthComputeParams(
     const std::map<std::string, std::string> &params) {
@@ -2123,7 +2174,14 @@ aditof::Status Adsd3500Sensor::setDepthComputeParams(
         std::stof(params.at("jblfExponentialTerm"));
     jblf_params.jblf_max_edge = std::stof(params.at("jblfMaxEdge"));
     jblf_params.jblf_ab_threshold = std::stof(params.at("jblfABThreshold"));
+    jblf_params.lens_scatter_compensation_enabled = static_cast<int>(
+        std::stof(params.at("lensScatterCompensationEnabled")));
     status = setIniParamsImpl(&jblf_params, type, config->p_tofi_cal_config);
+
+    // Notify BufferProcessor about lens scatter compensation mode
+    // This ensures raw bypass mode still processes through TofiCompute when enabled
+    m_bufferProcessor->setLensScatterCompensationEnabled(
+        jblf_params.lens_scatter_compensation_enabled == 1);
 
     return status;
 }

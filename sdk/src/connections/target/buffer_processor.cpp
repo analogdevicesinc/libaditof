@@ -98,6 +98,7 @@ BufferProcessor::BufferProcessor()
     m_processorPropSet = false;
     m_vidPropSet = false;
     m_isRawBypassMode = false;
+    m_lensScatterCompensationEnabled = false;
     stopThreadsFlag = true;
     stopThreadsFlag.store(true, std::memory_order_release);
     streamRunning = false;
@@ -318,12 +319,23 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     /* | AB Frame ( W * H (type: uint16_t)) |    */
     /* | Confidance Frame ( W * H * 2 (type: float)) | */
 
-    // For raw bypass mode, use driver dimensions (full raw buffer size)
-    // For normal ToF mode, use output dimensions (processed frame size)
-    uint32_t width =
-        m_isRawBypassMode ? m_driverFrameWidth : m_outputFrameWidth;
-    uint32_t height =
-        m_isRawBypassMode ? m_driverFrameHeight : m_outputFrameHeight;
+    // For lens scatter mode: always use output dimensions (TofiCompute outputs processed frames)
+    // For pure raw bypass mode: use driver dimensions (full raw buffer size)
+    // For normal ToF mode: use output dimensions (processed frame size)
+    uint32_t width, height;
+    if (m_lensScatterCompensationEnabled) {
+        // Lens scatter: TofiCompute outputs at processed dimensions (1024×1024), not raw dimensions
+        width = m_outputFrameWidth;
+        height = m_outputFrameHeight;
+    } else if (m_isRawBypassMode) {
+        // Pure raw bypass: use driver dimensions
+        width = m_driverFrameWidth;
+        height = m_driverFrameHeight;
+    } else {
+        // Normal mode: use output dimensions
+        width = m_outputFrameWidth;
+        height = m_outputFrameHeight;
+    }
 
     uint32_t depthSize = width * height;
     uint32_t abSize = 0;
@@ -348,9 +360,11 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
 
     m_tofiBufferSize = depthSize + abSize + confSize;
 
-    // For raw bypass, ensure ToFi buffer can hold the complete V4L2 buffer including NVIDIA alignment
-    if (m_isRawBypassMode) {
-        size_t rawBufferSizeInUint16 = (m_rawFrameBufferSize + sizeof(uint16_t) - 1) / sizeof(uint16_t);
+    // For pure raw bypass (no lens scatter): ensure ToFi buffer can hold the complete V4L2 buffer
+    // For lens scatter mode: ToFi buffer sized for processed output, not raw input
+    if (m_isRawBypassMode && !m_lensScatterCompensationEnabled) {
+        size_t rawBufferSizeInUint16 =
+            (m_rawFrameBufferSize + sizeof(uint16_t) - 1) / sizeof(uint16_t);
         if (rawBufferSizeInUint16 > m_tofiBufferSize) {
             m_tofiBufferSize = rawBufferSizeInUint16;
         }
@@ -510,6 +524,24 @@ void BufferProcessor::captureFrameThread() {
 
         if (v4l2_frame_holder != nullptr) {
             memcpy(v4l2_frame_holder.get(), pdata, buf_data_len);
+
+            // [TEMPORARY DEBUG] Dump raw V4L2 frame for lens scatter verification
+            static int raw_frame_count = 0;
+            if (m_lensScatterCompensationEnabled && raw_frame_count < 3) {
+                std::string raw_filename = "/tmp/raw_v4l2_frame_" +
+                                           std::to_string(raw_frame_count) +
+                                           ".bin";
+                std::ofstream raw_dump(raw_filename, std::ios::binary);
+                if (raw_dump.is_open()) {
+                    raw_dump.write(
+                        reinterpret_cast<char *>(v4l2_frame_holder.get()),
+                        buf_data_len);
+                    raw_dump.close();
+                    LOG(INFO) << "[DEBUG] Dumped raw V4L2 frame ("
+                              << buf_data_len << " bytes) to: " << raw_filename;
+                    raw_frame_count++;
+                }
+            }
         } else {
             LOG(WARNING)
                 << __func__
@@ -597,11 +629,14 @@ void BufferProcessor::processThread() {
             continue;
         }
 
-        // Raw bypass mode: Simple copy path, no ToFi processing
-        // Must handle before accessing m_tofiComputeContext (which is nullptr for raw bypass)
-        if (m_isRawBypassMode) {
+        // Raw bypass mode: Check if this is lens scatter compensation or pure raw bypass
+        // - Lens scatter: sensor raw + TofiCompute processing (continue to TofiCompute)
+        // - Pure raw bypass: sensor raw + no processing (skip TofiCompute)
+        // Must handle before accessing m_tofiComputeContext (which is nullptr for pure raw bypass)
+        if (m_isRawBypassMode && !m_lensScatterCompensationEnabled) {
             const size_t bufferSizeBytes = process_frame.size;
-            // Use raw frame buffer size for comparison (includes NVIDIA alignment)
+            // Use raw frame buffer size for comparison (includes NVIDIA
+            // alignment)
             const size_t maxBufferSize = m_rawFrameBufferSize;
 
             if (bufferSizeBytes <= maxBufferSize) {
@@ -609,15 +644,8 @@ void BufferProcessor::processThread() {
                 memcpy(tofi_compute_io_buff.get(), process_frame.data.get(),
                        bufferSizeBytes);
 
-                // Record frame if recording is active
-                if (m_state == ST_RECORD && m_stream_file_out.is_open()) {
-                    aditof::Status writeStatus = writeFrame(
-                        (uint8_t *)tofi_compute_io_buff.get(), bufferSizeBytes);
-                    if (writeStatus != aditof::Status::OK) {
-                        LOG(WARNING) << "Failed to write raw bypass frame "
-                                        "during recording";
-                    }
-                }
+                // Note: For pure raw bypass (no lens scatter), frames are saved here
+                // For lens scatter mode, frames are saved AFTER TofiCompute processing
 
                 // Package processed frame for output
                 process_frame.tofiBuffer = tofi_compute_io_buff;
@@ -643,6 +671,19 @@ void BufferProcessor::processThread() {
 
                 continue;
             }
+        } else if (m_isRawBypassMode && m_lensScatterCompensationEnabled) {
+            LOG(INFO) << "Lens scatter compensation enabled - passing raw "
+                         "Bayer data to TofiCompute";
+            // Fall through to standard ToFi processing below
+        }
+
+        // Verify TofiCompute context is initialized before processing
+        if (!m_tofiComputeContext) {
+            LOG(ERROR) << "processThread: TofiCompute context is null, cannot "
+                          "process frame";
+            m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+            m_v4l2_input_buffer_Q.push(process_frame.data);
+            continue;
         }
 
         // Standard ToF mode: Save m_tofiComputeContext pointers before modifying
@@ -693,9 +734,11 @@ void BufferProcessor::processThread() {
 
 #ifdef DUAL
             // For dual pulsatrix mode 1 and 0, data comes deinterleaved from ISP
+            // EXCEPT for lens scatter compensation mode where ISP outputs raw Bayer
             // Copy only the frames that are actually allocated based on m_tofiBufferSize
             // Buffer layout: [depth: numPixels uint16_t | AB: varies | conf: varies]
-            if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
+            if ((m_currentModeNumber == 0 || m_currentModeNumber == 1) &&
+                !m_lensScatterCompensationEnabled) {
 
                 // Always copy depth frame
                 memcpy(m_tofiComputeContext->p_depth_frame,
