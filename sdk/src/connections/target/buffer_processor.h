@@ -142,6 +142,12 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status processBuffer(uint16_t *buffer);
     TofiConfig *getTofiCongfig() const;
     aditof::Status getDepthComputeVersion(uint8_t &enabled) const;
+    void setLensScatterCompensationEnabled(bool enabled) {
+        m_lensScatterCompensationEnabled = enabled;
+    }
+    bool getLensScatterCompensationEnabled() const {
+        return m_lensScatterCompensationEnabled;
+    }
 
     void startThreads();
     void stopThreads();
@@ -227,6 +233,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     uint8_t m_currentModeNumber;
     bool m_isRawBypassMode;
+    bool
+        m_lensScatterCompensationEnabled; // When true, raw bypass uses TofiCompute
 
   public:
     // Stream record and playback support
