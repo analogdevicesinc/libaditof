@@ -2114,6 +2114,10 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
     params["headerSize"] =
         std::to_string(static_cast<float>(ir_params.headerSize));
 
+    // Add lens scatter compensation parameter
+    params["lensScatterCompensationEnabled"] = 
+        m_lensScatterEnabled ? "1" : "0";
+
     return status;
 }
 
@@ -2171,6 +2175,14 @@ aditof::Status Adsd3500Sensor::setDepthComputeParams(
     jblf_params.jblf_max_edge = std::stof(params.at("jblfMaxEdge"));
     jblf_params.jblf_ab_threshold = std::stof(params.at("jblfABThreshold"));
     status = setIniParamsImpl(&jblf_params, type, config->p_tofi_cal_config);
+
+    // Update lens scatter compensation parameter if provided
+    auto lensScatterIt = params.find("lensScatterCompensationEnabled");
+    if (lensScatterIt != params.end()) {
+        m_lensScatterEnabled = (lensScatterIt->second == "1");
+        LOG(INFO) << "Updated lens scatter compensation: " 
+                  << (m_lensScatterEnabled ? "enabled" : "disabled");
+    }
 
     return status;
 }

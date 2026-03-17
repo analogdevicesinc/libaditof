@@ -44,14 +44,17 @@
 
 #include "buffer_processor.h"
 
-const size_t MAX_QUEUE_SIZE = 3;
+// Increased from 3 to 8 to handle slow first-frame TofiCompute in lens scatter mode
+// (can take 3+ seconds for initialization; 8 buffers provides ~800ms cushion at 10 FPS)
+const size_t MAX_QUEUE_SIZE = 8;
 
 uint8_t depthComputeOpenSourceEnabled = 0;
 
 // Named constants for configuration
 namespace {
-constexpr int MAX_RETRIES = 3;
-constexpr std::chrono::milliseconds RETRY_DELAY{10};
+// Increased to handle slow first-frame lens scatter processing (can take 20+ seconds)
+constexpr int MAX_RETRIES = 30;                        // Was 3
+constexpr std::chrono::milliseconds RETRY_DELAY{1000}; // Was 10ms, now 1 second
 constexpr int SELECT_TIMEOUT_SEC = 20;
 constexpr int THREAD_PRIORITY = 20;
 } // namespace
@@ -98,6 +101,7 @@ BufferProcessor::BufferProcessor()
     m_processorPropSet = false;
     m_vidPropSet = false;
     m_isRawBypassMode = false;
+    m_ispEnabled = false;
     stopThreadsFlag = true;
     stopThreadsFlag.store(true, std::memory_order_release);
     streamRunning = false;
@@ -378,6 +382,8 @@ aditof::Status BufferProcessor::setProcessorProperties(
     uint8_t *iniFile, uint16_t iniFileLength, uint8_t *calData,
     uint32_t calDataLength, uint16_t mode, bool ispEnabled) {
 
+    m_ispEnabled = ispEnabled;
+
     // Free previous compute context and config to avoid memory leaks on repeated mode changes
     if (m_tofiComputeContext != nullptr) {
         LOG(INFO) << __func__ << ": Freeing previous compute context.";
@@ -392,12 +398,16 @@ aditof::Status BufferProcessor::setProcessorProperties(
 
     if (ispEnabled) {
         uint32_t status = ADI_TOFI_SUCCESS;
-        ConfigFileData calDataStruct = {calData, calDataLength};
 
-        // Extract XYZ dealias data from calibration block
-        status = GetXYZ_DealiasData(&calDataStruct, m_xyzDealiasData);
-        if (status != ADI_TOFI_SUCCESS) {
-            LOG(ERROR) << "Failed to GetCalibrationData";
+        // For ISP mode, calData is already parsed TofiXYZDealiasData (not raw CCB)
+        // Copy it directly to m_xyzDealiasData without calling GetXYZ_DealiasData
+        if (calData != nullptr &&
+            calDataLength >= sizeof(TofiXYZDealiasData) * 10) {
+            memcpy(m_xyzDealiasData, calData, sizeof(TofiXYZDealiasData) * 10);
+        } else {
+            LOG(ERROR) << "Invalid XYZ dealias data size for ISP mode: "
+                       << calDataLength << " (expected "
+                       << sizeof(TofiXYZDealiasData) * 10 << ")";
             return aditof::Status::GENERIC_ERROR;
         }
 
@@ -424,6 +434,9 @@ aditof::Status BufferProcessor::setProcessorProperties(
                 return aditof::Status::GENERIC_ERROR;
             }
         } else {
+            // No INI file provided - use default initialization
+            ConfigFileData calDataStruct = {(uint8_t *)m_xyzDealiasData,
+                                            sizeof(TofiXYZDealiasData) * 10};
             m_tofiConfig =
                 InitTofiConfig(&calDataStruct, NULL, NULL, mode, &status);
         }
@@ -457,19 +470,6 @@ aditof::Status BufferProcessor::setProcessorProperties(
         }
 
         if (iniFile != nullptr) {
-            // Dump INI file before ToFi initialization to file and log
-            std::string beforeFile = "/tmp/ini_before_tofi.txt";
-            std::ofstream ofs(beforeFile, std::ios::binary);
-            if (ofs.is_open()) {
-                ofs.write(reinterpret_cast<const char*>(iniFile), iniFileLength);
-                ofs.close();
-                
-                // Format for readable logging
-                std::string formatted(reinterpret_cast<const char*>(iniFile), iniFileLength);
-                LOG(INFO) << "=== INI BEFORE ToFi init:\n" << formatted;
-                LOG(INFO) << "=== INI BEFORE ToFi init dumped to: " << beforeFile;
-            }
-
             ConfigFileData depth_ini = {iniFile, iniFileLength};
             try {
                 // Use CCB mode instead of requested mode to avoid crash
@@ -499,32 +499,6 @@ aditof::Status BufferProcessor::setProcessorProperties(
             if (m_tofiComputeContext == NULL || status != ADI_TOFI_SUCCESS) {
                 LOG(ERROR) << "InitTofiCompute failed, status=" << status;
                 return aditof::Status::GENERIC_ERROR;
-            }
-        }
-
-        // Dump INI file after ToFi initialization to file and log
-        if (iniFile != nullptr) {
-            std::string afterFile = "/tmp/ini_after_tofi.txt";
-            std::ofstream ofs(afterFile, std::ios::binary);
-            if (ofs.is_open()) {
-                ofs.write(reinterpret_cast<const char*>(iniFile), iniFileLength);
-                ofs.close();
-                
-                // Convert NULL-separated format to readable newline format for logging
-                std::string formatted;
-                formatted.reserve(iniFileLength + 100);
-                for (uint32_t i = 0; i < iniFileLength; ++i) {
-                    char c = iniFile[i];
-                    if (c == '\0') {
-                        // Replace NULL with newline for display
-                        formatted += '\n';
-                    } else {
-                        formatted += c;
-                    }
-                }
-                
-                LOG(INFO) << "=== INI AFTER ToFi init (formatted):\n" << formatted;
-                LOG(INFO) << "=== INI AFTER ToFi init (raw binary) dumped to: " << afterFile;
             }
         }
     }
@@ -793,10 +767,17 @@ void BufferProcessor::processThread() {
             }
 
 #ifdef DUAL
-            // For dual pulsatrix mode 1 and 0, data comes deinterleaved from ISP
-            // Copy only the frames that are actually allocated based on m_tofiBufferSize
-            // Buffer layout: [depth: numPixels uint16_t | AB: varies | conf: varies]
-            if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
+            // For dual pulsatrix mode 0 and 1:
+            // - ISP enabled (m_ispEnabled=true): Data comes pre-computed from ISP, just copy
+            // - Lens scatter (m_ispEnabled=false): Raw Bayer data needs TofiCompute processing
+            bool isISPPrecomputed =
+                (m_currentModeNumber == 0 || m_currentModeNumber == 1) &&
+                m_ispEnabled;
+
+            if (isISPPrecomputed) {
+                // ISP pre-computed mode: Data comes deinterleaved from ISP chip
+                // Buffer layout from ISP: [depth: numPixels uint16_t | AB: varies | conf: varies]
+                // Just copy the pre-computed depth/AB/conf frames
 
                 // Always copy depth frame
                 memcpy(m_tofiComputeContext->p_depth_frame,
@@ -830,6 +811,26 @@ void BufferProcessor::processThread() {
                     memcpy(m_tofiComputeContext->p_conf_frame,
                            process_frame.data.get() + numPixels * 4,
                            confCopySize);
+                }
+            } else if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
+                // Lens scatter mode for mode 0/1: Process raw Bayer data with TofiCompute
+                // Input: Raw Bayer (RG12 format, 2048×4608 for mode 1)
+                // Output: Computed depth + AB (1024×1024)
+
+                uint32_t ret = TofiCompute(
+                    reinterpret_cast<uint16_t *>(process_frame.data.get()),
+                    m_tofiComputeContext, NULL);
+
+                if (ret != ADI_TOFI_SUCCESS) {
+                    LOG(ERROR) << "processThread: TofiCompute failed for lens "
+                                  "scatter mode "
+                               << (int)m_currentModeNumber << ", code: " << ret;
+                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                    m_v4l2_input_buffer_Q.push(process_frame.data);
+                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
+                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                    continue;
                 }
             } else {
 

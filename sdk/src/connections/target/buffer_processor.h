@@ -233,6 +233,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     uint8_t m_currentModeNumber;
     bool m_isRawBypassMode;
+    bool m_ispEnabled; // Whether ISP depth computation is enabled (pre-computed depth)
     bool
         m_lensScatterCompensationEnabled; // When true, raw bypass uses TofiCompute
 
