@@ -996,7 +996,6 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             m_implData->modeDetails.frameWidthInBytes =
                 fmt.fmt.pix.bytesperline;
             m_implData->modeDetails.frameHeightInBytes = fmt.fmt.pix.height;
-
         }
 
         /* Allocate the video buffers in the driver */
@@ -2039,6 +2038,14 @@ aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
         return status;
     }
 
+    // Enable 90-degree rotation for ADTF3080 imager
+    if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3080) {
+        m_bufferProcessor->setNeedsRotation(true);
+        LOG(INFO) << "Enabled 90-degree frame rotation for ADTF3080";
+    } else {
+        m_bufferProcessor->setNeedsRotation(false);
+    }
+
     uint8_t depthComputeStatus;
     status = m_bufferProcessor->getDepthComputeVersion(depthComputeStatus);
     if (status != Status::OK) {
@@ -2115,8 +2122,7 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
         std::to_string(static_cast<float>(ir_params.headerSize));
 
     // Add lens scatter compensation parameter
-    params["lensScatterCompensationEnabled"] = 
-        m_lensScatterEnabled ? "1" : "0";
+    params["lensScatterCompensationEnabled"] = m_lensScatterEnabled ? "1" : "0";
 
     return status;
 }
@@ -2180,7 +2186,7 @@ aditof::Status Adsd3500Sensor::setDepthComputeParams(
     auto lensScatterIt = params.find("lensScatterCompensationEnabled");
     if (lensScatterIt != params.end()) {
         m_lensScatterEnabled = (lensScatterIt->second == "1");
-        LOG(INFO) << "Updated lens scatter compensation: " 
+        LOG(INFO) << "Updated lens scatter compensation: "
                   << (m_lensScatterEnabled ? "enabled" : "disabled");
     }
 
