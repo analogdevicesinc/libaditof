@@ -35,10 +35,13 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <json.h>
+#include <limits.h>
 #include <sstream>
+#include <unistd.h>
 
 #include <aditof/log.h>
 #include <chrono>
@@ -168,7 +171,16 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
             return aditof::Status::UNAVAILABLE;
         }
 
-        m_initConfigFilePath = configFilepath;
+        // Auto-discover config file if not explicitly provided
+        if (configFilepath.empty()) {
+            m_initConfigFilePath = autoDiscoverConfigFile();
+            if (!m_initConfigFilePath.empty()) {
+                LOG(INFO) << "Auto-discovered configuration file: "
+                          << m_initConfigFilePath;
+            }
+        } else {
+            m_initConfigFilePath = configFilepath;
+        }
 
         // Setting up the UVC filters, samplegrabber interface, Video renderer and filters
         // Setting UVC mediaformat and Running the stream is done once mode is set
@@ -664,21 +676,20 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         if (rawBypassEnabled) {
             // Frame content reflects processed OUTPUT based on bit configuration
             m_modeDetailsCache.frameContent.clear();
-            
+
             // Check bitsInPhaseOrDepth (depth is typically always present)
             auto depthBitsIt = m_iniKeyValPairs.find("bitsInPhaseOrDepth");
             if (depthBitsIt != m_iniKeyValPairs.end() &&
                 depthBitsIt->second != "0") {
                 m_modeDetailsCache.frameContent.push_back("depth");
             }
-            
+
             // Check bitsInAB
             auto abBitsIt = m_iniKeyValPairs.find("bitsInAB");
-            if (abBitsIt != m_iniKeyValPairs.end() &&
-                abBitsIt->second != "0") {
+            if (abBitsIt != m_iniKeyValPairs.end() && abBitsIt->second != "0") {
                 m_modeDetailsCache.frameContent.push_back("ab");
             }
-            
+
             // Check bitsInConf
             auto confBitsIt = m_iniKeyValPairs.find("bitsInConf");
             if (confBitsIt != m_iniKeyValPairs.end() &&
@@ -2319,6 +2330,61 @@ aditof::Status CameraItof::resetDepthProcessParams() {
     m_depth_params_map = m_depth_params_map_reset;
 
     return aditof::Status::OK;
+}
+
+/**
+ * @brief Auto-discovers JSON configuration file from binary path or environment variable.
+ *
+ * Searches for a configuration file in the following order:
+ * 1. Binary directory (where the executable is located): adcam_config.json
+ * 2. Environment variable: ADCAM_CONFIG_PATH
+ * 3. Returns empty string if not found (proceed with factory defaults)
+ *
+ * @return Path to discovered JSON file, or empty string if not found.
+ */
+std::string CameraItof::autoDiscoverConfigFile() {
+    const std::string defaultConfigName = "adcam_config.json";
+
+    // 1. Check for config file in binary directory (where executable is located)
+#ifdef __linux__
+    char binaryPath[PATH_MAX];
+    ssize_t len =
+        readlink("/proc/self/exe", binaryPath, sizeof(binaryPath) - 1);
+    if (len != -1) {
+        binaryPath[len] = '\0';
+
+        // Extract directory path by finding the last '/'
+        std::string binPath(binaryPath);
+        size_t lastSlash = binPath.find_last_of('/');
+        if (lastSlash != std::string::npos) {
+            std::string binDir = binPath.substr(0, lastSlash + 1);
+            std::string configPath = binDir + defaultConfigName;
+
+            std::ifstream checkFile(configPath.c_str());
+            if (checkFile.good()) {
+                checkFile.close();
+                return configPath;
+            }
+        }
+    }
+#endif
+
+    // 2. Check environment variable ADCAM_CONFIG_PATH
+    const char *envConfigPath = std::getenv("ADCAM_CONFIG_PATH");
+    if (envConfigPath != nullptr) {
+        std::string envPath(envConfigPath);
+        std::ifstream checkEnvFile(envPath.c_str());
+        if (checkEnvFile.good()) {
+            checkEnvFile.close();
+            return envPath;
+        } else {
+            LOG(WARNING) << "ADCAM_CONFIG_PATH environment variable set to '"
+                         << envPath << "' but file not found or not readable";
+        }
+    }
+
+    // 3. Not found - return empty string to proceed with factory defaults
+    return "";
 }
 
 /**

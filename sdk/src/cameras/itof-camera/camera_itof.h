@@ -192,6 +192,12 @@ class CameraItof : public aditof::Camera {
     void UpdateDepthParamsMap(bool update, const char *index,
                               std::string value);
 
+    /**
+     * @brief Auto-discovers JSON configuration file from binary path or environment variable
+     * @return Path to discovered JSON file, empty string if not found
+     */
+    std::string autoDiscoverConfigFile();
+
   private:
     using noArgCallable = std::function<aditof::Status()>;
 

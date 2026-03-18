@@ -41,6 +41,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <unordered_map>
+#include <vector>
 
 #include "buffer_processor.h"
 
@@ -102,6 +103,7 @@ BufferProcessor::BufferProcessor()
     m_vidPropSet = false;
     m_isRawBypassMode = false;
     m_ispEnabled = false;
+    m_needsRotation = false;
     stopThreadsFlag = true;
     stopThreadsFlag.store(true, std::memory_order_release);
     streamRunning = false;
@@ -358,6 +360,31 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
             (m_rawFrameBufferSize + sizeof(uint16_t) - 1) / sizeof(uint16_t);
         if (rawBufferSizeInUint16 > m_tofiBufferSize) {
             m_tofiBufferSize = rawBufferSizeInUint16;
+        }
+    }
+}
+
+/**
+ * @brief Rotates a frame buffer 90 degrees clockwise.
+ *
+ * Performs in-place rotation for ADTF3080 imager which outputs frames rotated 90 degrees.
+ * The rotation transforms pixel at (row, col) to position (col, height - row - 1).
+ * This is a 90-degree clockwise rotation.
+ *
+ * @param[in] src Source buffer to rotate
+ * @param[out] dst Destination buffer for rotated output
+ * @param[in] width Width of the source frame
+ * @param[in] height Height of the source frame
+ */
+void BufferProcessor::rotateFrame90(uint16_t *src, uint16_t *dst,
+                                    uint32_t width, uint32_t height) {
+    // Rotate 90 degrees clockwise: (row, col) -> (col, height - row - 1)
+    // Output dimensions are swapped: width becomes height, height becomes width
+    for (uint32_t row = 0; row < height; row++) {
+        for (uint32_t col = 0; col < width; col++) {
+            uint32_t src_idx = row * width + col;
+            uint32_t dst_idx = col * height + (height - row - 1);
+            dst[dst_idx] = src[src_idx];
         }
     }
 }
@@ -815,7 +842,6 @@ void BufferProcessor::processThread() {
             } else if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
                 // Lens scatter mode for mode 0/1: Process raw Bayer data with TofiCompute
                 // Input: Raw Bayer (RG12 format, 2048×4608 for mode 1)
-                // Output: Computed depth + AB (1024×1024)
 
                 uint32_t ret = TofiCompute(
                     reinterpret_cast<uint16_t *>(process_frame.data.get()),
@@ -884,6 +910,63 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_depth_frame = tempDepthFrame;
             m_tofiComputeContext->p_ab_frame = tempAbFrame;
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
+        }
+
+        // Apply 90-degree rotation if needed (for ADTF3080)
+        if (m_needsRotation && !m_isRawBypassMode) {
+            // For ADTF3080, sensor outputs frames in 90-degree rotated orientation
+            // TofiCompute outputs height×width (e.g., 640×512) that needs rotation to width×height (512×640)
+            // Swap dimensions for rotation: input is height×width, output is width×height
+            uint32_t inputWidth =
+                m_outputFrameHeight; // Sensor native width (before rotation)
+            uint32_t inputHeight =
+                m_outputFrameWidth; // Sensor native height (before rotation)
+            uint32_t numPixels = inputWidth * inputHeight;
+
+            // Allocate temporary buffer for rotation
+            std::vector<uint16_t> tempBuffer(m_tofiBufferSize);
+
+            // Rotate depth frame (first numPixels uint16_t)
+            rotateFrame90(tofi_compute_io_buff.get(), tempBuffer.data(),
+                          inputWidth, inputHeight);
+            memcpy(tofi_compute_io_buff.get(), tempBuffer.data(),
+                   numPixels * sizeof(uint16_t));
+
+            // Rotate AB frame if present (next numPixels uint16_t)
+            uint32_t abOffset = numPixels;
+            if (m_tofiBufferSize > numPixels) {
+                uint32_t abSize =
+                    std::min(numPixels, m_tofiBufferSize - abOffset);
+                if (abSize == numPixels) {
+                    rotateFrame90(tofi_compute_io_buff.get() + abOffset,
+                                  tempBuffer.data(), inputWidth, inputHeight);
+                    memcpy(tofi_compute_io_buff.get() + abOffset,
+                           tempBuffer.data(), numPixels * sizeof(uint16_t));
+                }
+            }
+
+            // Rotate confidence frame if present (next numPixels*2 uint16_t, stored as float)
+            uint32_t confOffset = numPixels * 2;
+            if (m_tofiBufferSize > confOffset) {
+                // Confidence is stored as 2 uint16_t per pixel (32-bit float)
+                // Rotate as pairs of uint16_t
+                for (uint32_t row = 0; row < inputHeight; row++) {
+                    for (uint32_t col = 0; col < inputWidth; col++) {
+                        uint32_t src_idx =
+                            confOffset + (row * inputWidth + col) * 2;
+                        uint32_t dst_idx =
+                            confOffset +
+                            (col * inputHeight + (inputHeight - row - 1)) * 2;
+                        tempBuffer[dst_idx - confOffset] =
+                            tofi_compute_io_buff.get()[src_idx];
+                        tempBuffer[dst_idx - confOffset + 1] =
+                            tofi_compute_io_buff.get()[src_idx + 1];
+                    }
+                }
+                memcpy(tofi_compute_io_buff.get() + confOffset,
+                       tempBuffer.data(),
+                       (m_tofiBufferSize - confOffset) * sizeof(uint16_t));
+            }
         }
 
         // Only attempt to write if recording is still active and stream is open

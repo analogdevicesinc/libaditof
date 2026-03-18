@@ -148,6 +148,10 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     bool getLensScatterCompensationEnabled() const {
         return m_lensScatterCompensationEnabled;
     }
+    void setNeedsRotation(bool needsRotation) {
+        m_needsRotation = needsRotation;
+    }
+    bool getNeedsRotation() const { return m_needsRotation; }
 
     void startThreads();
     void stopThreads();
@@ -179,6 +183,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     void captureFrameThread();
     void processThread();
     void calculateFrameSize(uint8_t &bitsInAB, uint8_t &bitsInConf);
+    void rotateFrame90(uint16_t *src, uint16_t *dst, uint32_t width,
+                       uint32_t height);
 
   private:
     bool m_vidPropSet;
@@ -233,9 +239,12 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     uint8_t m_currentModeNumber;
     bool m_isRawBypassMode;
-    bool m_ispEnabled; // Whether ISP depth computation is enabled (pre-computed depth)
+    bool
+        m_ispEnabled; // Whether ISP depth computation is enabled (pre-computed depth)
     bool
         m_lensScatterCompensationEnabled; // When true, raw bypass uses TofiCompute
+    bool
+        m_needsRotation; // When true, rotate frames 90 degrees clockwise (for ADTF3080)
 
   public:
     // Stream record and playback support
