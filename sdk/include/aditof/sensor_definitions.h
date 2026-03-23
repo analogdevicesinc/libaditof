@@ -181,6 +181,11 @@ struct DepthSensorModeDetails {
     int isPCM;
 
     /**
+     * @brief set to true if the mode is raw bypass (unprocessed sensor data)
+    */
+    int isRawBypass;
+
+    /**
      * @brief Stores the content of a frame
     */
     DriverConfiguration driverConfiguration;

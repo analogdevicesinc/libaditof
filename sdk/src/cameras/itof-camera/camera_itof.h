@@ -86,6 +86,7 @@ class CameraItof : public aditof::Camera {
                                               std::string &fwHash) override;
     aditof::Status adsd3500SetMIPIOutputSpeed(uint16_t speed) override;
     aditof::Status adsd3500GetMIPIOutputSpeed(uint16_t &speed) override;
+    aditof::Status adsd3500SetRawBypassMode(bool enable);
     aditof::Status adsd3500SetEnableDeskewAtStreamOn(uint16_t value) override;
     aditof::Status adsd3500GetImagerErrorCode(uint16_t &errcode) override;
     aditof::Status adsd3500SetVCSELDelay(uint16_t delay) override;

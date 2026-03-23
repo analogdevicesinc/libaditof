@@ -1037,7 +1037,8 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         status = m_bufferProcessor->setVideoProperties(
             type.baseResolutionWidth, type.baseResolutionHeight,
             type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
-            m_bitsInAB[type.modeNumber], m_bitsInConf[type.modeNumber]);
+            m_bitsInAB[type.modeNumber], m_bitsInConf[type.modeNumber],
+            type.isRawBypass);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             goto cleanup_on_error;
