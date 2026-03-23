@@ -659,6 +659,12 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             m_depthSensor->setControl("lensScatterCompensationEnabled", "0");
         }
 
+        // Apply VGA rotation setting from JSON config
+        auto rotationIt = m_iniKeyValPairs.find("enableRotation");
+        if (rotationIt != m_iniKeyValPairs.end()) {
+            m_depthSensor->setControl("enableRotation", rotationIt->second);
+        }
+
         status = m_depthSensor->setMode(mode);
         if (status != Status::OK) {
             LOG(WARNING) << "Failed to set frame type";
@@ -2330,6 +2336,10 @@ aditof::Status CameraItof::resetDepthProcessParams() {
     m_depth_params_map = m_depth_params_map_reset;
 
     return aditof::Status::OK;
+}
+
+aditof::Status CameraItof::setRotationEnabled(bool enable) {
+    return m_depthSensor->setControl("enableRotation", enable ? "1" : "0");
 }
 
 /**
