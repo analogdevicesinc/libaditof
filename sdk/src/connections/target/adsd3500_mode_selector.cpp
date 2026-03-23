@@ -48,6 +48,7 @@ Adsd3500ModeSelector::Adsd3500ModeSelector() : m_configuration("standard") {
     m_controls.emplace("confBits", "");
 
     m_controls.emplace("inputFormat", "");
+    m_controls.emplace("rawBypassMode", "0");
 }
 
 /**
@@ -181,6 +182,40 @@ aditof::Status Adsd3500ModeSelector::getConfigurationTable(
 aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
     DepthSensorModeDetails &configurationTable) {
 
+    // Check if raw bypass mode is enabled
+    if (m_controls["rawBypassMode"] == "1") {
+        // In raw bypass mode, search the raw bypass table
+        for (auto driverConf : m_adsd3500rawBypass) {
+            if (driverConf.baseWidth ==
+                    std::to_string(configurationTable.baseResolutionWidth) &&
+                driverConf.baseHeigth ==
+                    std::to_string(configurationTable.baseResolutionHeight) &&
+                std::stoi(driverConf.noOfPhases) ==
+                    configurationTable.numberOfPhases) {
+
+                configurationTable.frameWidthInBytes = driverConf.driverWidth;
+                configurationTable.frameHeightInBytes = driverConf.driverHeigth;
+                configurationTable.pixelFormatIndex =
+                    driverConf.pixelFormatIndex;
+                configurationTable.isRawBypass = 1;
+                configurationTable.frameContent = {"raw_bayer"};
+
+                LOG(INFO) << "Raw bypass configuration applied: "
+                          << driverConf.driverWidth << "x"
+                          << driverConf.driverHeigth;
+
+                return aditof::Status::OK;
+            }
+        }
+
+        LOG(ERROR) << "No matching raw bypass configuration found for mode "
+                   << "with resolution "
+                   << configurationTable.baseResolutionWidth << "x"
+                   << configurationTable.baseResolutionHeight;
+        return aditof::Status::INVALID_ARGUMENT;
+    }
+
+    // Standard depth mode processing
     for (auto driverConf : m_adsd3500standard) {
         if (driverConf.baseWidth ==
                 std::to_string(configurationTable.baseResolutionWidth) &&
