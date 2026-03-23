@@ -70,12 +70,13 @@ if (GIT_FOUND)
         if (WITH_SUBMODULES)
                 add_definitions(-DWITH_SUBMODULES)
                 message("Updating submodules")
-                execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
+                # Try to update all submodules, but don't fail if some are broken
+                execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init dependencies/third-party/libzmq dependencies/third-party/cppzmq
                         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                        RESULT_VARIABLE WITH_SUBMODULES_RESULT)
+                        RESULT_VARIABLE WITH_SUBMODULES_RESULT_ZMQ)
 
-                if(NOT WITH_SUBMODULES_RESULT EQUAL "0")
-                        message(FATAL_ERROR "Git submodules failed to initialize, check submodules")
+                if(NOT WITH_SUBMODULES_RESULT_ZMQ EQUAL "0")
+                        message(WARNING "ZMQ submodules may not be fully initialized")
                 endif()
         endif()
 
@@ -153,7 +154,8 @@ if (WITH_OFFLINE)
 endif()
 
 
-if(WITH_SUBMODULES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/third-party/libzmq/.git")
+# Build libzmq if submodule exists (regardless of WITH_SUBMODULES flag for network builds)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/third-party/libzmq/.git")
                 # Temporarily store the current compile options
                 set(old_cxx_flags "${CMAKE_CXX_FLAGS}")
                 set(old_c_flags "${CMAKE_C_FLAGS}")

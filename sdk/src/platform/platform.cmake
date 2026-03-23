@@ -27,7 +27,7 @@ elseif(RPI)
     
 elseif(NXP)
     set(PLATFORM_NAME "NXP i.MX 8")
-    set(PLATFORM_CAPTURE_DEVICE "mxc_isi")
+    set(PLATFORM_CAPTURE_DEVICE "mxc")
     set(PLATFORM_VIDEO_PREFIX "mxc_isi")
     set(PLATFORM_MEDIA_CONTROLLER "/dev/media")
     set(PLATFORM_RESET_GPIO "gpio64") 

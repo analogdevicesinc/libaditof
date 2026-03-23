@@ -183,8 +183,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     void captureFrameThread();
     void processThread();
     void calculateFrameSize(uint8_t &bitsInAB, uint8_t &bitsInConf);
-    void rotateFrame90(uint16_t *src, uint16_t *dst, uint32_t width,
-                       uint32_t height);
+    void rotateEntireToFiBuffer(uint16_t *buffer, uint32_t width,
+                                 uint32_t height, uint32_t bufferSize);
 
   private:
     bool m_vidPropSet;
