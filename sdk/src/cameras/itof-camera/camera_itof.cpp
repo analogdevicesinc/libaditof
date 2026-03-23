@@ -268,18 +268,6 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
                        sizeof(CameraIntrinsics));
             }
 
-            // Read and store raw CCB data for non-ISP depth compute modes
-            LOG(INFO) << "Reading raw CCB data for non-ISP mode support...";
-            status = readAdsd3500CCB(m_rawCCBData);
-            if (status != Status::OK) {
-                LOG(WARNING) << "Failed to read raw CCB data - non-ISP modes "
-                                "may not work correctly";
-                // Continue initialization - ISP modes will still work
-            } else {
-                LOG(INFO) << "Raw CCB data stored successfully ("
-                          << m_rawCCBData.size() << " bytes)";
-            }
-
             std::string fwVersion;
             std::string fwHash;
 
@@ -299,7 +287,36 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         aditof::Status paramsStatus = retrieveDepthProcessParams();
         if (paramsStatus != Status::OK) {
             LOG(ERROR) << "Failed to load process parameters!";
-            return status;
+            return paramsStatus;
+        }
+
+        // Read and store raw CCB data only for non-ISP depth compute modes
+        // Check if any mode requires non-ISP processing
+        bool needsNonIspSupport = false;
+        for (const auto &mode_params : m_depth_params_map) {
+            const auto &params = mode_params.second;
+            auto it = params.find("depthComputeIspEnable");
+            // non-ISP support needed if key is missing or set to "0"
+            if (it == params.end() || it->second != "1") {
+                needsNonIspSupport = true;
+                break;
+            }
+        }
+
+        if (needsNonIspSupport) {
+            LOG(INFO) << "Reading raw CCB data for non-ISP mode support...";
+            status = readAdsd3500CCB(m_rawCCBData);
+            if (status != Status::OK) {
+                LOG(WARNING) << "Failed to read raw CCB data - non-ISP modes "
+                                "may not work correctly";
+                // Continue initialization - ISP modes will still work
+            } else {
+                LOG(INFO) << "Raw CCB data stored successfully ("
+                          << m_rawCCBData.size() << " bytes)";
+            }
+        } else {
+            LOG(INFO) << "All modes configured for ISP depth compute - "
+                      << "CCB data not required";
         }
 
         if (m_fsyncMode >= 0) {
@@ -559,6 +576,8 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_modeDetailsCache.metadataSize =
             m_offline_parameters.modeDetailsCache.metadataSize;
         m_modeDetailsCache.isPCM = m_offline_parameters.modeDetailsCache.isPCM;
+        // Offline recordings always contain processed output, never raw bypass
+        m_modeDetailsCache.isRawBypass = false;
         m_modeDetailsCache.frameContent.clear();
 
         LOG(INFO) << "[PLAYBACK] Reading frameContent from file header...";
