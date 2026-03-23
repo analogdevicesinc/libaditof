@@ -236,6 +236,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_controls.emplace("availableCCBM", "0");
     m_controls.emplace("rawBypassMode", "0");
     m_controls.emplace("lensScatterCompensationEnabled", "0");
+    m_controls.emplace("enableRotation", "0");
 
     // Define the commands that correspond to the sensor controls
     m_implData->controlsCommands["abAveraging"] = CTRL_AB_AVG;
@@ -1312,6 +1313,11 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
         m_lensScatterEnabled = (value == "1");
         return Status::OK;
     }
+    if (control == "enableRotation") {
+        m_rotationEnabled = (value == "1");
+        m_bufferProcessor->setNeedsRotation(m_rotationEnabled);
+        return Status::OK;
+    }
     if (control == "netlinktest") {
         return Status::OK;
     }
@@ -2038,13 +2044,9 @@ aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
         return status;
     }
 
-    // Enable 90-degree rotation for ADTF3080 imager
-    if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3080) {
-        m_bufferProcessor->setNeedsRotation(true);
-        LOG(INFO) << "Enabled 90-degree frame rotation for ADTF3080";
-    } else {
-        m_bufferProcessor->setNeedsRotation(false);
-    }
+    // Apply VGA frame rotation based on configuration (set via JSON or API)
+    m_bufferProcessor->setNeedsRotation(m_rotationEnabled);
+    LOG(INFO) << "VGA frame rotation: " << (m_rotationEnabled ? "enabled" : "disabled");
 
     uint8_t depthComputeStatus;
     status = m_bufferProcessor->getDepthComputeVersion(depthComputeStatus);

@@ -618,6 +618,15 @@ class SDK_API Camera {
      * @return Status
      */
     virtual aditof::Status resetDepthProcessParams() = 0;
+
+    /**
+     * @brief Enable or disable 90-degree clockwise rotation for VGA frames.
+     * Takes effect immediately and also overrides the JSON config for subsequent setMode() calls.
+     * This is module-specific and intended for imagers that output VGA frames in a rotated orientation.
+     * @param[in] enable - true to enable rotation, false to disable
+     * @return Status
+     */
+    virtual aditof::Status setRotationEnabled(bool enable) = 0;
 };
 
 } // namespace aditof

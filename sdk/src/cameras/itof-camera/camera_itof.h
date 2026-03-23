@@ -168,6 +168,14 @@ class CameraItof : public aditof::Camera {
     aditof::Status resetDepthProcessParams();
 
     /**
+     * @brief Enable or disable 90-degree clockwise rotation for VGA frames.
+     * Takes effect immediately and also overrides the JSON config for subsequent setMode() calls.
+     * @param[in] enable - true to enable rotation, false to disable
+     * @return Status
+     */
+    aditof::Status setRotationEnabled(bool enable) override;
+
+    /**
      * Configure ADSD3500 with ini parameters
      * @param[in] iniKeyValPairs - ini parameteres to use
     */
