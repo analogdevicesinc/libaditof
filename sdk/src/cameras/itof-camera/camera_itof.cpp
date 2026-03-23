@@ -256,6 +256,18 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
                        sizeof(CameraIntrinsics));
             }
 
+            // Read and store raw CCB data for non-ISP depth compute modes
+            LOG(INFO) << "Reading raw CCB data for non-ISP mode support...";
+            status = readAdsd3500CCB(m_rawCCBData);
+            if (status != Status::OK) {
+                LOG(WARNING) << "Failed to read raw CCB data - non-ISP modes "
+                                "may not work correctly";
+                // Continue initialization - ISP modes will still work
+            } else {
+                LOG(INFO) << "Raw CCB data stored successfully ("
+                          << m_rawCCBData.size() << " bytes)";
+            }
+
             std::string fwVersion;
             std::string fwHash;
 
@@ -647,22 +659,28 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             return status;
         }
 
-        // For lens scatter mode: update mode cache to reflect actual output (processed frames, not raw)
-        // Generic calculation: Use baseResolutionWidth/Height which remain as processed dimensions
-        // even when raw bypass is enabled (mode selector preserves them)
+        // For lens scatter mode: ToFi processes raw input → depth+AB output
+        // Frame buffers are sized for processed OUTPUT (1024×1024), not raw input (2048×4608)
         if (rawBypassEnabled) {
-            LOG(INFO) << "Lens scatter mode: processed output dimensions are "
-                      << m_modeDetailsCache.baseResolutionWidth << "×"
-                      << m_modeDetailsCache.baseResolutionHeight
-                      << " (raw bypass captures at "
-                      << (m_modeDetailsCache.frameWidthInBytes / 2) << "×"
-                      << m_modeDetailsCache.frameHeightInBytes << ")";
-            // Update frameContent to reflect what's actually saved (depth, AB, conf)
+            // Frame content reflects processed OUTPUT based on bit configuration
             m_modeDetailsCache.frameContent.clear();
-            m_modeDetailsCache.frameContent.push_back("depth");
-            m_modeDetailsCache.frameContent.push_back("ab");
-            // Only add conf if bits configured (check INI parameters)
-            auto confBitsIt = m_iniKeyValPairs.find("confidenceBits");
+            
+            // Check bitsInPhaseOrDepth (depth is typically always present)
+            auto depthBitsIt = m_iniKeyValPairs.find("bitsInPhaseOrDepth");
+            if (depthBitsIt != m_iniKeyValPairs.end() &&
+                depthBitsIt->second != "0") {
+                m_modeDetailsCache.frameContent.push_back("depth");
+            }
+            
+            // Check bitsInAB
+            auto abBitsIt = m_iniKeyValPairs.find("bitsInAB");
+            if (abBitsIt != m_iniKeyValPairs.end() &&
+                abBitsIt->second != "0") {
+                m_modeDetailsCache.frameContent.push_back("ab");
+            }
+            
+            // Check bitsInConf
+            auto confBitsIt = m_iniKeyValPairs.find("bitsInConf");
             if (confBitsIt != m_iniKeyValPairs.end() &&
                 confBitsIt->second != "0") {
                 m_modeDetailsCache.frameContent.push_back("conf");
@@ -778,13 +796,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                            << " not found in depth params map";
                 return Status::INVALID_ARGUMENT;
             }
-            
-            // For lens scatter mode, update inputFormat to RG12 for TofiCompute initialization
-            if (lensScatterEnabled) {
-                iniParamsMode->second["inputFormat"] = "RG12";
-                LOG(INFO) << "Lens scatter mode: TofiCompute will be initialized with inputFormat=RG12";
-            }
-            
+
             // Create a string from the ini parameters
             for (auto &param : iniParamsMode->second) {
                 s += param.first + "=" + param.second + "\n";
@@ -793,9 +805,34 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             //LOG(INFO) << s;
 
             aditof::Status localStatus;
-            localStatus = m_depthSensor->initTargetDepthCompute(
-                (uint8_t *)s.c_str(), dataSize, (uint8_t *)m_xyz_dealias_data,
-                sizeof(TofiXYZDealiasData) * 10);
+
+            // Check if ISP depth compute is enabled for this mode
+            bool ispEnabled =
+                (iniParamsMode->second.find("depthComputeIspEnable") !=
+                     iniParamsMode->second.end() &&
+                 iniParamsMode->second["depthComputeIspEnable"] == "1");
+
+            if (ispEnabled) {
+                // ISP enabled: pass parsed TofiXYZDealiasData
+                LOG(INFO) << "Initializing depth compute with ISP (parsed "
+                             "dealias data)";
+                localStatus = m_depthSensor->initTargetDepthCompute(
+                    (uint8_t *)s.c_str(), dataSize,
+                    (uint8_t *)m_xyz_dealias_data,
+                    sizeof(TofiXYZDealiasData) * 10);
+            } else {
+                // ISP disabled: pass raw CCB data
+                LOG(INFO)
+                    << "Initializing depth compute without ISP (raw CCB data)";
+                if (m_rawCCBData.empty()) {
+                    LOG(ERROR)
+                        << "Raw CCB data not available for non-ISP mode!";
+                    return Status::GENERIC_ERROR;
+                }
+                localStatus = m_depthSensor->initTargetDepthCompute(
+                    (uint8_t *)s.c_str(), dataSize,
+                    (uint8_t *)m_rawCCBData.c_str(), m_rawCCBData.size());
+            }
             if (localStatus != aditof::Status::OK) {
                 LOG(ERROR) << "Failed to initialize depth compute on target!";
                 return localStatus;
@@ -1939,11 +1976,6 @@ aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
                        << numOfChunks + 1 << " chunks for adsd3500!";
             return status;
         }
-
-        if (i % 20 == 0) {
-            LOG(INFO) << "Succesfully read chunk number " << i << " out of "
-                      << numOfChunks + 1 << " chunks for adsd3500!";
-        }
     }
 
     //read last chunk. smaller size than the rest
@@ -2147,13 +2179,6 @@ void CameraItof::configureSensorModeDetails() {
         it = m_iniKeyValPairs.find("inputFormat");
         if (it != m_iniKeyValPairs.end()) {
             value = it->second;
-            // For lens scatter compensation, force RG12 format for raw Bayer capture
-            if (lensScatterEnabled) {
-                value = "RG12";
-                // Update INI parameter for TofiCompute initialization
-                m_iniKeyValPairs["inputFormat"] = "RG12";
-                LOG(INFO) << "Lens scatter mode: updated inputFormat to RG12 for TofiCompute";
-            }
             m_depthSensor->setControl("inputFormat", value);
         } else {
             LOG(WARNING) << "inputFormat was not found in parameter list";

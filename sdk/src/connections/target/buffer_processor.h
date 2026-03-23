@@ -137,7 +137,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
-                                          uint16_t calDataLength, uint16_t mode,
+                                          uint32_t calDataLength, uint16_t mode,
                                           bool ispEnabled);
     aditof::Status processBuffer(uint16_t *buffer);
     TofiConfig *getTofiCongfig() const;

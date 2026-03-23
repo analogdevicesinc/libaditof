@@ -278,7 +278,7 @@ class DepthSensorInterface {
     virtual aditof::Status initTargetDepthCompute(uint8_t *iniFile,
                                                   uint16_t iniFileLength,
                                                   uint8_t *calData,
-                                                  uint16_t calDataLength) = 0;
+                                                  uint32_t calDataLength) = 0;
 
     /**
      * @brief Get ini parameters for Depth Compute library

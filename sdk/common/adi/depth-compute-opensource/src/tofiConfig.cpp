@@ -178,6 +178,22 @@ uint32_t GetXYZ_DealiasData(ConfigFileData *ccb_data,
 };
 
 /**
+ * @brief Gets the intrinsics data buffer index for a given mode.
+ *
+ * This function is a stub in the open-source implementation. In the full implementation,
+ * it would return the mode number that contains valid camera intrinsics data, or -1 if
+ * intrinsics are not available for the requested mode.
+ *
+ * @param[in] mode Mode number to query
+ *
+ * @return Mode number with valid intrinsics, or -1 if not available (stub always returns mode)
+ */
+int GetIntrinsicsDataBuffer(uint16_t mode) {
+    // Stub implementation: assume intrinsics are available for the requested mode
+    return mode;
+};
+
+/**
  * @brief Frees memory allocated for a TofiConfig structure and its associated data.
  *
  * This function deallocates all heap memory associated with a TofiConfig object,
