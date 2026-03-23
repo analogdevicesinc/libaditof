@@ -184,13 +184,10 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
 
     // Check if raw bypass mode is enabled
     if (m_controls["rawBypassMode"] == "1") {
-        // In raw bypass mode, search the raw bypass table
-        // Only match on resolution, not phases (raw bypass always uses single frame)
+        // In raw bypass mode, search the raw bypass table by mode number
+        // Mode number is the primary key to get correct raw dimensions
         for (auto driverConf : m_adsd3500rawBypass) {
-            if (driverConf.baseWidth ==
-                    std::to_string(configurationTable.baseResolutionWidth) &&
-                driverConf.baseHeigth ==
-                    std::to_string(configurationTable.baseResolutionHeight)) {
+            if (driverConf.modeNumber == configurationTable.modeNumber) {
 
                 // Convert pixel dimensions to bytes: RG12 uses 2 bytes/pixel
                 int bytesPerPixel = (driverConf.pixelFormatIndex == 1) ? 2 : 1;
@@ -204,8 +201,8 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
                     1; // Raw bypass always single frame
                 configurationTable.frameContent = {"raw"};
 
-                LOG(INFO) << "Raw bypass configuration applied: "
-                          << driverConf.driverWidth << "x"
+                LOG(INFO) << "Raw bypass mode " << configurationTable.modeNumber
+                          << " configuration: " << driverConf.driverWidth << "×"
                           << driverConf.driverHeigth;
 
                 return aditof::Status::OK;
@@ -213,9 +210,7 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
         }
 
         LOG(ERROR) << "No matching raw bypass configuration found for mode "
-                   << "with resolution "
-                   << configurationTable.baseResolutionWidth << "x"
-                   << configurationTable.baseResolutionHeight;
+                   << configurationTable.modeNumber;
         return aditof::Status::INVALID_ARGUMENT;
     }
 

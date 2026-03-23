@@ -152,7 +152,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     getDeviceFileDescriptor(int &fileDescriptor) override;
     virtual aditof::Status
     initTargetDepthCompute(uint8_t *iniFile, uint16_t iniFileLength,
-                           uint8_t *calData, uint16_t calDataLength) override;
+                           uint8_t *calData, uint32_t calDataLength) override;
 
   public:
     aditof::Status adsd3500InterruptHandler(int signalValue);
@@ -223,6 +223,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::vector<uint8_t> m_bitsInAB;
     std::vector<uint8_t> m_bitsInConf;
     uint16_t m_chipId;
+    bool m_lensScatterEnabled = false;
 
   public:
     // Stream record and playback support

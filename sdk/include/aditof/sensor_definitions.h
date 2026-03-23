@@ -69,6 +69,10 @@ struct BitsConfiguration {
  */
 struct DriverConfiguration {
     /**
+     * @brief Mode number (for raw bypass mode matching)
+    */
+    int modeNumber = -1;
+    /**
      * @brief Base width value of the frame
     */
     std::string baseWidth;

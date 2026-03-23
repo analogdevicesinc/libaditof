@@ -98,7 +98,6 @@ BufferProcessor::BufferProcessor()
     m_processorPropSet = false;
     m_vidPropSet = false;
     m_isRawBypassMode = false;
-    m_lensScatterCompensationEnabled = false;
     stopThreadsFlag = true;
     stopThreadsFlag.store(true, std::memory_order_release);
     streamRunning = false;
@@ -319,23 +318,12 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     /* | AB Frame ( W * H (type: uint16_t)) |    */
     /* | Confidance Frame ( W * H * 2 (type: float)) | */
 
-    // For lens scatter mode: always use output dimensions (TofiCompute outputs processed frames)
-    // For pure raw bypass mode: use driver dimensions (full raw buffer size)
-    // For normal ToF mode: use output dimensions (processed frame size)
-    uint32_t width, height;
-    if (m_lensScatterCompensationEnabled) {
-        // Lens scatter: TofiCompute outputs at processed dimensions (1024×1024), not raw dimensions
-        width = m_outputFrameWidth;
-        height = m_outputFrameHeight;
-    } else if (m_isRawBypassMode) {
-        // Pure raw bypass: use driver dimensions
-        width = m_driverFrameWidth;
-        height = m_driverFrameHeight;
-    } else {
-        // Normal mode: use output dimensions
-        width = m_outputFrameWidth;
-        height = m_outputFrameHeight;
-    }
+    // For raw bypass mode, use driver dimensions (full raw buffer size)
+    // For normal ToF mode, use output dimensions (processed frame size)
+    uint32_t width =
+        m_isRawBypassMode ? m_driverFrameWidth : m_outputFrameWidth;
+    uint32_t height =
+        m_isRawBypassMode ? m_driverFrameHeight : m_outputFrameHeight;
 
     uint32_t depthSize = width * height;
     uint32_t abSize = 0;
@@ -360,9 +348,8 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
 
     m_tofiBufferSize = depthSize + abSize + confSize;
 
-    // For pure raw bypass (no lens scatter): ensure ToFi buffer can hold the complete V4L2 buffer
-    // For lens scatter mode: ToFi buffer sized for processed output, not raw input
-    if (m_isRawBypassMode && !m_lensScatterCompensationEnabled) {
+    // For raw bypass, ensure ToFi buffer can hold the complete V4L2 buffer including NVIDIA alignment
+    if (m_isRawBypassMode) {
         size_t rawBufferSizeInUint16 =
             (m_rawFrameBufferSize + sizeof(uint16_t) - 1) / sizeof(uint16_t);
         if (rawBufferSizeInUint16 > m_tofiBufferSize) {
@@ -389,7 +376,7 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
  */
 aditof::Status BufferProcessor::setProcessorProperties(
     uint8_t *iniFile, uint16_t iniFileLength, uint8_t *calData,
-    uint16_t calDataLength, uint16_t mode, bool ispEnabled) {
+    uint32_t calDataLength, uint16_t mode, bool ispEnabled) {
 
     // Free previous compute context and config to avoid memory leaks on repeated mode changes
     if (m_tofiComputeContext != nullptr) {
@@ -406,22 +393,36 @@ aditof::Status BufferProcessor::setProcessorProperties(
     if (ispEnabled) {
         uint32_t status = ADI_TOFI_SUCCESS;
         ConfigFileData calDataStruct = {calData, calDataLength};
+
+        // Extract XYZ dealias data from calibration block
+        status = GetXYZ_DealiasData(&calDataStruct, m_xyzDealiasData);
+        if (status != ADI_TOFI_SUCCESS) {
+            LOG(ERROR) << "Failed to GetCalibrationData";
+            return aditof::Status::GENERIC_ERROR;
+        }
+
         if (iniFile != nullptr) {
             ConfigFileData depth_ini = {iniFile, iniFileLength};
-            if (ispEnabled) {
-                memcpy(m_xyzDealiasData, calData, calDataLength);
-                m_tofiConfig =
-                    InitTofiConfig_isp((ConfigFileData *)&depth_ini, mode,
-                                       &status, m_xyzDealiasData);
-            } else {
-                if (calDataStruct.p_data != NULL) {
-                    m_tofiConfig = InitTofiConfig(&calDataStruct, NULL,
-                                                  &depth_ini, mode, &status);
-                } else {
-                    LOG(ERROR) << "Failed to get calibration data";
-                }
-            }
 
+            // Get intrinsics data buffer index for the requested mode
+            int p0_mode = GetIntrinsicsDataBuffer(mode);
+            if (p0_mode != -1) {
+                try {
+                    m_tofiConfig =
+                        InitTofiConfig_isp((ConfigFileData *)&depth_ini,
+                                           p0_mode, &status, m_xyzDealiasData);
+                } catch (...) {
+                    LOG(ERROR)
+                        << "Failed to initialize the Config: Please make "
+                           "sure calibration file corresponds to input data "
+                           "file";
+                    return aditof::Status::GENERIC_ERROR;
+                }
+            } else {
+                LOG(ERROR)
+                    << "Failed to get the camera Intrinsics for the given data";
+                return aditof::Status::GENERIC_ERROR;
+            }
         } else {
             m_tofiConfig =
                 InitTofiConfig(&calDataStruct, NULL, NULL, mode, &status);
@@ -442,9 +443,90 @@ aditof::Status BufferProcessor::setProcessorProperties(
             }
         }
     } else {
-        LOG(ERROR) << "Could not initialize compute library because config "
-                      "data hasn't been loaded";
-        return aditof::Status::GENERIC_ERROR;
+        // ISP disabled - use standard depth compute initialization with full calibration
+        uint32_t status = ADI_TOFI_SUCCESS;
+        ConfigFileData calDataStruct = {calData, calDataLength};
+
+        // Get the CCB mode that has valid calibration data for this mode
+        // This prevents segfault when requested mode doesn't exist in CCB
+        int ccb_mode = GetIntrinsicsDataBuffer(mode);
+        if (ccb_mode == -1) {
+            LOG(ERROR) << "Mode " << mode
+                       << " not found in CCB calibration data";
+            return aditof::Status::GENERIC_ERROR;
+        }
+
+        if (iniFile != nullptr) {
+            // Dump INI file before ToFi initialization to file and log
+            std::string beforeFile = "/tmp/ini_before_tofi.txt";
+            std::ofstream ofs(beforeFile, std::ios::binary);
+            if (ofs.is_open()) {
+                ofs.write(reinterpret_cast<const char*>(iniFile), iniFileLength);
+                ofs.close();
+                
+                // Format for readable logging
+                std::string formatted(reinterpret_cast<const char*>(iniFile), iniFileLength);
+                LOG(INFO) << "=== INI BEFORE ToFi init:\n" << formatted;
+                LOG(INFO) << "=== INI BEFORE ToFi init dumped to: " << beforeFile;
+            }
+
+            ConfigFileData depth_ini = {iniFile, iniFileLength};
+            try {
+                // Use CCB mode instead of requested mode to avoid crash
+                m_tofiConfig = InitTofiConfig(&calDataStruct, NULL, &depth_ini,
+                                              ccb_mode, &status);
+            } catch (...) {
+                LOG(ERROR)
+                    << "Failed to initialize the Config: Please make "
+                       "sure calibration file corresponds to input data file";
+                return aditof::Status::GENERIC_ERROR;
+            }
+        } else {
+            m_tofiConfig =
+                InitTofiConfig(&calDataStruct, NULL, NULL, ccb_mode, &status);
+        }
+
+        if ((m_tofiConfig == NULL) ||
+            (m_tofiConfig->p_tofi_cal_config == NULL) ||
+            (status != ADI_TOFI_SUCCESS)) {
+            LOG(ERROR) << "InitTofiConfig failed, status=" << status;
+            return aditof::Status::GENERIC_ERROR;
+        }
+
+        if (m_tofiComputeContext == NULL || status != ADI_TOFI_SUCCESS) {
+            m_tofiComputeContext =
+                InitTofiCompute(m_tofiConfig->p_tofi_cal_config, &status);
+            if (m_tofiComputeContext == NULL || status != ADI_TOFI_SUCCESS) {
+                LOG(ERROR) << "InitTofiCompute failed, status=" << status;
+                return aditof::Status::GENERIC_ERROR;
+            }
+        }
+
+        // Dump INI file after ToFi initialization to file and log
+        if (iniFile != nullptr) {
+            std::string afterFile = "/tmp/ini_after_tofi.txt";
+            std::ofstream ofs(afterFile, std::ios::binary);
+            if (ofs.is_open()) {
+                ofs.write(reinterpret_cast<const char*>(iniFile), iniFileLength);
+                ofs.close();
+                
+                // Convert NULL-separated format to readable newline format for logging
+                std::string formatted;
+                formatted.reserve(iniFileLength + 100);
+                for (uint32_t i = 0; i < iniFileLength; ++i) {
+                    char c = iniFile[i];
+                    if (c == '\0') {
+                        // Replace NULL with newline for display
+                        formatted += '\n';
+                    } else {
+                        formatted += c;
+                    }
+                }
+                
+                LOG(INFO) << "=== INI AFTER ToFi init (formatted):\n" << formatted;
+                LOG(INFO) << "=== INI AFTER ToFi init (raw binary) dumped to: " << afterFile;
+            }
+        }
     }
 
     return aditof::Status::OK;
@@ -524,24 +606,6 @@ void BufferProcessor::captureFrameThread() {
 
         if (v4l2_frame_holder != nullptr) {
             memcpy(v4l2_frame_holder.get(), pdata, buf_data_len);
-
-            // [TEMPORARY DEBUG] Dump raw V4L2 frame for lens scatter verification
-            static int raw_frame_count = 0;
-            if (m_lensScatterCompensationEnabled && raw_frame_count < 3) {
-                std::string raw_filename = "/tmp/raw_v4l2_frame_" +
-                                           std::to_string(raw_frame_count) +
-                                           ".bin";
-                std::ofstream raw_dump(raw_filename, std::ios::binary);
-                if (raw_dump.is_open()) {
-                    raw_dump.write(
-                        reinterpret_cast<char *>(v4l2_frame_holder.get()),
-                        buf_data_len);
-                    raw_dump.close();
-                    LOG(INFO) << "[DEBUG] Dumped raw V4L2 frame ("
-                              << buf_data_len << " bytes) to: " << raw_filename;
-                    raw_frame_count++;
-                }
-            }
         } else {
             LOG(WARNING)
                 << __func__
@@ -629,23 +693,32 @@ void BufferProcessor::processThread() {
             continue;
         }
 
-        // Raw bypass mode: Check if this is lens scatter compensation or pure raw bypass
-        // - Lens scatter: sensor raw + TofiCompute processing (continue to TofiCompute)
-        // - Pure raw bypass: sensor raw + no processing (skip TofiCompute)
-        // Must handle before accessing m_tofiComputeContext (which is nullptr for pure raw bypass)
-        if (m_isRawBypassMode && !m_lensScatterCompensationEnabled) {
+        // Raw bypass mode: Simple copy path, no ToFi processing
+        // Must handle before accessing m_tofiComputeContext (which is nullptr for raw bypass)
+        if (m_isRawBypassMode) {
             const size_t bufferSizeBytes = process_frame.size;
-            // Use raw frame buffer size for comparison (includes NVIDIA
-            // alignment)
+            // Use raw frame buffer size for comparison (includes NVIDIA alignment)
             const size_t maxBufferSize = m_rawFrameBufferSize;
 
             if (bufferSizeBytes <= maxBufferSize) {
-                // Copy raw V4L2 data into ToFi output buffer
-                memcpy(tofi_compute_io_buff.get(), process_frame.data.get(),
-                       bufferSizeBytes);
+                // Raw bypass: Copy entire V4L2 buffer including NVIDIA padding
+                // Keep buffer exactly as received from V4L2 driver
+                uint8_t *src = process_frame.data.get();
+                uint8_t *dst =
+                    reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get());
 
-                // Note: For pure raw bypass (no lens scatter), frames are saved here
-                // For lens scatter mode, frames are saved AFTER TofiCompute processing
+                // Copy full V4L2 buffer (data + padding)
+                memcpy(dst, src, bufferSizeBytes);
+
+                // Record frame if recording is active
+                if (m_state == ST_RECORD && m_stream_file_out.is_open()) {
+                    aditof::Status writeStatus = writeFrame(
+                        (uint8_t *)tofi_compute_io_buff.get(), bufferSizeBytes);
+                    if (writeStatus != aditof::Status::OK) {
+                        LOG(WARNING) << "Failed to write raw bypass frame "
+                                        "during recording";
+                    }
+                }
 
                 // Package processed frame for output
                 process_frame.tofiBuffer = tofi_compute_io_buff;
@@ -671,19 +744,6 @@ void BufferProcessor::processThread() {
 
                 continue;
             }
-        } else if (m_isRawBypassMode && m_lensScatterCompensationEnabled) {
-            LOG(INFO) << "Lens scatter compensation enabled - passing raw "
-                         "Bayer data to TofiCompute";
-            // Fall through to standard ToFi processing below
-        }
-
-        // Verify TofiCompute context is initialized before processing
-        if (!m_tofiComputeContext) {
-            LOG(ERROR) << "processThread: TofiCompute context is null, cannot "
-                          "process frame";
-            m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-            m_v4l2_input_buffer_Q.push(process_frame.data);
-            continue;
         }
 
         // Standard ToF mode: Save m_tofiComputeContext pointers before modifying
@@ -734,11 +794,9 @@ void BufferProcessor::processThread() {
 
 #ifdef DUAL
             // For dual pulsatrix mode 1 and 0, data comes deinterleaved from ISP
-            // EXCEPT for lens scatter compensation mode where ISP outputs raw Bayer
             // Copy only the frames that are actually allocated based on m_tofiBufferSize
             // Buffer layout: [depth: numPixels uint16_t | AB: varies | conf: varies]
-            if ((m_currentModeNumber == 0 || m_currentModeNumber == 1) &&
-                !m_lensScatterCompensationEnabled) {
+            if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
 
                 // Always copy depth frame
                 memcpy(m_tofiComputeContext->p_depth_frame,
@@ -1153,7 +1211,6 @@ void BufferProcessor::startThreads() {
     stopThreadsFlag.store(false, std::memory_order_release);
     streamRunning = true;
 
-    LOG(INFO) << __func__ << ": Starting Threads..";
     m_captureThread = std::thread(&BufferProcessor::captureFrameThread, this);
     m_processingThread = std::thread(&BufferProcessor::processThread, this);
     sched_param param;

@@ -1264,7 +1264,7 @@ aditof::Status NetworkDepthSensor::adsd3500_get_status(int &chipStatus,
 
 aditof::Status NetworkDepthSensor::initTargetDepthCompute(
     uint8_t *iniFile, uint16_t iniFileLength, uint8_t *calData,
-    uint16_t calDataLength) {
+    uint32_t calDataLength) {
     using namespace aditof;
 
     Network *net = m_implData->handle.net;

@@ -980,11 +980,23 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             fmt.fmt.pix.width = type.frameWidthInBytes;
         }
         fmt.fmt.pix.height = type.frameHeightInBytes;
+
         if (xioctl(dev->fd, VIDIOC_S_FMT, &fmt) == -1) {
             LOG(WARNING) << "Setting Pixel Format error, errno: " << errno
                          << " error: " << strerror(errno);
             status = Status::GENERIC_ERROR;
             goto cleanup_on_error;
+        }
+
+        // For raw bypass, update stored mode details with driver-negotiated dimensions
+        // Driver may reject requested dimensions and return different values
+        if (type.isRawBypass && m_implData) {
+            // Convert back from pixels to bytes for frameWidthInBytes
+            // bytesperline is in bytes, width is in pixels
+            m_implData->modeDetails.frameWidthInBytes =
+                fmt.fmt.pix.bytesperline;
+            m_implData->modeDetails.frameHeightInBytes = fmt.fmt.pix.height;
+
         }
 
         /* Allocate the video buffers in the driver */
@@ -1051,47 +1063,19 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     if (!type.isPCM) {
 
-        // For lens scatter compensation: use configured bits (TofiCompute needs proper output buffer size)
-        // For pure raw bypass: use 0 bits (no ToF processing)
-        // For standard mode: use configured bits (ISP outputs processed frames)
-        bool lensScatterMode =
-            m_bufferProcessor->getLensScatterCompensationEnabled();
-        uint8_t bitsInAB = (type.isRawBypass && !lensScatterMode)
-                               ? 0
-                               : m_bitsInAB[type.modeNumber];
-        uint8_t bitsInConf = (type.isRawBypass && !lensScatterMode)
-                                 ? 0
-                                 : m_bitsInConf[type.modeNumber];
+        // True raw bypass = no ToFi processing (skip depth computation)
+        // Lens scatter = ToFi processing required (computed from raw input)
+        // m_lensScatterEnabled is set via setControl("lensScatterCompensationEnabled") from camera layer
+        bool skipToFiProcessing = type.isRawBypass && !m_lensScatterEnabled;
 
-        // For lens scatter mode with raw bypass: use processed output dimensions, not raw sensor dimensions
-        // Generic calculation: ToF raw frame contains 2×2 pattern per pixel + multiple phase captures
-        // Raw dimensions are in frameWidthInBytes (includes bytes per pixel) and frameHeightInBytes
-        // Processed width = (frameWidthInBytes / bytesPerPixel) / 2
-        // Processed height = frameHeightInBytes / number_of_phases (calculated from ratio)
-        int outputWidth = type.baseResolutionWidth;
-        int outputHeight = type.baseResolutionHeight;
-        if (lensScatterMode && type.isRawBypass) {
-            // For RG12: 2 bytes per pixel, ToF uses 2×2 pattern per processed pixel
-            int bytesPerPixel =
-                (type.pixelFormatIndex == 1) ? 2 : 1; // 1=RG12, 0=raw8
-            int rawPixelWidth = type.frameWidthInBytes / bytesPerPixel;
-            int rawPixelHeight = type.frameHeightInBytes;
-
-            // Calculate processed dimensions
-            outputWidth = rawPixelWidth / 2;
-            outputHeight =
-                rawPixelHeight / (rawPixelHeight / type.baseResolutionHeight);
-
-            LOG(INFO) << "Lens scatter mode: adjusting output dimensions from "
-                      << rawPixelWidth << "×" << rawPixelHeight << " (raw, "
-                      << bytesPerPixel << "B/px) to " << outputWidth << "×"
-                      << outputHeight << " (processed)";
-        }
+        uint8_t bitsInAB = skipToFiProcessing ? 0 : m_bitsInAB[type.modeNumber];
+        uint8_t bitsInConf =
+            skipToFiProcessing ? 0 : m_bitsInConf[type.modeNumber];
 
         status = m_bufferProcessor->setVideoProperties(
-            outputWidth, outputHeight, type.frameWidthInBytes,
-            type.frameHeightInBytes, type.modeNumber, bitsInAB, bitsInConf,
-            type.isRawBypass);
+            type.baseResolutionWidth, type.baseResolutionHeight,
+            type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
+            bitsInAB, bitsInConf, skipToFiProcessing);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             goto cleanup_on_error;
@@ -1325,9 +1309,8 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
         return Status::OK;
     }
     if (control == "lensScatterCompensationEnabled") {
-        bool enabled = (value == "1");
-        m_bufferProcessor->setLensScatterCompensationEnabled(enabled);
-        LOG(INFO) << "Lens scatter compensation flag set to: " << enabled;
+        // Store lens scatter flag for use in setMode
+        m_lensScatterEnabled = (value == "1");
         return Status::OK;
     }
     if (control == "netlinktest") {
@@ -2018,13 +2001,39 @@ aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
 aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
                                                       uint16_t iniFileLength,
                                                       uint8_t *calData,
-                                                      uint16_t calDataLength) {
+                                                      uint32_t calDataLength) {
     using namespace aditof;
     Status status = Status::OK;
 
+    // Determine ISP enable status from mode configuration instead of hardcoding
+    bool ispEnabled = true; // Default to ISP enabled
+    std::string modeNumberStr =
+        std::to_string(m_implData->modeDetails.modeNumber);
+
+    // Find the INI parameters for the current mode
+    auto it =
+        std::find_if(m_iniFileStructList.begin(), m_iniFileStructList.end(),
+                     [&modeNumberStr](const iniFileStruct &iniF) {
+                         return (iniF.modeName == modeNumberStr);
+                     });
+
+    if (it != m_iniFileStructList.end()) {
+        // Check if depthComputeIspEnable is set in the mode configuration
+        auto ispEnableIt = it->iniKeyValPairs.find("depthComputeIspEnable");
+        if (ispEnableIt != it->iniKeyValPairs.end()) {
+            ispEnabled = (std::stoi(ispEnableIt->second) != 0);
+        } else {
+            LOG(WARNING) << "depthComputeIspEnable not found for mode "
+                         << modeNumberStr << ", defaulting to enabled";
+        }
+    } else {
+        LOG(WARNING) << "INI params not found for mode " << modeNumberStr
+                     << ", defaulting to ISP enabled";
+    }
+
     status = m_bufferProcessor->setProcessorProperties(
         iniFile, iniFileLength, calData, calDataLength,
-        m_implData->modeDetails.modeNumber, true);
+        m_implData->modeDetails.modeNumber, ispEnabled);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to initialize depth compute on target!";
         return status;
@@ -2094,8 +2103,6 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
         std::to_string(jblf_params.jblf_exponential_term);
     params["jblfMaxEdge"] = std::to_string(jblf_params.jblf_max_edge);
     params["jblfABThreshold"] = std::to_string(jblf_params.jblf_ab_threshold);
-    params["lensScatterCompensationEnabled"] = std::to_string(
-        static_cast<float>(jblf_params.lens_scatter_compensation_enabled));
 
     InputRawDataParams ir_params;
     type = 1;
@@ -2118,17 +2125,6 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
  * @param[in] params Map of depth compute parameter key-value pairs
  *
  * @return Status::OK on success
- */
-/**
- * @brief Sets depth computation parameters for ToFi library.
- *
- * Configures ToFi computation parameters for depth processing. The bit parameters
- * (bitsInPhaseOrDepth, bitsInAB, bitsInConf) define the output format, not the
- * sensor capture format (which is controlled separately via setControl).
- *
- * @param[in] params Map of depth compute parameter key-value pairs
- *
- * @return Status::OK on success, error codes on failure
  */
 aditof::Status Adsd3500Sensor::setDepthComputeParams(
     const std::map<std::string, std::string> &params) {
@@ -2174,14 +2170,7 @@ aditof::Status Adsd3500Sensor::setDepthComputeParams(
         std::stof(params.at("jblfExponentialTerm"));
     jblf_params.jblf_max_edge = std::stof(params.at("jblfMaxEdge"));
     jblf_params.jblf_ab_threshold = std::stof(params.at("jblfABThreshold"));
-    jblf_params.lens_scatter_compensation_enabled = static_cast<int>(
-        std::stof(params.at("lensScatterCompensationEnabled")));
     status = setIniParamsImpl(&jblf_params, type, config->p_tofi_cal_config);
-
-    // Notify BufferProcessor about lens scatter compensation mode
-    // This ensures raw bypass mode still processes through TofiCompute when enabled
-    m_bufferProcessor->setLensScatterCompensationEnabled(
-        jblf_params.lens_scatter_compensation_enabled == 1);
 
     return status;
 }

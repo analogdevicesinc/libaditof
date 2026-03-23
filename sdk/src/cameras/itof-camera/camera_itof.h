@@ -212,6 +212,7 @@ class CameraItof : public aditof::Camera {
     std::map<int, std::map<std::string, std::string>> m_depth_params_map_reset;
 
     TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
+    std::string m_rawCCBData; // Raw Camera Calibration Block for non-ISP modes
 
     uint8_t m_depthBitsPerPixel;
     uint8_t m_abBitsPerPixel;

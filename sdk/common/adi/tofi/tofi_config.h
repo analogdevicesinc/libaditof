@@ -120,6 +120,13 @@ InitTofiConfig_isp(ConfigFileData *p_ini_file_data, uint16_t mode,
 TOFI_CONFIG_API uint32_t GetXYZ_DealiasData(ConfigFileData *ccb_data,
                                             TofiXYZDealiasData *p_xyz_data);
 
+///
+/// @brief Function to get the intrinsics data buffer index for a given mode.
+/// @param[in] mode - uint16_t - mode of camera operation
+/// @return int: returns mode number with valid intrinsics on success,
+///              returns -1 if intrinsics not available for the mode
+TOFI_CONFIG_API int GetIntrinsicsDataBuffer(uint16_t mode);
+
 /// Function to release memory for configuration structure and
 /// Depth/AB/Confidence memory buffers
 /// @param[in, out] TofiConfig *p_tofi_cal_config: pointer to the TOFI
