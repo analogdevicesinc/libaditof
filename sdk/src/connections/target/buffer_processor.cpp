@@ -912,7 +912,7 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
         }
 
-        // Apply 90-degree rotation if needed (for ADTF3080)
+        // Apply 90-degree rotation if needed (for ADTF3080 VGA frames only)
         if (m_needsRotation && !m_isRawBypassMode) {
             // For ADTF3080, sensor outputs frames in 90-degree rotated orientation
             // TofiCompute outputs height×width (e.g., 640×512) that needs rotation to width×height (512×640)
@@ -923,134 +923,148 @@ void BufferProcessor::processThread() {
                 m_outputFrameWidth; // Sensor native height (before rotation)
             uint32_t numPixels = inputWidth * inputHeight;
 
-            // Allocate temporary buffer for rotation
-            std::vector<uint16_t> tempBuffer(m_tofiBufferSize);
+            // Only rotate VGA frames (640×512 = 327,680 pixels)
+            const uint32_t VGA_PIXELS = 640 * 512;
+            bool isVgaFrame = (numPixels == VGA_PIXELS);
 
-            // Rotate depth frame (first numPixels uint16_t)
-            rotateFrame90(tofi_compute_io_buff.get(), tempBuffer.data(),
-                          inputWidth, inputHeight);
-            memcpy(tofi_compute_io_buff.get(), tempBuffer.data(),
-                   numPixels * sizeof(uint16_t));
+            if (isVgaFrame) {
 
-            // Rotate AB frame if present (next numPixels uint16_t)
-            uint32_t abOffset = numPixels;
-            if (m_tofiBufferSize > numPixels) {
-                uint32_t abSize =
-                    std::min(numPixels, m_tofiBufferSize - abOffset);
-                if (abSize == numPixels) {
-                    rotateFrame90(tofi_compute_io_buff.get() + abOffset,
-                                  tempBuffer.data(), inputWidth, inputHeight);
-                    memcpy(tofi_compute_io_buff.get() + abOffset,
-                           tempBuffer.data(), numPixels * sizeof(uint16_t));
-                }
-            }
+                if (isVgaFrame) {
+                    // Allocate temporary buffer for rotation
+                    std::vector<uint16_t> tempBuffer(m_tofiBufferSize);
 
-            // Rotate confidence frame if present (next numPixels*2 uint16_t, stored as float)
-            uint32_t confOffset = numPixels * 2;
-            if (m_tofiBufferSize > confOffset) {
-                // Confidence is stored as 2 uint16_t per pixel (32-bit float)
-                // Rotate as pairs of uint16_t
-                for (uint32_t row = 0; row < inputHeight; row++) {
-                    for (uint32_t col = 0; col < inputWidth; col++) {
-                        uint32_t src_idx =
-                            confOffset + (row * inputWidth + col) * 2;
-                        uint32_t dst_idx =
-                            confOffset +
-                            (col * inputHeight + (inputHeight - row - 1)) * 2;
-                        tempBuffer[dst_idx - confOffset] =
-                            tofi_compute_io_buff.get()[src_idx];
-                        tempBuffer[dst_idx - confOffset + 1] =
-                            tofi_compute_io_buff.get()[src_idx + 1];
+                    // Rotate depth frame (first numPixels uint16_t)
+                    rotateFrame90(tofi_compute_io_buff.get(), tempBuffer.data(),
+                                  inputWidth, inputHeight);
+                    memcpy(tofi_compute_io_buff.get(), tempBuffer.data(),
+                           numPixels * sizeof(uint16_t));
+
+                    // Rotate AB frame if present (next numPixels uint16_t)
+                    uint32_t abOffset = numPixels;
+                    if (m_tofiBufferSize > numPixels) {
+                        uint32_t abSize =
+                            std::min(numPixels, m_tofiBufferSize - abOffset);
+                        if (abSize == numPixels) {
+                            rotateFrame90(tofi_compute_io_buff.get() + abOffset,
+                                          tempBuffer.data(), inputWidth,
+                                          inputHeight);
+                            memcpy(tofi_compute_io_buff.get() + abOffset,
+                                   tempBuffer.data(),
+                                   numPixels * sizeof(uint16_t));
+                        }
                     }
+
+                    // Rotate confidence frame if present (next numPixels*2 uint16_t, stored as float)
+                    uint32_t confOffset = numPixels * 2;
+                    if (m_tofiBufferSize > confOffset) {
+                        // Confidence is stored as 2 uint16_t per pixel (32-bit float)
+                        // Rotate as pairs of uint16_t
+                        for (uint32_t row = 0; row < inputHeight; row++) {
+                            for (uint32_t col = 0; col < inputWidth; col++) {
+                                uint32_t src_idx =
+                                    confOffset + (row * inputWidth + col) * 2;
+                                uint32_t dst_idx =
+                                    confOffset + (col * inputHeight +
+                                                  (inputHeight - row - 1)) *
+                                                     2;
+                                tempBuffer[dst_idx - confOffset] =
+                                    tofi_compute_io_buff.get()[src_idx];
+                                tempBuffer[dst_idx - confOffset + 1] =
+                                    tofi_compute_io_buff.get()[src_idx + 1];
+                            }
+                        }
+                        memcpy(tofi_compute_io_buff.get() + confOffset,
+                               tempBuffer.data(),
+                               (m_tofiBufferSize - confOffset) *
+                                   sizeof(uint16_t));
+                    }
+                } // End VGA frame check
+            }
+
+            // Only attempt to write if recording is still active and stream is open
+            if (m_state == ST_RECORD && m_stream_file_out.is_open()) {
+                aditof::Status writeStatus =
+                    writeFrame((uint8_t *)tofi_compute_io_buff.get(),
+                               m_tofiBufferSize * sizeof(uint16_t));
+                if (writeStatus != aditof::Status::OK) {
+                    LOG(WARNING)
+                        << "Failed to write processed frame during recording";
                 }
-                memcpy(tofi_compute_io_buff.get() + confOffset,
-                       tempBuffer.data(),
-                       (m_tofiBufferSize - confOffset) * sizeof(uint16_t));
             }
-        }
 
-        // Only attempt to write if recording is still active and stream is open
-        if (m_state == ST_RECORD && m_stream_file_out.is_open()) {
-            aditof::Status writeStatus =
-                writeFrame((uint8_t *)tofi_compute_io_buff.get(),
-                           m_tofiBufferSize * sizeof(uint16_t));
-            if (writeStatus != aditof::Status::OK) {
-                LOG(WARNING)
-                    << "Failed to write processed frame during recording";
+            process_frame.tofiBuffer = tofi_compute_io_buff;
+            process_frame.size = m_tofiBufferSize;
+
+            if (!m_process_done_Q.push(std::move(process_frame))) {
+                LOG(WARNING) << "processThread: Push timeout to "
+                                "m_process_done_Q, ProcessedQueueSize: "
+                             << m_process_done_Q.size();
+                m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                m_v4l2_input_buffer_Q.push(process_frame.data);
+                continue;
             }
-        }
-
-        process_frame.tofiBuffer = tofi_compute_io_buff;
-        process_frame.size = m_tofiBufferSize;
-
-        if (!m_process_done_Q.push(std::move(process_frame))) {
-            LOG(WARNING) << "processThread: Push timeout to "
-                            "m_process_done_Q, ProcessedQueueSize: "
-                         << m_process_done_Q.size();
-            m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-            m_v4l2_input_buffer_Q.push(process_frame.data);
-            continue;
         }
     }
-}
 
-/**
+    /**
  * @function BufferProcessor::processBuffer
  *
  * Function to retrieve the next available processed buffer.
  * It copies the computed output into the user-provided buffer and manages buffer reuse.
  * Returns a status indicating success, busy (no frames), or error.
  */
-aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
-    Tofi_v4l2_buffer tof_processed_frame;
+    aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
+        Tofi_v4l2_buffer tof_processed_frame;
 
-    // Loop for MAX_RETRIES attempts. 'attempt' counts from 0 to MAX_RETRIES - 1.
-    for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
-        if (m_process_done_Q.pop(tof_processed_frame)) {
-            if (buffer && tof_processed_frame.tofiBuffer &&
-                tof_processed_frame.size > 0) {
+        // Loop for MAX_RETRIES attempts. 'attempt' counts from 0 to MAX_RETRIES - 1.
+        for (int attempt = 0; attempt < MAX_RETRIES; ++attempt) {
+            if (m_process_done_Q.pop(tof_processed_frame)) {
+                if (buffer && tof_processed_frame.tofiBuffer &&
+                    tof_processed_frame.size > 0) {
 
-                memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
-                       tof_processed_frame.size * sizeof(uint16_t));
+                    memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
+                           tof_processed_frame.size * sizeof(uint16_t));
 
-                // Return buffers to their respective pools
-                m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
-                m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
+                    // Return buffers to their respective pools
+                    m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
+                    m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
 
-                return aditof::Status::OK; // Success, exit function
-            } else {                       // NOLINT(llvm-else-after-return)
-                // Pop succeeded, but the frame data itself was invalid.
-                LOG(ERROR) << "processBuffer: Pop succeeded but frame data is "
-                              "invalid (buffer/tofiBuffer/size). "
-                           << "Returning error immediately.\n";
-                return aditof::Status::GENERIC_ERROR;
-            }
-        } else {
-            if (attempt < MAX_RETRIES - 1) {
-                // If it's not the last attempt, wait and then the loop will try again.
-                LOG(WARNING)
-                    << "processBuffer: Pop failed on attempt #" << (attempt + 1)
-                    << ". Retrying in " << RETRY_DELAY.count() << "ms...\n";
-                std::this_thread::sleep_for(RETRY_DELAY);
+                    return aditof::Status::OK; // Success, exit function
+                } else {                       // NOLINT(llvm-else-after-return)
+                    // Pop succeeded, but the frame data itself was invalid.
+                    LOG(ERROR)
+                        << "processBuffer: Pop succeeded but frame data is "
+                           "invalid (buffer/tofiBuffer/size). "
+                        << "Returning error immediately.\n";
+                    return aditof::Status::GENERIC_ERROR;
+                }
             } else {
-                // This was the last attempt (MAX_RETRIES - 1 index) and it failed.
-                LOG(ERROR) << "processBuffer: Failed to pop frame after "
-                           << MAX_RETRIES << " attempts. "
-                           << "m_process_done_Q size: "
-                           << m_process_done_Q.size() << "\n";
-                return aditof::Status::
-                    GENERIC_ERROR; // Indicate final failure to the caller
+                if (attempt < MAX_RETRIES - 1) {
+                    // If it's not the last attempt, wait and then the loop will try again.
+                    LOG(WARNING) << "processBuffer: Pop failed on attempt #"
+                                 << (attempt + 1) << ". Retrying in "
+                                 << RETRY_DELAY.count() << "ms...\n";
+                    std::this_thread::sleep_for(RETRY_DELAY);
+                } else {
+                    // This was the last attempt (MAX_RETRIES - 1 index) and it failed.
+                    LOG(ERROR)
+                        << "processBuffer: Failed to pop frame after "
+                        << MAX_RETRIES << " attempts. "
+                        << "m_process_done_Q size: " << m_process_done_Q.size()
+                        << "\n";
+                    return aditof::Status::
+                        GENERIC_ERROR; // Indicate final failure to the caller
+                }
             }
         }
+
+        // This line should technically not be reached if MAX_RETRIES > 0,
+        // as the loop will either return OK or GENERIC_ERROR.
+        // Included as a safeguard.
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    // This line should technically not be reached if MAX_RETRIES > 0,
-    // as the loop will either return OK or GENERIC_ERROR.
-    // Included as a safeguard.
-    return aditof::Status::GENERIC_ERROR;
-}
-
-/**
+    /**
  * @brief Waits for a buffer to be available on the V4L2 device using select.
  *
  * Blocks on select() with a timeout (SELECT_TIMEOUT_SEC) until the device is ready for reading.
@@ -1060,37 +1074,38 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
  *
  * @return Status::OK if buffer is ready, Status::GENERIC_ERROR on timeout or select error
  */
-aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
-    fd_set fds;
-    struct timeval tv;
-    int r;
+    aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *
+                                                         dev) {
+        fd_set fds;
+        struct timeval tv;
+        int r;
 
-    if (dev == nullptr)
-        dev = m_inputVideoDev;
+        if (dev == nullptr)
+            dev = m_inputVideoDev;
 
-    FD_ZERO(&fds);
-    FD_SET(dev->fd, &fds);
+        FD_ZERO(&fds);
+        FD_SET(dev->fd, &fds);
 
-    tv.tv_sec = stopThreadsFlag.load(std::memory_order_acquire)
-                    ? 0
-                    : SELECT_TIMEOUT_SEC;
-    tv.tv_usec = 0;
+        tv.tv_sec = stopThreadsFlag.load(std::memory_order_acquire)
+                        ? 0
+                        : SELECT_TIMEOUT_SEC;
+        tv.tv_usec = 0;
 
-    r = select(dev->fd + 1, &fds, NULL, NULL, &tv);
+        r = select(dev->fd + 1, &fds, NULL, NULL, &tv);
 
-    aditof::Status status = aditof::Status::OK;
-    if (r == -1) {
-        LOG(WARNING) << "select error "
-                     << "errno: " << errno << " error: " << strerror(errno);
-        status = aditof::Status::GENERIC_ERROR;
-    } else if (r == 0) {
-        LOG(WARNING) << "select timeout";
-        status = aditof::Status::GENERIC_ERROR;
+        aditof::Status status = aditof::Status::OK;
+        if (r == -1) {
+            LOG(WARNING) << "select error "
+                         << "errno: " << errno << " error: " << strerror(errno);
+            status = aditof::Status::GENERIC_ERROR;
+        } else if (r == 0) {
+            LOG(WARNING) << "select timeout";
+            status = aditof::Status::GENERIC_ERROR;
+        }
+        return status;
     }
-    return status;
-}
 
-/**
+    /**
  * @brief Dequeues a buffer from the V4L2 device.
  *
  * Calls VIDIOC_DQBUF ioctl to dequeue a filled buffer from the driver. The buffer
@@ -1101,42 +1116,41 @@ aditof::Status BufferProcessor::waitForBufferPrivate(struct VideoDev *dev) {
  *
  * @return Status::OK on success, Status::GENERIC_ERROR on ioctl failure or invalid index
  */
-aditof::Status
-BufferProcessor::dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
-                                              struct VideoDev *dev) {
-    using namespace aditof;
-    Status status = Status::OK;
+    aditof::Status BufferProcessor::dequeueInternalBufferPrivate(
+        struct v4l2_buffer & buf, struct VideoDev * dev) {
+        using namespace aditof;
+        Status status = Status::OK;
 
-    if (dev == nullptr)
-        dev = m_inputVideoDev;
+        if (dev == nullptr)
+            dev = m_inputVideoDev;
 
-    CLEAR(buf);
-    buf.type = dev->videoBuffersType;
-    buf.memory = V4L2_MEMORY_MMAP;
-    buf.length = 1;
-    buf.m.planes = dev->planes;
+        CLEAR(buf);
+        buf.type = dev->videoBuffersType;
+        buf.memory = V4L2_MEMORY_MMAP;
+        buf.length = 1;
+        buf.m.planes = dev->planes;
 
-    if (xioctl(dev->fd, VIDIOC_DQBUF, &buf) == -1) {
-        LOG(WARNING) << "VIDIOC_DQBUF error "
-                     << "errno: " << errno << " error: " << strerror(errno);
-        switch (errno) {
-        case EAGAIN:
-        case EIO:
-            break;
-        default:
+        if (xioctl(dev->fd, VIDIOC_DQBUF, &buf) == -1) {
+            LOG(WARNING) << "VIDIOC_DQBUF error "
+                         << "errno: " << errno << " error: " << strerror(errno);
+            switch (errno) {
+            case EAGAIN:
+            case EIO:
+                break;
+            default:
+                return Status::GENERIC_ERROR;
+            }
+        }
+
+        if (buf.index >= dev->nVideoBuffers) {
+            LOG(WARNING) << "Not enough buffers avaialable";
             return Status::GENERIC_ERROR;
         }
+
+        return status;
     }
 
-    if (buf.index >= dev->nVideoBuffers) {
-        LOG(WARNING) << "Not enough buffers avaialable";
-        return Status::GENERIC_ERROR;
-    }
-
-    return status;
-}
-
-/**
+    /**
  * @brief Retrieves pointer and size of a dequeued V4L2 buffer.
  *
  * Returns a pointer to the mmap'd memory region for the given buffer index and
@@ -1149,19 +1163,19 @@ BufferProcessor::dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
  *
  * @return Status::OK on success
  */
-aditof::Status BufferProcessor::getInternalBufferPrivate(
-    uint8_t **buffer, uint32_t &buf_data_len, const struct v4l2_buffer &buf,
-    struct VideoDev *dev) {
-    if (dev == nullptr)
-        dev = m_inputVideoDev;
+    aditof::Status BufferProcessor::getInternalBufferPrivate(
+        uint8_t **buffer, uint32_t &buf_data_len, const struct v4l2_buffer &buf,
+        struct VideoDev *dev) {
+        if (dev == nullptr)
+            dev = m_inputVideoDev;
 
-    *buffer = static_cast<uint8_t *>(dev->videoBuffers[buf.index].start);
-    buf_data_len = buf.bytesused;
+        *buffer = static_cast<uint8_t *>(dev->videoBuffers[buf.index].start);
+        buf_data_len = buf.bytesused;
 
-    return aditof::Status::OK;
-}
+        return aditof::Status::OK;
+    }
 
-/**
+    /**
  * @brief Re-queues a buffer to the V4L2 device for reuse.
  *
  * Calls VIDIOC_QBUF ioctl to return an empty buffer to the driver queue for
@@ -1172,22 +1186,21 @@ aditof::Status BufferProcessor::getInternalBufferPrivate(
  *
  * @return Status::OK on success, Status::GENERIC_ERROR on ioctl failure
  */
-aditof::Status
-BufferProcessor::enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
-                                              struct VideoDev *dev) {
-    if (dev == nullptr)
-        dev = m_inputVideoDev;
+    aditof::Status BufferProcessor::enqueueInternalBufferPrivate(
+        struct v4l2_buffer & buf, struct VideoDev * dev) {
+        if (dev == nullptr)
+            dev = m_inputVideoDev;
 
-    if (xioctl(dev->fd, VIDIOC_QBUF, &buf) == -1) {
-        LOG(WARNING) << "VIDIOC_QBUF error "
-                     << "errno: " << errno << " error: " << strerror(errno);
-        return aditof::Status::GENERIC_ERROR;
+        if (xioctl(dev->fd, VIDIOC_QBUF, &buf) == -1) {
+            LOG(WARNING) << "VIDIOC_QBUF error "
+                         << "errno: " << errno << " error: " << strerror(errno);
+            return aditof::Status::GENERIC_ERROR;
+        }
+
+        return aditof::Status::OK;
     }
 
-    return aditof::Status::OK;
-}
-
-/**
+    /**
  * @brief Retrieves the output video device file descriptor.
  *
  * Returns the file descriptor for the output video device, which can be used
@@ -1197,24 +1210,25 @@ BufferProcessor::enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
  *
  * @return Status::OK on success
  */
-aditof::Status BufferProcessor::getDeviceFileDescriptor(int &fileDescriptor) {
-    fileDescriptor = m_outputVideoDev->fd;
-    return aditof::Status::OK;
-}
+    aditof::Status BufferProcessor::getDeviceFileDescriptor(
+        int &fileDescriptor) {
+        fileDescriptor = m_outputVideoDev->fd;
+        return aditof::Status::OK;
+    }
 
-/**
+    /**
  * @brief Public wrapper for waitForBufferPrivate.
  *
  * Waits for a buffer to be available on the default input video device.
  *
  * @return Status::OK if buffer is ready, Status::GENERIC_ERROR on error
  */
-aditof::Status BufferProcessor::waitForBuffer() {
+    aditof::Status BufferProcessor::waitForBuffer() {
 
-    return waitForBufferPrivate();
-}
+        return waitForBufferPrivate();
+    }
 
-/**
+    /**
  * @brief Public wrapper for dequeueInternalBufferPrivate.
  *
  * Dequeues a buffer from the default input video device.
@@ -1223,12 +1237,13 @@ aditof::Status BufferProcessor::waitForBuffer() {
  *
  * @return Status::OK on success, Status::GENERIC_ERROR on error
  */
-aditof::Status BufferProcessor::dequeueInternalBuffer(struct v4l2_buffer &buf) {
+    aditof::Status BufferProcessor::dequeueInternalBuffer(struct v4l2_buffer &
+                                                          buf) {
 
-    return dequeueInternalBufferPrivate(buf);
-}
+        return dequeueInternalBufferPrivate(buf);
+    }
 
-/**
+    /**
  * @brief Public wrapper for getInternalBufferPrivate.
  *
  * Retrieves pointer and size of a dequeued buffer from the default input device.
@@ -1239,14 +1254,14 @@ aditof::Status BufferProcessor::dequeueInternalBuffer(struct v4l2_buffer &buf) {
  *
  * @return Status::OK on success
  */
-aditof::Status
-BufferProcessor::getInternalBuffer(uint8_t **buffer, uint32_t &buf_data_len,
-                                   const struct v4l2_buffer &buf) {
+    aditof::Status BufferProcessor::getInternalBuffer(
+        uint8_t **buffer, uint32_t &buf_data_len,
+        const struct v4l2_buffer &buf) {
 
-    return getInternalBufferPrivate(buffer, buf_data_len, buf);
-}
+        return getInternalBufferPrivate(buffer, buf_data_len, buf);
+    }
 
-/**
+    /**
  * @brief Public wrapper for enqueueInternalBufferPrivate.
  *
  * Re-queues a buffer to the default input video device for reuse.
@@ -1255,12 +1270,13 @@ BufferProcessor::getInternalBuffer(uint8_t **buffer, uint32_t &buf_data_len,
  *
  * @return Status::OK on success, Status::GENERIC_ERROR on error
  */
-aditof::Status BufferProcessor::enqueueInternalBuffer(struct v4l2_buffer &buf) {
+    aditof::Status BufferProcessor::enqueueInternalBuffer(struct v4l2_buffer &
+                                                          buf) {
 
-    return enqueueInternalBufferPrivate(buf);
-}
+        return enqueueInternalBufferPrivate(buf);
+    }
 
-/**
+    /**
  * @brief Retrieves the ToFi configuration object.
  *
  * Returns a pointer to the current ToFi configuration structure, which contains
@@ -1268,9 +1284,9 @@ aditof::Status BufferProcessor::enqueueInternalBuffer(struct v4l2_buffer &buf) {
  *
  * @return Pointer to TofiConfig structure, or nullptr if not initialized
  */
-TofiConfig *BufferProcessor::getTofiCongfig() const { return m_tofiConfig; }
+    TofiConfig *BufferProcessor::getTofiCongfig() const { return m_tofiConfig; }
 
-/**
+    /**
  * @brief Retrieves the depth compute library version/type.
  *
  * Returns whether the open-source depth compute library is enabled.
@@ -1279,103 +1295,108 @@ TofiConfig *BufferProcessor::getTofiCongfig() const { return m_tofiConfig; }
  *
  * @return Status::OK on success
  */
-aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled) const {
-    enabled = depthComputeOpenSourceEnabled;
-    return aditof::Status::OK;
-}
+    aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled)
+        const {
+        enabled = depthComputeOpenSourceEnabled;
+        return aditof::Status::OK;
+    }
 
-/**
+    /**
  * @brief Starts the capture and processing worker threads.
  *
  * Clears stop flag, sets stream running, and launches captureFrameThread and processThread.
  * The processing thread priority is set to SCHED_FIFO with priority THREAD_PRIORITY for
  * real-time performance.
  */
-void BufferProcessor::startThreads() {
-    stopThreadsFlag.store(false, std::memory_order_release);
-    streamRunning = true;
+    void BufferProcessor::startThreads() {
+        stopThreadsFlag.store(false, std::memory_order_release);
+        streamRunning = true;
 
-    m_captureThread = std::thread(&BufferProcessor::captureFrameThread, this);
-    m_processingThread = std::thread(&BufferProcessor::processThread, this);
-    sched_param param;
-    param.sched_priority = THREAD_PRIORITY;
-    pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO,
-                          &param);
-}
+        m_captureThread =
+            std::thread(&BufferProcessor::captureFrameThread, this);
+        m_processingThread = std::thread(&BufferProcessor::processThread, this);
+        sched_param param;
+        param.sched_priority = THREAD_PRIORITY;
+        pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO,
+                              &param);
+    }
 
-/**
+    /**
  * @brief Stops the capture and processing worker threads.
  *
  * Sets stop flag, stops recording if active, waits for queue drainage with 5-second timeout,
  * joins threads, and flushes remaining frames back to buffer pools. Ensures threads fully
  * exit before touching any buffers to prevent race conditions.
  */
-void BufferProcessor::stopThreads() {
-    // Signal threads to stop
-    stopThreadsFlag.store(true, std::memory_order_release);
-    streamRunning = false;
+    void BufferProcessor::stopThreads() {
+        // Signal threads to stop
+        stopThreadsFlag.store(true, std::memory_order_release);
+        streamRunning = false;
 
-    stopRecording();
+        stopRecording();
 
-    // Wait for queue drainage with timeout to prevent indefinite blocking
-    auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (((m_capture_to_process_Q.size() > 0) ||
-            (m_process_done_Q.size() > 0)) &&
-           std::chrono::steady_clock::now() < timeout) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    if (std::chrono::steady_clock::now() >= timeout) {
-        LOG(WARNING) << "stopThreads: Queue drainage timed out. Forcing thread "
-                        "shutdown.";
-    }
-
-    // Join threads FIRST - wait for them to fully exit before touching any buffers
-    // This prevents race conditions where threads access buffers during cleanup
-    if (m_captureThread.joinable()) {
-        m_captureThread.join();
-    }
-    if (m_processingThread.joinable()) {
-        m_processingThread.join();
-    }
-
-    // Reset thread objects
-    m_captureThread = std::thread();
-    m_processingThread = std::thread();
-
-    // Now that threads are stopped, flush remaining frames from intermediate queues
-    // Return buffers to their pools for potential reuse
-    {
-        Tofi_v4l2_buffer frame;
-        while (m_capture_to_process_Q.pop(frame)) {
-            if (frame.data)
-                m_v4l2_input_buffer_Q.push(frame.data);
-            if (frame.tofiBuffer)
-                m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
+        // Wait for queue drainage with timeout to prevent indefinite blocking
+        auto timeout =
+            std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (((m_capture_to_process_Q.size() > 0) ||
+                (m_process_done_Q.size() > 0)) &&
+               std::chrono::steady_clock::now() < timeout) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
-    }
-
-    {
-        Tofi_v4l2_buffer frame;
-        while (m_process_done_Q.pop(frame)) {
-            if (frame.data)
-                m_v4l2_input_buffer_Q.push(frame.data);
-            if (frame.tofiBuffer)
-                m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
+        if (std::chrono::steady_clock::now() >= timeout) {
+            LOG(WARNING)
+                << "stopThreads: Queue drainage timed out. Forcing thread "
+                   "shutdown.";
         }
-    }
 
-    LOG(INFO) << __func__ << ": Threads stopped successfully. Queue sizes - "
-              << "v4l2_input: " << m_v4l2_input_buffer_Q.size()
-              << ", capture_to_process: " << m_capture_to_process_Q.size()
-              << ", tofi_io: " << m_tofi_io_Buffer_Q.size()
-              << ", process_done: " << m_process_done_Q.size();
-}
+        // Join threads FIRST - wait for them to fully exit before touching any buffers
+        // This prevents race conditions where threads access buffers during cleanup
+        if (m_captureThread.joinable()) {
+            m_captureThread.join();
+        }
+        if (m_processingThread.joinable()) {
+            m_processingThread.join();
+        }
+
+        // Reset thread objects
+        m_captureThread = std::thread();
+        m_processingThread = std::thread();
+
+        // Now that threads are stopped, flush remaining frames from intermediate queues
+        // Return buffers to their pools for potential reuse
+        {
+            Tofi_v4l2_buffer frame;
+            while (m_capture_to_process_Q.pop(frame)) {
+                if (frame.data)
+                    m_v4l2_input_buffer_Q.push(frame.data);
+                if (frame.tofiBuffer)
+                    m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
+            }
+        }
+
+        {
+            Tofi_v4l2_buffer frame;
+            while (m_process_done_Q.pop(frame)) {
+                if (frame.data)
+                    m_v4l2_input_buffer_Q.push(frame.data);
+                if (frame.tofiBuffer)
+                    m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
+            }
+        }
+
+        LOG(INFO) << __func__
+                  << ": Threads stopped successfully. Queue sizes - "
+                  << "v4l2_input: " << m_v4l2_input_buffer_Q.size()
+                  << ", capture_to_process: " << m_capture_to_process_Q.size()
+                  << ", tofi_io: " << m_tofi_io_Buffer_Q.size()
+                  << ", process_done: " << m_process_done_Q.size();
+    }
 
 #pragma region Stream_Recording_and_Playback
 
 #include "aditof/utils.h"
 
-/**
+    /**
  * @brief Starts recording processed frames to a binary file.
  *
  * Creates output folder if needed, generates a timestamped filename, opens the output
@@ -1392,7 +1413,7 @@ aditof::Status BufferProcessor::startRecording(std::string &filePath,
                                                uint8_t *parameters,
                                                uint32_t paramSize) {
 
-    using namespace aditof;
+        using namespace aditof;
 
     m_state = ST_STOP;
 
@@ -1425,35 +1446,37 @@ aditof::Status BufferProcessor::startRecording(std::string &filePath,
  * @return Status::OK if file was open and closed successfully,
  *         Status::GENERIC_ERROR if file stream was not open
  */
-aditof::Status BufferProcessor::stopRecording() {
+    aditof::Status BufferProcessor::stopRecording() {
 
-    using namespace aditof;
+        using namespace aditof;
 
-    Status status = Status::GENERIC_ERROR;
+        Status status = Status::GENERIC_ERROR;
 
-    if (m_stream_file_out.is_open()) {
-        // Write the number of frames recorded at the end of the file
+        if (m_stream_file_out.is_open()) {
+            // Write the number of frames recorded at the end of the file
 
-        // Seek back to the beginning
-        m_stream_file_out.seekp(
-            8,
-            std::ios::
-                beg); // Skip over the number of bytes to read and the tag of 0xFFFF_FFFF
-        // Overwrite the placeholder
-        m_frame_count--; // Take into account the header frame
-        m_stream_file_out.write(reinterpret_cast<const char *>(&m_frame_count),
-                                sizeof(m_frame_count));
+            // Seek back to the beginning
+            m_stream_file_out.seekp(
+                8,
+                std::ios::
+                    beg); // Skip over the number of bytes to read and the tag of 0xFFFF_FFFF
+            // Overwrite the placeholder
+            m_frame_count--; // Take into account the header frame
+            m_stream_file_out.write(
+                reinterpret_cast<const char *>(&m_frame_count),
+                sizeof(m_frame_count));
 
-        m_stream_file_out.close();
-        LOG(INFO) << "Recording stopped. Total frames saved: " << m_frame_count;
+            m_stream_file_out.close();
+            LOG(INFO) << "Recording stopped. Total frames saved: "
+                      << m_frame_count;
 
-        status = aditof::Status::OK;
+            status = aditof::Status::OK;
+        }
+
+        return status;
     }
 
-    return status;
-}
-
-/**
+    /**
  * @brief Writes a frame to the recording file.
  *
  * Writes frame marker (0xFFFFFFFF), buffer size, and buffer data to the output stream.
@@ -1464,35 +1487,36 @@ aditof::Status BufferProcessor::stopRecording() {
  *
  * @return Status::OK on success, Status::GENERIC_ERROR if not recording or I/O error
  */
-aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
-                                           uint32_t bufferSize) {
-    if (m_state != ST_RECORD) {
+    aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
+                                               uint32_t bufferSize) {
+        if (m_state != ST_RECORD) {
+            return aditof::Status::GENERIC_ERROR;
+        }
+
+        try {
+            if (m_stream_file_out.is_open()) {
+                // Write size of buffer
+                uint32_t x = 0xFFFFFFFF;
+                m_stream_file_out.write((char *)&x, sizeof(x));
+
+                m_stream_file_out.write((char *)&bufferSize,
+                                        sizeof(bufferSize));
+                // Write buffer data
+                m_stream_file_out.write((char *)(buffer), bufferSize);
+
+                m_frame_count++;
+
+                return aditof::Status::OK;
+            }
+        } catch (const std::ofstream::failure &e) {
+            LOG(ERROR) << "File I/O exception caught: " << e.what();
+            m_stream_file_out.close();
+            m_state = ST_STOP;
+        }
         return aditof::Status::GENERIC_ERROR;
     }
 
-    try {
-        if (m_stream_file_out.is_open()) {
-            // Write size of buffer
-            uint32_t x = 0xFFFFFFFF;
-            m_stream_file_out.write((char *)&x, sizeof(x));
-
-            m_stream_file_out.write((char *)&bufferSize, sizeof(bufferSize));
-            // Write buffer data
-            m_stream_file_out.write((char *)(buffer), bufferSize);
-
-            m_frame_count++;
-
-            return aditof::Status::OK;
-        }
-    } catch (const std::ofstream::failure &e) {
-        LOG(ERROR) << "File I/O exception caught: " << e.what();
-        m_stream_file_out.close();
-        m_state = ST_STOP;
-    }
-    return aditof::Status::GENERIC_ERROR;
-}
-
-/**
+    /**
  * @brief Automatically stops recording or playback based on current state.
  *
  * Called during shutdown to clean up active recording or playback operations.
@@ -1501,14 +1525,14 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
  * @return Status::OK if recording stopped successfully,
  *         Status::GENERIC_ERROR for playback state or if not recording
  */
-aditof::Status BufferProcessor::automaticStop() {
-    aditof::Status status = aditof::Status::OK;
-    if (m_state == ST_PLAYBACK) {
-        status = aditof::Status::GENERIC_ERROR;
-    }
-    if (m_state == ST_RECORD) {
-        status = stopRecording();
-    }
+    aditof::Status BufferProcessor::automaticStop() {
+        aditof::Status status = aditof::Status::OK;
+        if (m_state == ST_PLAYBACK) {
+            status = aditof::Status::GENERIC_ERROR;
+        }
+        if (m_state == ST_RECORD) {
+            status = stopRecording();
+        }
 
-    return status;
-}
+        return status;
+    }
