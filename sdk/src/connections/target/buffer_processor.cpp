@@ -847,8 +847,10 @@ void BufferProcessor::processThread() {
 
             if (isISPPrecomputed) {
                 // ISP pre-computed mode: Data comes deinterleaved from ISP chip
-                // Buffer layout from ISP: [depth: numPixels uint16_t | AB: varies | conf: varies]
-                // Just copy the pre-computed depth/AB/conf frames
+                // V4L2 buffer layout: [depth: numPixels*2 bytes | AB: numPixels*2 bytes | ...]
+                // The 128-byte metadata is embedded in the FIRST 128 bytes of
+                // the AB section, not as a separate header before depth.
+                // So depth starts at offset 0.
 
                 // Always copy depth frame
                 memcpy(m_tofiComputeContext->p_depth_frame,
@@ -861,6 +863,7 @@ void BufferProcessor::processThread() {
                     static_cast<uint32_t>(numPixels); // After depth
 
                 // Copy AB frame if allocated (remainingSize > 0)
+                // AB section: first 128 bytes are metadata (extracted by requestFrame())
                 if (remainingSize > 0) {
                     uint32_t abCopySize =
                         std::min(remainingSize,
@@ -956,25 +959,12 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
         }
 
-        // Apply 90-degree clockwise rotation if needed (for ADTF3080 VGA frames only)
+        // Apply 90-degree clockwise rotation if needed
         if (m_needsRotation && !m_isRawBypassMode) {
-            // For ADTF3080, sensor outputs frames in 90-degree rotated orientation
-            // The actual sensor output dimensions match m_outputFrameWidth × m_outputFrameHeight
-            // (No dimension swap - the rotation will handle the orientation correction)
-            uint32_t inputWidth =
-                m_outputFrameWidth; // Actual width from sensor
-            uint32_t inputHeight =
-                m_outputFrameHeight; // Actual height from sensor
-            uint32_t numPixels = inputWidth * inputHeight;
-
-            // Only rotate VGA frames (640×512 = 327,680 pixels)
-            const uint32_t VGA_PIXELS = 640 * 512;
-            bool isVgaFrame = (numPixels == VGA_PIXELS);
-
-            if (isVgaFrame) {
-                rotateEntireToFiBuffer(tofi_compute_io_buff.get(), inputWidth,
-                                       inputHeight, m_tofiBufferSize);
-            }
+            // Sensor outputs frames in 90-degree rotated orientation; rotate all frame types
+            rotateEntireToFiBuffer(tofi_compute_io_buff.get(),
+                                   m_outputFrameWidth, m_outputFrameHeight,
+                                   m_tofiBufferSize);
         }
 
         // Only attempt to write if recording is still active and stream is open

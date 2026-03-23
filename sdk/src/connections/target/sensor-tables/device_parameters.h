@@ -53,8 +53,6 @@ static map<string, string> adsd3100_partialDepth = {
     {"jblfMaxEdge", "12.0"},
     {"jblfABThreshold", "10.0"},
     {"lensScatterCompensationEnabled", "0"},
-    {"jblfv2WindowSize", "4"},
-    {"sga", "30.0"},
     {"headerSize", "128"},
     {"inputFormat", "mipiRaw12_8"},
     {"depthComputeIspEnable", "1"},
@@ -78,16 +76,17 @@ static map<string, string> adsd3100_dual_fullDepth = {
     {"jblfExponentialTerm", "5.0"},
     {"jblfMaxEdge", "12.0"},
     {"jblfABThreshold", "10.0"},
-    {"lensScatterCompensationEnabled", "1"},
-    {"headerSize", "0"},
-    {"inputFormat", "raw16_bits11_shift4"},
-    {"depthComputeIspEnable", "0"},
-    {"partialDepthEnable", "0"},
+    {"lensScatterCompensationEnabled", "0"},
+    {"headerSize", "128"},
+    {"inputFormat", "mipiRaw12_8"},
+    {"depthComputeIspEnable", "1"},
+    {"partialDepthEnable", "1"},
     {"interleavingEnable", "0"},
     {"bitsInPhaseOrDepth", "16"},
     {"bitsInConf", "0"},
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
+    {"enableRotation", "1"},
     {"xyzEnable", "1"},
     {"fps", "10"}};
 
@@ -109,6 +108,7 @@ static map<string, string> adsd3100_fullDepth = {
     {"partialDepthEnable", "0"},
     {"interleavingEnable", "1"},
     {"bitsInPhaseOrDepth", "16"},
+    {"enableRotation", "1"},
     {"bitsInConf", "8"},
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
@@ -188,9 +188,6 @@ static map<string, string> adtf3080_fullDepth = {
 
 /**
  * @brief Default depth computation parameters for ADTF3066 imager.
- * 
- * Contains 21 key-value pairs for ISP configuration including JBLF filtering,
- * thresholds, and output format settings. Cloned from ADTF3080 configuration.
  */
 static map<string, string> adtf3066_fullDepth = {
     {"abThreshMin", "3.0"},

@@ -139,6 +139,7 @@ struct DepthSensorModeDetails {
      * @brief Stores the content of each frame
     */
     std::vector<std::string> frameContent;
+
     /**
      * @brief Number of phases
     */

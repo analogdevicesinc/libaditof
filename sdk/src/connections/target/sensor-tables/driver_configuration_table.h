@@ -40,18 +40,28 @@
 using namespace aditof;
 
 const std::vector<DriverConfiguration> m_adsd3500standard = {
-    /* mode baseWidth baseHeight phases depth  ab   conf  pixelF dWidth dHeight pixFIndex */
-    {-1, "1024", "1024", "2", "16", "16", "0", "raw16", 2048, 3072, 0},
-    {-1, "1024", "1024", "2", "12", "12", "0", "raw16_bits12_shift4", 1024, 3072, 1},
-    {-1, "1024", "1024", "2", "12", "0", "0", "raw16_bits12_shift4", 1024, 1024, 1},
-    {-1, "1024", "1024", "2", "12", "16", "0", "mipiRaw12_8", 2048, 2560, 0},
-    {-1, "1024", "1024", "3", "16", "16", "0", "raw16", 2048, 3072, 0},
-    {-1, "1024", "1024", "3", "12", "12", "0", "raw16_bits12_shift4", 1024, 4096, 1},
-    {-1, "1024", "1024", "3", "12", "0", "0", "raw16_bits12_shift4", 1024, 1024, 1},
-    {-1, "1024", "1024", "3", "12", "16", "0", "mipiRaw12_8", 2048, 3328, 0},
-    {-1, "1024", "1024", "3", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
-    {-1, "1024", "1024", "2", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
-    {-1, "1024", "1024", "2", "16", "0", "0", "mipiRaw12_8", 1024, 4096, 0},
+    /* imagerType  mode depth  ab   conf  pixelF dWidth dHeight pixFIndex
+   sr-native */
+    {-1, "1024", "1024", "3", "2", "16", "16", "0", "raw16", 2048, 3072, 0},
+    {-1, "1024", "1024", "3", "2", "12", "12", "0", "raw16_bits12_shift4", 1024,
+     3072, 1},
+    {-1, "1024", "1024", "3", "2", "12", "0", "0", "raw16_bits12_shift4", 1024,
+     1024, 1},
+    {-1, "1024", "1024", "3", "2", "12", "16", "0", "mipiRaw12_8", 2048, 2560,
+     0},
+    {-1, "1024", "1024", "3", "3", "16", "16", "0", "raw16", 2048, 3072, 0},
+    {-1, "1024", "1024", "3", "3", "12", "12", "0", "raw16_bits12_shift4", 1024,
+     4096, 1},
+    {-1, "1024", "1024", "3", "3", "12", "0", "0", "raw16_bits12_shift4", 1024,
+     1024, 1},
+    {-1, "1024", "1024", "3", "3", "12", "16", "0", "mipiRaw12_8", 2048, 3328,
+     0},
+    {-1, "1024", "1024", "3", "3", "16", "16", "0", "mipiRaw12_8", 1024, 4096,
+     0},
+    {-1, "1024", "1024", "3", "2", "16", "16", "0", "mipiRaw12_8", 1024, 4096,
+     0},
+    {-1, "1024", "1024", "3", "2", "16", "0", "0", "mipiRaw12_8", 1024, 4096,
+     0},
 };
 
 // All supported valid bitsPerPixel combination : {bitsInDepth, bitsInConf, bitsInAB}
@@ -61,33 +71,33 @@ const std::vector<BitsConfiguration> m_validbitsperpixel = {
     {16, 0, 0},  {12, 4, 16}, {12, 4, 8}, {12, 4, 0}};
 
 const std::vector<DepthSensorModeDetails> adsd3100_standardModes = {
-    {0, {}, 2, 0, 0, 0, 1024, 1024, 128, 0, 0, DriverConfiguration()},
-    {1, {}, 3, 0, 0, 0, 1024, 1024, 128, 0, 0, DriverConfiguration()},
-    {4, {}, 1, 0, 0, 0, 1024, 1024, 128, 1, 0, DriverConfiguration()},
-    {2, {}, 2, 0, 0, 0, 512, 512, 128, 0, 0, DriverConfiguration()},
-    {3, {}, 3, 0, 0, 0, 512, 512, 128, 0, 0, DriverConfiguration()},
-    {6, {}, 2, 0, 0, 0, 512, 512, 128, 0, 0, DriverConfiguration()},
-    {5, {}, 3, 0, 0, 0, 512, 512, 128, 0, 0, DriverConfiguration()}};
+    {0, {}, 3, 2, 0, 0, 0, 1024, 1024, 128, 0, 0, DriverConfiguration()},
+    {1, {}, 3, 3, 0, 0, 0, 1024, 1024, 128, 0, 0, DriverConfiguration()},
+    {4, {}, 1, 1, 0, 0, 0, 1024, 1024, 128, 1, 0, DriverConfiguration()},
+    {2, {}, 3, 2, 0, 0, 0, 512, 512, 128, 0, 0, DriverConfiguration()},
+    {3, {}, 3, 3, 0, 0, 0, 512, 512, 128, 0, 0, DriverConfiguration()},
+    {6, {}, 3, 2, 0, 0, 0, 512, 512, 128, 0, 0, DriverConfiguration()},
+    {5, {}, 3, 3, 0, 0, 0, 512, 512, 128, 0, 0, DriverConfiguration()}};
 
 const std::vector<DepthSensorModeDetails> adsd3030_standardModes = {
-    {0, {}, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
-    {1, {}, 3, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
-    {4, {}, 1, 0, 0, 0, 512, 640, 128, 1, 0, DriverConfiguration()},
-    {2, {}, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {3, {}, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {6, {}, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {5, {}, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()}};
+    {0, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
+    {1, {}, 3, 3, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
+    {4, {}, 3, 1, 0, 0, 0, 512, 640, 128, 1, 0, DriverConfiguration()},
+    {2, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {3, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {6, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {5, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()}};
 
 const std::vector<DepthSensorModeDetails> adtf3080_standardModes = {
-    {0, {}, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
-    {1, {}, 3, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
-    {4, {}, 1, 0, 0, 0, 512, 640, 128, 1, 0, DriverConfiguration()},
-    {7, {}, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
-    {3, {}, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {6, {}, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {5, {}, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {8, {}, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {9, {}, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()}};
+    {0, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
+    {1, {}, 3, 3, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
+    {4, {}, 3, 1, 0, 0, 0, 512, 640, 128, 1, 0, DriverConfiguration()},
+    {7, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
+    {3, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {6, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {5, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {8, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {9, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()}};
 
 /**
  * @brief Standard mode configurations for ADTF3066 imager.
@@ -96,15 +106,15 @@ const std::vector<DepthSensorModeDetails> adtf3080_standardModes = {
  * Each mode specifies resolution, phase count, and driver parameters.
  */
 const std::vector<DepthSensorModeDetails> adtf3066_standardModes = {
-    {0, {}, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
-    {1, {}, 3, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
-    {4, {}, 1, 0, 0, 0, 512, 640, 128, 1, 0, DriverConfiguration()},
-    {7, {}, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
-    {3, {}, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {6, {}, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {5, {}, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {8, {}, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {9, {}, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()}};
+    {0, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
+    {1, {}, 3, 3, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
+    {4, {}, 3, 1, 0, 0, 0, 512, 640, 128, 1, 0, DriverConfiguration()},
+    {7, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
+    {3, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {6, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {5, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {8, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {9, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()}};
 
 /**
  * @brief Raw bypass driver configuration table for ADSD3500 with ADTF3175D.
@@ -117,25 +127,25 @@ const std::vector<DepthSensorModeDetails> adtf3066_standardModes = {
  * Format: {modeNumber, baseWidth, baseHeight, phases, depthBits, abBits, confBits, pixelFormat, driverWidth, driverHeight, pixelFormatIndex}
  */
 const std::vector<DriverConfiguration> m_adsd3500rawBypass = {
-    {0, "1024", "1024", "1", "0", "0", "0", "RG12", 2048, 3072, 1},
+    {0, "1024", "1024", "1", "0", "0", "0", "0", "RG12", 2048, 3072, 1},
 
     /* Mode 1: MP raw frame 2048×4608 (driver-supported resolution) */
-    {1, "1024", "1024", "1", "0", "0", "0", "RG12", 2048, 4608, 1},
+    {1, "1024", "1024", "1", "0", "0", "0", "0", "RG12", 2048, 4608, 1},
 
     /* Mode 2: QMP raw frame */
-    {2, "512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
+    {2, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
 
     /* Mode 3: QMP raw frame */
-    {3, "512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
+    {3, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
 
     /* Mode 4: QMP raw frame */
-    {4, "512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
+    {4, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
 
     /* Mode 5: QMP raw frame */
-    {5, "512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
+    {5, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
 
     /* Mode 6: QMP raw frame */
-    {6, "512", "512", "1", "0", "0", "0", "RG12", 1024, 4608, 1},
+    {6, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
 };
 
 #endif
