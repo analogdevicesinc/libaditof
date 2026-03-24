@@ -272,8 +272,7 @@ class CameraItof : public aditof::Camera {
         const uint32_t formatVersion = 0x00000001;
         uint16_t frameRate;
         uint16_t enableMetaDatainAB;
-        uint8_t rotationEnabled;  // 1 if frames were recorded with rotation, 0 otherwise
-        uint8_t reserved[3];       // Padding for alignment
+        uint8_t rotationEnabled;
         TofiXYZDealiasData dealias;
         struct {
             uint32_t mode;
