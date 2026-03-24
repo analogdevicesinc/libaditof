@@ -255,6 +255,7 @@ class CameraItof : public aditof::Camera {
     XYZTable m_xyzTable;
     bool m_enableDepthCompute;
     std::string m_initConfigFilePath;
+    bool m_userJsonLoaded = false;
     aditof::ImagerType m_imagerType;
     bool m_dropFirstFrame;
     bool m_dropFrameOnce;

@@ -229,7 +229,8 @@ aditof::Status BufferProcessor::setInputDevice(VideoDev *inputVideoDev) {
  */
 aditof::Status BufferProcessor::setVideoProperties(
     int frameWidth, int frameHeight, int WidthInBytes, int HeightInBytes,
-    int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf, bool isRawBypass) {
+    int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf, bool isRawBypass,
+    bool isADSD3100) {
 
     // Clear all queues to prevent memory leaks if setVideoProperties is called multiple times
     if (!stopThreadsFlag.load(std::memory_order_acquire)) {
@@ -257,6 +258,7 @@ aditof::Status BufferProcessor::setVideoProperties(
 
     m_currentModeNumber = modeNumber;
     m_isRawBypassMode = isRawBypass;
+    m_isADSD3100 = isADSD3100;
 
     m_outputFrameWidth = frameWidth;
     m_outputFrameHeight = frameHeight;
@@ -910,39 +912,58 @@ void BufferProcessor::processThread() {
                 // the AB section, not as a separate header before depth.
                 // So depth starts at offset 0.
 
-                // Always copy depth frame
-                memcpy(m_tofiComputeContext->p_depth_frame,
-                       process_frame.data.get(), numPixels * 2);
+                if (m_isADSD3100) {
+                    // Always copy depth frame
+                    memcpy(m_tofiComputeContext->p_depth_frame,
+                           process_frame.data.get(), numPixels * 2);
 
-                // Calculate actual sizes based on m_tofiBufferSize
-                // m_tofiBufferSize is in uint16_t units: depth + AB + conf
-                uint32_t remainingSize =
-                    m_tofiBufferSize -
-                    static_cast<uint32_t>(numPixels); // After depth
+                    // Calculate actual sizes based on m_tofiBufferSize
+                    // m_tofiBufferSize is in uint16_t units: depth + AB + conf
+                    uint32_t remainingSize =
+                        m_tofiBufferSize -
+                        static_cast<uint32_t>(numPixels); // After depth
 
-                // Copy AB frame if allocated (remainingSize > 0)
-                // AB section: first 128 bytes are metadata (extracted by requestFrame())
-                if (remainingSize > 0) {
-                    uint32_t abCopySize =
-                        std::min(remainingSize,
-                                 static_cast<uint32_t>(
-                                     numPixels)); // AB is at most numPixels
-                    memcpy(m_tofiComputeContext->p_ab_frame,
-                           process_frame.data.get() + numPixels * 2,
-                           abCopySize * 2);
-                    remainingSize -= abCopySize;
-                }
+                    // Copy AB frame if allocated (remainingSize > 0)
+                    // AB section: first 128 bytes are metadata (extracted by requestFrame())
+                    if (remainingSize > 0) {
+                        uint32_t abCopySize =
+                            std::min(remainingSize,
+                                     static_cast<uint32_t>(
+                                         numPixels)); // AB is at most numPixels
+                        memcpy(m_tofiComputeContext->p_ab_frame,
+                               process_frame.data.get() + numPixels * 2,
+                               abCopySize * 2);
+                        remainingSize -= abCopySize;
+                    }
 
-                // Copy confidence frame if allocated (remainingSize > 0 after AB)
-                // Confidence is numPixels*2 uint16_t (same as numPixels float)
-                if (remainingSize > 0) {
-                    uint32_t confCopySize =
-                        std::min(remainingSize,
-                                 static_cast<uint32_t>(numPixels * 2)) *
-                        2; // In bytes
-                    memcpy(m_tofiComputeContext->p_conf_frame,
-                           process_frame.data.get() + numPixels * 4,
-                           confCopySize);
+                    // Copy confidence frame if allocated (remainingSize > 0 after AB)
+                    // Confidence is numPixels*2 uint16_t (same as numPixels float)
+                    if (remainingSize > 0) {
+                        uint32_t confCopySize =
+                            std::min(remainingSize,
+                                     static_cast<uint32_t>(numPixels * 2)) *
+                            2; // In bytes
+                        memcpy(m_tofiComputeContext->p_conf_frame,
+                               process_frame.data.get() + numPixels * 4,
+                               confCopySize);
+                    }
+                } else {
+                    // Other imagers: Call TofiCompute for ISP pre-computed modes
+                    uint32_t ret = TofiCompute(
+                        reinterpret_cast<uint16_t *>(process_frame.data.get()),
+                        m_tofiComputeContext, NULL);
+
+                    if (ret != ADI_TOFI_SUCCESS) {
+                        LOG(ERROR) << "processThread: TofiCompute failed for "
+                                      "ISP mode, code: "
+                                   << ret;
+                        m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                        m_v4l2_input_buffer_Q.push(process_frame.data);
+                        m_tofiComputeContext->p_depth_frame = tempDepthFrame;
+                        m_tofiComputeContext->p_ab_frame = tempAbFrame;
+                        m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                        continue;
+                    }
                 }
             } else if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
                 // Lens scatter mode for mode 0/1: Process raw Bayer data with TofiCompute
