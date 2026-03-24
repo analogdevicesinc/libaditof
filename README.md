@@ -1,5 +1,7 @@
 # Analog Devices 3D ToF SDK 
 
+Please note, the [libaditof GitHub Wiki](https://github.com/analogdevicesinc/libaditof/wiki) is available with additional documentation.
+
 ## Overview
 
 The ADI ToF SDK is designed to support ADI's ToF hardware.
