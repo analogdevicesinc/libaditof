@@ -148,8 +148,8 @@ struct Adsd3500Sensor::ImplData {
         ctrlBuf; /**< Buffer for ISP control commands and responses */
 
     ImplData()
-        : numVideoDevs(1), videoDevs(nullptr),
-          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
+        : numVideoDevs(1),
+          videoDevs(nullptr), modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
         ccbVersion = CCBVersion::CCB_UNKNOWN;
         imagerType = SensorImagerType::IMAGER_UNKNOWN;
     }
@@ -2046,7 +2046,8 @@ aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
 
     // Apply VGA frame rotation based on configuration (set via JSON or API)
     m_bufferProcessor->setNeedsRotation(m_rotationEnabled);
-    LOG(INFO) << "Frame Rotation: " << (m_rotationEnabled ? "enabled" : "disabled");
+    LOG(INFO) << "Frame Rotation: "
+              << (m_rotationEnabled ? "enabled" : "disabled");
 
     uint8_t depthComputeStatus;
     status = m_bufferProcessor->getDepthComputeVersion(depthComputeStatus);

@@ -44,6 +44,7 @@
 #include <vector>
 
 #include "buffer_processor.h"
+#include <aditof/frame_handler.h>
 
 // Increased from 3 to 8 to handle slow first-frame TofiCompute in lens scatter mode
 // (can take 3+ seconds for initialization; 8 buffers provides ~800ms cushion at 10 FPS)
@@ -723,9 +724,6 @@ void BufferProcessor::captureFrameThread() {
         if (enqueueInternalBufferPrivate(buf, dev) != aditof::Status::OK) {
             LOG(ERROR) << __func__ << ": enqueueInternalBufferPrivate() Failed";
         }
-
-        // (Optional) A short sleep to avoid hammering the device, if needed.
-        //std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 #ifdef DBG_MEASURE_TIME
     if (totalV4L2Captured > 0) {
@@ -1008,14 +1006,13 @@ void BufferProcessor::processThread() {
 
             // The ISP embeds 128-byte metadata at the start of the AB section.
             // Rotation scrambles those bytes; save them before and restore after.
-            constexpr size_t kMetadataBytes = 128;
             const size_t numPixels =
                 static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight;
-            uint8_t metadataSave[kMetadataBytes];
+            uint8_t metadataSave[METADATA_SIZE];
             memcpy(metadataSave,
                    reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
                        numPixels * sizeof(uint16_t),
-                   kMetadataBytes);
+                   METADATA_SIZE);
 
             rotateEntireToFiBuffer(
                 tofi_compute_io_buff.get(), m_rotationOutputBuffer.get(),
@@ -1025,7 +1022,7 @@ void BufferProcessor::processThread() {
             // Restore metadata to the first 128 bytes of the AB section
             memcpy(reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
                        numPixels * sizeof(uint16_t),
-                   metadataSave, kMetadataBytes);
+                   metadataSave, METADATA_SIZE);
         }
 
         // Only attempt to write if recording is still active and stream is open
