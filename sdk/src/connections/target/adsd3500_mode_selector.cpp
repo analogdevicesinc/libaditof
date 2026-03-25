@@ -187,7 +187,8 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
         const uint8_t modeIdx = configurationTable.modeNumber;
         auto it = m_adsd3500rawBypass.find(modeIdx);
         if (it == m_adsd3500rawBypass.end()) {
-            LOG(ERROR) << "No raw bypass configuration for mode " << (int)modeIdx;
+            LOG(ERROR) << "No raw bypass configuration for mode "
+                       << (int)modeIdx;
             return aditof::Status::INVALID_ARGUMENT;
         }
 
