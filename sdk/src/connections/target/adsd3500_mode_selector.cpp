@@ -184,34 +184,30 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
 
     // Check if raw bypass mode is enabled
     if (m_controls["rawBypassMode"] == "1") {
-        // In raw bypass mode, search the raw bypass table by mode number
-        // Mode number is the primary key to get correct raw dimensions
-        for (auto driverConf : m_adsd3500rawBypass) {
-            if (driverConf.modeNumber == configurationTable.modeNumber) {
-
-                // Convert pixel dimensions to bytes: RG12 uses 2 bytes/pixel
-                int bytesPerPixel = (driverConf.pixelFormatIndex == 1) ? 2 : 1;
-                configurationTable.frameWidthInBytes =
-                    driverConf.driverWidth * bytesPerPixel;
-                configurationTable.frameHeightInBytes = driverConf.driverHeigth;
-                configurationTable.pixelFormatIndex =
-                    driverConf.pixelFormatIndex;
-                configurationTable.isRawBypass = 1;
-                configurationTable.numberOfPhases =
-                    1; // Raw bypass always single frame
-                configurationTable.frameContent = {"raw"};
-
-                LOG(INFO) << "Raw bypass mode " << configurationTable.modeNumber
-                          << " configuration: " << driverConf.driverWidth << "×"
-                          << driverConf.driverHeigth;
-
-                return aditof::Status::OK;
-            }
+        const uint8_t modeIdx = configurationTable.modeNumber;
+        auto it = m_adsd3500rawBypass.find(modeIdx);
+        if (it == m_adsd3500rawBypass.end()) {
+            LOG(ERROR) << "No raw bypass configuration for mode " << (int)modeIdx;
+            return aditof::Status::INVALID_ARGUMENT;
         }
 
-        LOG(ERROR) << "No matching raw bypass configuration found for mode "
-                   << configurationTable.modeNumber;
-        return aditof::Status::INVALID_ARGUMENT;
+        const auto &driverConf = it->second;
+
+        // Convert pixel dimensions to bytes: RG12 uses 2 bytes/pixel
+        int bytesPerPixel = (driverConf.pixelFormatIndex == 1) ? 2 : 1;
+        configurationTable.frameWidthInBytes =
+            driverConf.driverWidth * bytesPerPixel;
+        configurationTable.frameHeightInBytes = driverConf.driverHeigth;
+        configurationTable.pixelFormatIndex = driverConf.pixelFormatIndex;
+        configurationTable.isRawBypass = 1;
+        configurationTable.numberOfPhases = 1; // Raw bypass always single frame
+        configurationTable.frameContent = {"raw"};
+
+        LOG(INFO) << "Raw bypass mode " << (int)modeIdx
+                  << " configuration: " << driverConf.driverWidth << "x"
+                  << driverConf.driverHeigth;
+
+        return aditof::Status::OK;
     }
 
     // Standard depth mode processing

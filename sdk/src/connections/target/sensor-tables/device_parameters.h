@@ -62,6 +62,7 @@ static map<string, string> adsd3100_partialDepth = {
     {"bitsInConf", "0"},
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
+    {"enableRotation", "0"},
     {"xyzEnable", "1"},
     {"fps", "10"}};
 
@@ -86,7 +87,7 @@ static map<string, string> adsd3100_dual_fullDepth = {
     {"bitsInConf", "0"},
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
-    {"enableRotation", "1"},
+    {"enableRotation", "0"},
     {"xyzEnable", "1"},
     {"fps", "10"}};
 
@@ -108,10 +109,10 @@ static map<string, string> adsd3100_fullDepth = {
     {"partialDepthEnable", "0"},
     {"interleavingEnable", "1"},
     {"bitsInPhaseOrDepth", "16"},
-    {"enableRotation", "1"},
     {"bitsInConf", "8"},
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
+    {"enableRotation", "0"},
     {"xyzEnable", "1"},
     {"fps", "40"}};
 
@@ -135,6 +136,7 @@ static map<string, string> adsd_PCM = {{"abThreshMin", "3.0"},
                                        {"bitsInConf", "0"},
                                        {"bitsInAB", "0"},
                                        {"phaseInvalid", "0"},
+                                       {"enableRotation", "0"},
                                        {"xyzEnable", "0"},
                                        {"fps", "15"}};
 
@@ -159,6 +161,7 @@ static map<string, string> adsd3030_fullDepth = {
     {"bitsInConf", "8"},
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
+    {"enableRotation", "0"},
     {"xyzEnable", "1"},
     {"fps", "40"}};
 
@@ -183,6 +186,7 @@ static map<string, string> adtf3080_fullDepth = {
     {"bitsInConf", "8"},
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
+    {"enableRotation", "0"},
     {"xyzEnable", "1"},
     {"fps", "40"}};
 
@@ -210,6 +214,7 @@ static map<string, string> adtf3066_fullDepth = {
     {"bitsInConf", "8"},
     {"bitsInAB", "16"},
     {"phaseInvalid", "0"},
+    {"enableRotation", "0"},
     {"xyzEnable", "1"},
     {"fps", "40"}};
 

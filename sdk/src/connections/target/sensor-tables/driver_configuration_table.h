@@ -26,6 +26,7 @@
 
 #include <aditof/depth_sensor_interface.h>
 #include <aditof/sensor_definitions.h>
+#include <map>
 #include <vector>
 
 #define MP_BASE_HEIGHT 1024
@@ -40,28 +41,22 @@
 using namespace aditof;
 
 const std::vector<DriverConfiguration> m_adsd3500standard = {
-    /* imagerType  mode depth  ab   conf  pixelF dWidth dHeight pixFIndex
-   sr-native */
-    {-1, "1024", "1024", "3", "2", "16", "16", "0", "raw16", 2048, 3072, 0},
-    {-1, "1024", "1024", "3", "2", "12", "12", "0", "raw16_bits12_shift4", 1024,
+    /* baseWidth baseHeight phases depth  ab   conf  pixelFormat dWidth dHeight pixFIndex */
+    {"1024", "1024", "3", "2", "16", "16", "0", "raw16", 2048, 3072, 0},
+    {"1024", "1024", "3", "2", "12", "12", "0", "raw16_bits12_shift4", 1024,
      3072, 1},
-    {-1, "1024", "1024", "3", "2", "12", "0", "0", "raw16_bits12_shift4", 1024,
+    {"1024", "1024", "3", "2", "12", "0", "0", "raw16_bits12_shift4", 1024,
      1024, 1},
-    {-1, "1024", "1024", "3", "2", "12", "16", "0", "mipiRaw12_8", 2048, 2560,
-     0},
-    {-1, "1024", "1024", "3", "3", "16", "16", "0", "raw16", 2048, 3072, 0},
-    {-1, "1024", "1024", "3", "3", "12", "12", "0", "raw16_bits12_shift4", 1024,
+    {"1024", "1024", "3", "2", "12", "16", "0", "mipiRaw12_8", 2048, 2560, 0},
+    {"1024", "1024", "3", "3", "16", "16", "0", "raw16", 2048, 3072, 0},
+    {"1024", "1024", "3", "3", "12", "12", "0", "raw16_bits12_shift4", 1024,
      4096, 1},
-    {-1, "1024", "1024", "3", "3", "12", "0", "0", "raw16_bits12_shift4", 1024,
+    {"1024", "1024", "3", "3", "12", "0", "0", "raw16_bits12_shift4", 1024,
      1024, 1},
-    {-1, "1024", "1024", "3", "3", "12", "16", "0", "mipiRaw12_8", 2048, 3328,
-     0},
-    {-1, "1024", "1024", "3", "3", "16", "16", "0", "mipiRaw12_8", 1024, 4096,
-     0},
-    {-1, "1024", "1024", "3", "2", "16", "16", "0", "mipiRaw12_8", 1024, 4096,
-     0},
-    {-1, "1024", "1024", "3", "2", "16", "0", "0", "mipiRaw12_8", 1024, 4096,
-     0},
+    {"1024", "1024", "3", "3", "12", "16", "0", "mipiRaw12_8", 2048, 3328, 0},
+    {"1024", "1024", "3", "3", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
+    {"1024", "1024", "3", "2", "16", "16", "0", "mipiRaw12_8", 1024, 4096, 0},
+    {"1024", "1024", "3", "2", "16", "0", "0", "mipiRaw12_8", 1024, 4096, 0},
 };
 
 // All supported valid bitsPerPixel combination : {bitsInDepth, bitsInConf, bitsInAB}
@@ -126,26 +121,14 @@ const std::vector<DepthSensorModeDetails> adtf3066_standardModes = {
  * 
  * Format: {modeNumber, baseWidth, baseHeight, phases, depthBits, abBits, confBits, pixelFormat, driverWidth, driverHeight, pixelFormatIndex}
  */
-const std::vector<DriverConfiguration> m_adsd3500rawBypass = {
-    {0, "1024", "1024", "1", "0", "0", "0", "0", "RG12", 2048, 3072, 1},
-
-    /* Mode 1: MP raw frame 2048×4608 (driver-supported resolution) */
-    {1, "1024", "1024", "1", "0", "0", "0", "0", "RG12", 2048, 4608, 1},
-
-    /* Mode 2: QMP raw frame */
-    {2, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
-
-    /* Mode 3: QMP raw frame */
-    {3, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
-
-    /* Mode 4: QMP raw frame */
-    {4, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
-
-    /* Mode 5: QMP raw frame */
-    {5, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
-
-    /* Mode 6: QMP raw frame */
-    {6, "512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 4608, 1},
+// Keyed by mode number; mode 4 is not supported in raw bypass.
+const std::map<uint8_t, DriverConfiguration> m_adsd3500rawBypass = {
+    {0, {"1024", "1024", "1", "0", "0", "0", "0", "RG12", 2048, 3072, 1}},
+    {1, {"1024", "1024", "1", "0", "0", "0", "0", "RG12", 2048, 4608, 1}},
+    {2, {"512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 1536, 1}},
+    {3, {"512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 2304, 1}},
+    {5, {"512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 2304, 1}},
+    {6, {"512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 1536, 1}},
 };
 
 #endif
