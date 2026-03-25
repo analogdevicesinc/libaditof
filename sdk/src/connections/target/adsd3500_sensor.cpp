@@ -2046,7 +2046,7 @@ aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
 
     // Apply VGA frame rotation based on configuration (set via JSON or API)
     m_bufferProcessor->setNeedsRotation(m_rotationEnabled);
-    LOG(INFO) << "VGA frame rotation: " << (m_rotationEnabled ? "enabled" : "disabled");
+    LOG(INFO) << "Frame Rotation: " << (m_rotationEnabled ? "enabled" : "disabled");
 
     uint8_t depthComputeStatus;
     status = m_bufferProcessor->getDepthComputeVersion(depthComputeStatus);

@@ -753,9 +753,6 @@ void BufferProcessor::processThread() {
 
     long long totalProcessTime = 0;
     (void)totalProcessTime; // reserved for future per-frame compute timing
-    int totalProcessedFrame = 0;
-    long long totalRotationTime = 0;
-    int totalRotatedFrames = 0;
 
     while (!stopThreadsFlag.load(std::memory_order_acquire)) {
         Tofi_v4l2_buffer process_frame;
@@ -1009,22 +1006,26 @@ void BufferProcessor::processThread() {
             // Then swap the two shared_ptrs: tofi_compute_io_buff gets the rotated result,
             // m_rotationOutputBuffer holds the old input and becomes the dst for next frame.
 
-            auto rotateStart = std::chrono::high_resolution_clock::now();
+            // The ISP embeds 128-byte metadata at the start of the AB section.
+            // Rotation scrambles those bytes; save them before and restore after.
+            constexpr size_t kMetadataBytes = 128;
+            const size_t numPixels =
+                static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight;
+            uint8_t metadataSave[kMetadataBytes];
+            memcpy(metadataSave,
+                   reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
+                       numPixels * sizeof(uint16_t),
+                   kMetadataBytes);
 
             rotateEntireToFiBuffer(
                 tofi_compute_io_buff.get(), m_rotationOutputBuffer.get(),
                 m_outputFrameWidth, m_outputFrameHeight, m_tofiBufferSize);
             std::swap(tofi_compute_io_buff, m_rotationOutputBuffer);
 
-            auto rotateEnd = std::chrono::high_resolution_clock::now();
-            long long frameRotUs =
-                std::chrono::duration_cast<std::chrono::microseconds>(
-                    rotateEnd - rotateStart)
-                    .count();
-            totalRotationTime += frameRotUs;
-            totalRotatedFrames++;
-            LOG(INFO) << __func__ << ": frame #" << totalRotatedFrames
-                      << " rotation: " << frameRotUs << " us";
+            // Restore metadata to the first 128 bytes of the AB section
+            memcpy(reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
+                       numPixels * sizeof(uint16_t),
+                   metadataSave, kMetadataBytes);
         }
 
         // Only attempt to write if recording is still active and stream is open
@@ -1049,23 +1050,6 @@ void BufferProcessor::processThread() {
             m_v4l2_input_buffer_Q.push(process_frame.data);
             continue;
         }
-    }
-    if (totalRotatedFrames > 0) {
-        double avgRotationUs =
-            static_cast<double>(totalRotationTime) / totalRotatedFrames;
-        LOG(INFO) << __func__ << ": Rotation stats over " << totalRotatedFrames
-                  << " frames — avg: " << avgRotationUs << " us"
-                  << ", total: " << totalRotationTime << " us"
-                  << " (" << m_outputFrameWidth << "x" << m_outputFrameHeight
-                  << ")"
-                  << " ["
-                  << (m_outputFrameWidth * m_outputFrameHeight * 8 / 1024)
-                  << " KB/frame]";
-    } else {
-        LOG(INFO) << __func__ << ": Rotation not invoked (m_needsRotation="
-                  << m_needsRotation
-                  << ", m_isRawBypassMode=" << m_isRawBypassMode
-                  << "). totalProcessedFrame=" << totalProcessedFrame;
     }
 }
 
