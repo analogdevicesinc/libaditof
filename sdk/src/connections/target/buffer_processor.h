@@ -183,8 +183,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     void captureFrameThread();
     void processThread();
     void calculateFrameSize(uint8_t &bitsInAB, uint8_t &bitsInConf);
-    void rotateEntireToFiBuffer(uint16_t *buffer, uint32_t width,
-                                 uint32_t height, uint32_t bufferSize);
+    void rotateEntireToFiBuffer(const uint16_t *src, uint16_t *dst,
+                                uint32_t width, uint32_t height,
+                                uint32_t bufferSize);
 
   private:
     bool m_vidPropSet;
@@ -226,6 +227,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
 
     uint32_t m_rawFrameBufferSize;
     uint32_t m_tofiBufferSize;
+    // Ping-pong output buffer for rotation: avoids final memcpy by swapping with
+    // tofi_compute_io_buff after each frame so the rotated result is used directly.
+    std::shared_ptr<uint16_t> m_rotationOutputBuffer;
 
     std::thread m_captureThread;
     std::thread m_processingThread;

@@ -304,6 +304,15 @@ aditof::Status BufferProcessor::setVideoProperties(
         m_tofi_io_Buffer_Q.push(buffer);
     }
 
+    // Allocate the rotation ping-pong output buffer (avoids per-frame memcpy)
+    m_rotationOutputBuffer = std::shared_ptr<uint16_t>(
+        new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
+    if (!m_rotationOutputBuffer) {
+        LOG(ERROR)
+            << "setVideoProperties: Failed to allocate rotation output buffer!";
+        return aditof::Status::GENERIC_ERROR;
+    }
+
     return status;
 }
 
@@ -364,73 +373,106 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     }
 }
 
-/**
- * @brief Rotates a frame buffer 90 degrees clockwise.
- *
- * Performs in-place rotation for ADTF3080 imager which outputs frames rotated 90 degrees.
- * The rotation transforms pixel at (row, col) to position (col, height-1-row).
- * This is a 90-degree clockwise rotation.
- *
- * @param[in] src Source buffer to rotate
- * @param[out] dst Destination buffer for rotated output
- * @param[in] width Width of the source frame
- * @param[in] height Height of the source frame
- */
-/**
- * @brief Rotates entire ToFi buffer (depth + AB + confidence) 90 degrees clockwise.
- *
- * Performs in-place rotation of the complete ToFi output buffer containing:
- * - Depth frame: width × height uint16_t values
- * - AB frame: width × height uint16_t values (if present)
- * - Confidence frame: width × height × 2 uint16_t values (if present, stored as float32)
- *
- * All components are rotated in a single pass for optimal performance.
- * Rotation formula: (row, col) → (col, height - 1 - row) for 90° clockwise.
- *
- * @param[in,out] buffer Pointer to ToFi buffer to rotate in-place
- * @param[in] width Input frame width (before rotation)
- * @param[in] height Input frame height (before rotation)
- * @param[in] bufferSize Total buffer size in uint16_t elements (depth + AB + confidence)
- *
- * @note Requires temporary buffer allocation equal to bufferSize
- * @note Output dimensions are swapped: width becomes height, height becomes width
- */
-void BufferProcessor::rotateEntireToFiBuffer(uint16_t *buffer, uint32_t width,
-                                             uint32_t height,
+void BufferProcessor::rotateEntireToFiBuffer(const uint16_t *src, uint16_t *dst,
+                                             uint32_t width, uint32_t height,
                                              uint32_t bufferSize) {
-    // Allocate temporary buffer for rotation
-    std::vector<uint16_t> tempBuffer(bufferSize);
+    // L1-block staging: T=64 tile sweep, all planes fused in one pass.
+    // blkD 8KB + blkA 8KB + blkC 16KB = 32KB < L1D 64KB → scatter reads stay in L1.
 
-    uint32_t numPixels = width * height;
+    const uint32_t W = width;
+    const uint32_t H = height;
+    const uint32_t numPixels = W * H;
+    const uint32_t confOffset = numPixels * 2;
+    const bool hasAB = bufferSize > numPixels;
+    const bool hasConf = bufferSize > confOffset;
+    constexpr uint32_t T = 64;
 
-    // Rotate entire buffer in one pass
-    // Buffer layout: [Depth: numPixels] [AB: numPixels] [Conf: numPixels*2]
-    for (uint32_t row = 0; row < height; row++) {
-        for (uint32_t col = 0; col < width; col++) {
-            uint32_t src_idx = row * width + col;
-            uint32_t dst_idx = col * height + (height - 1 - row);
-
-            // Rotate depth
-            tempBuffer[dst_idx] = buffer[src_idx];
-
-            // Rotate AB if present
-            if (bufferSize > numPixels) {
-                tempBuffer[numPixels + dst_idx] = buffer[numPixels + src_idx];
+    // Three explicit branch-free code paths so the hot inner loop contains no conditionals.
+    // Each path fuses all active planes into one tile sweep (single pass over src/dst).
+    // blkD 8KB + blkA 8KB + blkC 16KB = 32KB < L1D 64KB → scatter reads stay in L1.
+    if (!hasAB && !hasConf) {
+        // --- depth only ---
+        uint16_t blkD[T][T];
+        for (uint32_t tc = 0; tc < W; tc += T) {
+            const uint32_t tW = std::min(T, W - tc);
+            for (uint32_t tr = 0; tr < H; tr += T) {
+                const uint32_t tH = std::min(T, H - tr);
+                for (uint32_t r = 0; r < tH; r++)
+                    memcpy(blkD[r], &src[(tr + r) * W + tc],
+                           tW * sizeof(uint16_t));
+                for (uint32_t c = 0; c < tW; c++) {
+                    uint16_t *__restrict__ d =
+                        &dst[(tc + c) * H + (H - tr - tH)];
+                    for (int32_t r = (int32_t)tH - 1; r >= 0; r--)
+                        *d++ = blkD[r][c];
+                }
             }
-
-            // Rotate confidence if present (stored as 2 uint16_t per pixel)
-            uint32_t confOffset = numPixels * 2;
-            if (bufferSize > confOffset) {
-                uint32_t src_conf_idx = confOffset + src_idx * 2;
-                uint32_t dst_conf_idx = confOffset + dst_idx * 2;
-                tempBuffer[dst_conf_idx] = buffer[src_conf_idx];
-                tempBuffer[dst_conf_idx + 1] = buffer[src_conf_idx + 1];
+        }
+    } else if (hasAB && !hasConf) {
+        // --- depth + AB (fused) ---
+        const uint16_t *__restrict__ sa = src + numPixels;
+        uint16_t *__restrict__ da = dst + numPixels;
+        uint16_t blkD[T][T], blkA[T][T];
+        for (uint32_t tc = 0; tc < W; tc += T) {
+            const uint32_t tW = std::min(T, W - tc);
+            for (uint32_t tr = 0; tr < H; tr += T) {
+                const uint32_t tH = std::min(T, H - tr);
+                for (uint32_t r = 0; r < tH; r++) {
+                    memcpy(blkD[r], &src[(tr + r) * W + tc],
+                           tW * sizeof(uint16_t));
+                    memcpy(blkA[r], &sa[(tr + r) * W + tc],
+                           tW * sizeof(uint16_t));
+                }
+                for (uint32_t c = 0; c < tW; c++) {
+                    uint16_t *__restrict__ d =
+                        &dst[(tc + c) * H + (H - tr - tH)];
+                    uint16_t *__restrict__ d2 =
+                        &da[(tc + c) * H + (H - tr - tH)];
+                    for (int32_t r = (int32_t)tH - 1; r >= 0; r--) {
+                        *d++ = blkD[r][c];
+                        *d2++ = blkA[r][c];
+                    }
+                }
+            }
+        }
+    } else {
+        // --- depth + AB + conf (fused, uint32 conf) ---
+        const uint16_t *__restrict__ sa = src + numPixels;
+        uint16_t *__restrict__ da = dst + numPixels;
+        const uint32_t *__restrict__ sc =
+            reinterpret_cast<const uint32_t *>(src + confOffset);
+        uint32_t *__restrict__ dc =
+            reinterpret_cast<uint32_t *>(dst + confOffset);
+        uint16_t blkD[T][T], blkA[T][T];
+        uint32_t blkC[T][T];
+        for (uint32_t tc = 0; tc < W; tc += T) {
+            const uint32_t tW = std::min(T, W - tc);
+            for (uint32_t tr = 0; tr < H; tr += T) {
+                const uint32_t tH = std::min(T, H - tr);
+                for (uint32_t r = 0; r < tH; r++) {
+                    memcpy(blkD[r], &src[(tr + r) * W + tc],
+                           tW * sizeof(uint16_t));
+                    memcpy(blkA[r], &sa[(tr + r) * W + tc],
+                           tW * sizeof(uint16_t));
+                    memcpy(blkC[r], &sc[(tr + r) * W + tc],
+                           tW * sizeof(uint32_t));
+                }
+                for (uint32_t c = 0; c < tW; c++) {
+                    uint16_t *__restrict__ d =
+                        &dst[(tc + c) * H + (H - tr - tH)];
+                    uint16_t *__restrict__ d2 =
+                        &da[(tc + c) * H + (H - tr - tH)];
+                    uint32_t *__restrict__ d3 =
+                        &dc[(tc + c) * H + (H - tr - tH)];
+                    for (int32_t r = (int32_t)tH - 1; r >= 0; r--) {
+                        *d++ = blkD[r][c];
+                        *d2++ = blkA[r][c];
+                        *d3++ = blkC[r][c];
+                    }
+                }
             }
         }
     }
-
-    // Copy rotated buffer back
-    memcpy(buffer, tempBuffer.data(), bufferSize * sizeof(uint16_t));
 }
 
 /**
@@ -708,10 +750,12 @@ void BufferProcessor::captureFrameThread() {
  * After processing, it restores compute context pointers and returns used buffers.
  */
 void BufferProcessor::processThread() {
-#ifdef DBG_MEASURE_TIME
+
     long long totalProcessTime = 0;
+    (void)totalProcessTime; // reserved for future per-frame compute timing
     int totalProcessedFrame = 0;
-#endif //DBG_MEASURE_TIME
+    long long totalRotationTime = 0;
+    int totalRotatedFrames = 0;
 
     while (!stopThreadsFlag.load(std::memory_order_acquire)) {
         Tofi_v4l2_buffer process_frame;
@@ -961,10 +1005,26 @@ void BufferProcessor::processThread() {
 
         // Apply 90-degree clockwise rotation if needed
         if (m_needsRotation && !m_isRawBypassMode) {
-            // Sensor outputs frames in 90-degree rotated orientation; rotate all frame types
-            rotateEntireToFiBuffer(tofi_compute_io_buff.get(),
-                                   m_outputFrameWidth, m_outputFrameHeight,
-                                   m_tofiBufferSize);
+            // Rotate from tofi_compute_io_buff into m_rotationOutputBuffer (no memcpy).
+            // Then swap the two shared_ptrs: tofi_compute_io_buff gets the rotated result,
+            // m_rotationOutputBuffer holds the old input and becomes the dst for next frame.
+
+            auto rotateStart = std::chrono::high_resolution_clock::now();
+
+            rotateEntireToFiBuffer(
+                tofi_compute_io_buff.get(), m_rotationOutputBuffer.get(),
+                m_outputFrameWidth, m_outputFrameHeight, m_tofiBufferSize);
+            std::swap(tofi_compute_io_buff, m_rotationOutputBuffer);
+
+            auto rotateEnd = std::chrono::high_resolution_clock::now();
+            long long frameRotUs =
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    rotateEnd - rotateStart)
+                    .count();
+            totalRotationTime += frameRotUs;
+            totalRotatedFrames++;
+            LOG(INFO) << __func__ << ": frame #" << totalRotatedFrames
+                      << " rotation: " << frameRotUs << " us";
         }
 
         // Only attempt to write if recording is still active and stream is open
@@ -989,6 +1049,23 @@ void BufferProcessor::processThread() {
             m_v4l2_input_buffer_Q.push(process_frame.data);
             continue;
         }
+    }
+    if (totalRotatedFrames > 0) {
+        double avgRotationUs =
+            static_cast<double>(totalRotationTime) / totalRotatedFrames;
+        LOG(INFO) << __func__ << ": Rotation stats over " << totalRotatedFrames
+                  << " frames — avg: " << avgRotationUs << " us"
+                  << ", total: " << totalRotationTime << " us"
+                  << " (" << m_outputFrameWidth << "x" << m_outputFrameHeight
+                  << ")"
+                  << " ["
+                  << (m_outputFrameWidth * m_outputFrameHeight * 8 / 1024)
+                  << " KB/frame]";
+    } else {
+        LOG(INFO) << __func__ << ": Rotation not invoked (m_needsRotation="
+                  << m_needsRotation
+                  << ", m_isRawBypassMode=" << m_isRawBypassMode
+                  << "). totalProcessedFrame=" << totalProcessedFrame;
     }
 }
 
