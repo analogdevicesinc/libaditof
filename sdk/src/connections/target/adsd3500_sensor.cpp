@@ -234,7 +234,6 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_controls.emplace("depthComputeOpenSource", "0");
     m_controls.emplace("disableCCBM", "0");
     m_controls.emplace("availableCCBM", "0");
-    m_controls.emplace("rawBypassMode", "0");
     m_controls.emplace("lensScatterCompensationEnabled", "0");
     m_controls.emplace("enableRotation", "0");
 

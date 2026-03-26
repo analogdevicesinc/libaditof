@@ -660,7 +660,9 @@ PYBIND11_MODULE(aditofpython, m) {
             },
             py::arg("mode"))
         .def("resetDepthProcessParams",
-             &aditof::Camera::resetDepthProcessParams);
+             &aditof::Camera::resetDepthProcessParams)
+        .def("setRotationEnabled", &aditof::Camera::setRotationEnabled,
+             py::arg("enable"));
 
     // Frame
     py::class_<aditof::Frame>(m, "Frame")
@@ -964,7 +966,7 @@ PYBIND11_MODULE(aditofpython, m) {
         .def(
             "SnapShotFrames",
             [](aditof::FrameHandler &handler, const char *baseFileName,
-            aditof::Frame &frame, py::object ab, py::object depth) {
+               aditof::Frame &frame, py::object ab, py::object depth) {
                 uint8_t *abPtr = nullptr;
                 uint8_t *depthPtr = nullptr;
 
@@ -984,11 +986,9 @@ PYBIND11_MODULE(aditofpython, m) {
                     baseFileName, &frame, abPtr, depthPtr);
                 return status;
             },
-            py::arg("baseFileName"),
-            py::arg("frame"),
+            py::arg("baseFileName"), py::arg("frame"),
             py::arg("ab").none(true) = py::none(),
-            py::arg("depth").none(true) = py::none()
-        );
+            py::arg("depth").none(true) = py::none());
 
     //SDK version
     m.def("getKitVersion", &aditof::getKitVersion);

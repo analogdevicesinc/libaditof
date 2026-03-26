@@ -54,9 +54,8 @@ uint8_t depthComputeOpenSourceEnabled = 0;
 
 // Named constants for configuration
 namespace {
-// Increased to handle slow first-frame lens scatter processing (can take 20+ seconds)
-constexpr int MAX_RETRIES = 30;                        // Was 3
-constexpr std::chrono::milliseconds RETRY_DELAY{1000}; // Was 10ms, now 1 second
+constexpr int MAX_RETRIES = 3;
+constexpr std::chrono::milliseconds RETRY_DELAY{10};
 constexpr int SELECT_TIMEOUT_SEC = 20;
 constexpr int THREAD_PRIORITY = 20;
 } // namespace
