@@ -77,7 +77,15 @@ You can get the two library from the ADCAM release software, but please note in 
 
 For a non-eval license please contact us at *tof@analog.com*.
 
-These libraries must be in a folder called **libs** that in one level below the cloned ADCAM repo folder. For example:
+The two libraries files are:
+
+* libtofi_compute.so
+* libtofi_config.so
+
+There are two options for pointing these libraries:
+
+1. Set the **LIBTOFI_LIBDIR_PATH** enviroment variable to the path with these files.
+2. Place the libraries must be in a folder called **libs** that in one level below the cloned ADCAM repo folder. For example:
 ```
 (aditofpython_env) analog@analog-desktop:~/dev/ADCAM$ pwd
 /home/analog/dev/ADCAM
@@ -87,10 +95,10 @@ These libraries must be in a folder called **libs** that in one level below the 
 └── libtofi_config.so
 ```
 
+
 ```
 git clone https://github.com/analogdevicesinc/libaditof
 cd libaditof
-git submodule update --init
 git checkout <branch or tag>
 mkdir build && cd build
 cmake -DNVIDIA=1 ..
