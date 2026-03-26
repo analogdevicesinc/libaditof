@@ -95,7 +95,9 @@ There are two options for pointing these libraries:
 └── libtofi_config.so
 ```
 
+## Building libaditof
 
+### Linux Build
 ```
 git clone https://github.com/analogdevicesinc/libaditof
 cd libaditof
