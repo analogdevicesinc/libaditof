@@ -58,7 +58,7 @@ typedef struct {
 ///
 /// @brief Function to get the version for TOF Depth Compute Engine Library
 /// @param[in] char *depth_compute_version: Pointer to store thelibrary version
-//TOFI_COMPUTE_API uint32_t GetVersion(char *depth_compute_version);
+TOFI_COMPUTE_API uint32_t GetVersion(char *depth_compute_version);
 
 typedef struct {
     uint32_t n_rows;               ///< Number of rows

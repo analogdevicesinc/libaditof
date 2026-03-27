@@ -30,6 +30,7 @@
 #include <algorithm>
 #include <arm_neon.h>
 #include <cmath>
+#include <dlfcn.h>
 #include <exception>
 #include <fcntl.h>
 #include <fstream>
@@ -497,6 +498,18 @@ aditof::Status BufferProcessor::setProcessorProperties(
 
     m_ispEnabled = ispEnabled;
 
+    // Log libtofi_compute version once per mode change.
+    {
+        char ver[64] = {};
+        GetVersion(ver);
+        // Strip "VERSIONINFO :" prefix if present
+        const char *prefix = "VERSIONINFO :";
+        const char *verStr = ver;
+        if (strncmp(ver, prefix, strlen(prefix)) == 0)
+            verStr = ver + strlen(prefix);
+        LOG(INFO) << __func__ << ": libtofi_compute version: " << verStr;
+    }
+
     // Free previous compute context and config to avoid memory leaks on repeated mode changes
     if (m_tofiComputeContext != nullptr) {
         LOG(INFO) << __func__ << ": Freeing previous compute context.";
@@ -527,8 +540,13 @@ aditof::Status BufferProcessor::setProcessorProperties(
         if (iniFile != nullptr) {
             ConfigFileData depth_ini = {iniFile, iniFileLength};
 
-            // Get intrinsics data buffer index for the requested mode
-            int p0_mode = GetIntrinsicsDataBuffer(mode);
+            // Query libtofi_config.so at runtime for GetIntrinsicsDataBuffer;
+            // the symbol is only present in lens-scatter-capable builds.
+            using GetIntrinsicsDataBuffer_t = int (*)(uint16_t);
+            auto fnGetIntrinsics = reinterpret_cast<GetIntrinsicsDataBuffer_t>(
+                dlsym(RTLD_DEFAULT, "GetIntrinsicsDataBuffer"));
+            int p0_mode = fnGetIntrinsics ? fnGetIntrinsics(mode)
+                                          : static_cast<int>(mode);
             if (p0_mode != -1) {
                 try {
                     m_tofiConfig =
@@ -573,9 +591,13 @@ aditof::Status BufferProcessor::setProcessorProperties(
         uint32_t status = ADI_TOFI_SUCCESS;
         ConfigFileData calDataStruct = {calData, calDataLength};
 
-        // Get the CCB mode that has valid calibration data for this mode
-        // This prevents segfault when requested mode doesn't exist in CCB
-        int ccb_mode = GetIntrinsicsDataBuffer(mode);
+        // Query libtofi_config.so at runtime for GetIntrinsicsDataBuffer;
+        // the symbol is only present in lens-scatter-capable builds.
+        using GetIntrinsicsDataBuffer_t = int (*)(uint16_t);
+        auto fnGetIntrinsics = reinterpret_cast<GetIntrinsicsDataBuffer_t>(
+            dlsym(RTLD_DEFAULT, "GetIntrinsicsDataBuffer"));
+        int ccb_mode =
+            fnGetIntrinsics ? fnGetIntrinsics(mode) : static_cast<int>(mode);
         if (ccb_mode == -1) {
             LOG(ERROR) << "Mode " << mode
                        << " not found in CCB calibration data";

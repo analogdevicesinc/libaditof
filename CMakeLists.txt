@@ -22,7 +22,7 @@ set(VERSION "${ADITOF_VERSION_MAJOR}.${ADITOF_VERSION_MINOR}.${ADITOF_VERSION_PA
 
 ############################### Options #######################################
 option(WITH_DOC "Build documentation?" OFF)
-option(WITH_NETWORK "Build network interface?" ON)
+option(WITH_NETWORK "Build network interface?" OFF)
 option(WITH_PYTHON "Build python bindings?" ON)
 option(WITH_OFFLINE "Build offline interface?" ON)
 option(CI_BUILD "Build for CI" OFF)
@@ -37,7 +37,7 @@ option(NXP "Set to ON when building on NXP" OFF)
 option(NVIDIA "Set to ON when building on NVIDIA" OFF)
 option(RPI "Set to ON when building on Raspberry Pi" OFF)
 option(WSL2 "Set to ON when building on Windows Subsystem for Linux 2" OFF)
-option(WITH_PROTOBUF_DEPENDENCY "Build with PROTOBUF dependency?" ON)
+option(WITH_PROTOBUF_DEPENDENCY "Build with PROTOBUF dependency?" OFF)
 option(USE_DEPTH_COMPUTE_OPENSOURCE "Use an open source implementation?" OFF)
 
 ################################## Git ########################################
