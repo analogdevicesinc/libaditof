@@ -541,7 +541,6 @@ aditof::Status BufferProcessor::setProcessorProperties(
             ConfigFileData depth_ini = {iniFile, iniFileLength};
 
             // Query libtofi_config.so at runtime for GetIntrinsicsDataBuffer;
-            // the symbol is only present in lens-scatter-capable builds.
             using GetIntrinsicsDataBuffer_t = int (*)(uint16_t);
             auto fnGetIntrinsics = reinterpret_cast<GetIntrinsicsDataBuffer_t>(
                 dlsym(RTLD_DEFAULT, "GetIntrinsicsDataBuffer"));
@@ -592,7 +591,6 @@ aditof::Status BufferProcessor::setProcessorProperties(
         ConfigFileData calDataStruct = {calData, calDataLength};
 
         // Query libtofi_config.so at runtime for GetIntrinsicsDataBuffer;
-        // the symbol is only present in lens-scatter-capable builds.
         using GetIntrinsicsDataBuffer_t = int (*)(uint16_t);
         auto fnGetIntrinsics = reinterpret_cast<GetIntrinsicsDataBuffer_t>(
             dlsym(RTLD_DEFAULT, "GetIntrinsicsDataBuffer"));
