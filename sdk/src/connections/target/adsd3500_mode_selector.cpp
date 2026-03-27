@@ -48,7 +48,7 @@ Adsd3500ModeSelector::Adsd3500ModeSelector() : m_configuration("standard") {
     m_controls.emplace("confBits", "");
 
     m_controls.emplace("inputFormat", "");
-    m_controls.emplace("rawBypassMode", "0");
+    m_controls.emplace("lensScatterCompensationEnabled", "0");
 }
 
 /**
@@ -183,7 +183,7 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
     DepthSensorModeDetails &configurationTable) {
 
     // Check if raw bypass mode is enabled
-    if (m_controls["rawBypassMode"] == "1") {
+    if (m_controls["lensScatterCompensationEnabled"] == "1") {
         const uint8_t modeIdx = configurationTable.modeNumber;
         auto it = m_adsd3500rawBypass.find(modeIdx);
         if (it == m_adsd3500rawBypass.end()) {
@@ -236,7 +236,7 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
     int ab_i = 0;
     int conf_i = 0;
 
-    if (m_controls["rawBypassMode"] != "1") {
+    if (m_controls["lensScatterCompensationEnabled"] != "1") {
         depth_i = std::stoi(m_controls["depthBits"]);
         ab_i = std::stoi(m_controls["abBits"]);
         conf_i = std::stoi(m_controls["confBits"]);

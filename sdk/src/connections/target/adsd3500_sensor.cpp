@@ -1303,13 +1303,10 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
         m_modeSelector.setControl("inputFormat", value);
         return Status::OK;
     }
-    if (control == "rawBypassMode") {
-        m_modeSelector.setControl("rawBypassMode", value);
-        return Status::OK;
-    }
     if (control == "lensScatterCompensationEnabled") {
         // Store lens scatter flag for use in setMode
         m_lensScatterEnabled = (value == "1");
+        m_modeSelector.setControl("lensScatterCompensationEnabled", value);
         return Status::OK;
     }
     if (control == "enableRotation") {
