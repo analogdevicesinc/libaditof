@@ -1,45 +1,48 @@
-name: Auto Merge main to dev branch (with submodules)
+name: Auto Merge rel-* to dev branch (with submodules)
 
 on:
   push:
     branches:
-      - main
+      - rel-7.0.0-a.1
 
 jobs:
   merge:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout main branch
+      - name: Checkout rel* branch
         uses: actions/checkout@v3
         with:
+          ref: rel-7.0.0-a.1
           fetch-depth: 0
           submodules: true
+          persist-credentials: false
+          
 
       - name: Configure Git
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-      - name: Ensure dev branch exists
+      - name: Fetch dev-7.0.0-a-1 branch
         run: |
-          if git ls-remote --exit-code --heads origin dev-7.0.0-a-1; then
-            echo "Branch exists on remote"
-            git fetch origin dev-7.0.0-a-1
-            git checkout dev-7.0.0-a-1
-          else
-            echo "Branch does not exist, creating it"
-            git checkout -b dev-7.0.0-a-1
-          fi
-          
+          git fetch origin dev-7.0.0-a-1 || echo "dev-7.0.0-a-1 does not exist yet"
 
-      - name: Force replace dev branch with main branch contents (including submodules)
+      - name: Checkout or create dev-7.0.0-a-1
+        run: |
+          if git show-ref --verify --quiet refs/remotes/origin/dev-7.0.0-a-1; then
+            git checkout -B dev-7.0.0-a-1 origin/dev-7.0.0-a-1
+          else
+            git checkout -b dev-7.0.0-a-1
+          fi      
+
+      - name: Force replace dev branch with rel-7.0.0-a.1 branch contents (including submodules)
         run: |
           set -e
-          git reset --hard origin/main
+          git reset --hard origin/rel-7.0.0-a.1
           git submodule update --init --recursive
           git add .
-          git commit -m "Force sync dev branch with main branch (including submodules)" || echo "No changes to commit"
+          git commit -m "Force sync dev branch with rel-7.0.0-a.1 branch (including submodules)" || echo "No changes to commit"
 
       - name: Push changes to dev
         env:
