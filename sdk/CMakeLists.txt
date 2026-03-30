@@ -180,10 +180,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 if(WITH_NETWORK AND WITH_PROTOBUF_DEPENDENCY)
     # Check if submodule exists, and build the library
-    if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/protobuf/.git")
+    if(NOT WITH_SUBMODULES)
         find_package(Protobuf 3.9.0 REQUIRED)
     else()
-    target_link_libraries(${PROJECT_NAME} PUBLIC libprotobuf)
+        target_link_libraries(${PROJECT_NAME} PUBLIC libprotobuf)
 
     endif()
     target_sources(${PROJECT_NAME} PRIVATE ${PROTO_HDRS} ${PROTO_SRCS})
@@ -197,11 +197,10 @@ if(WITH_NETWORK AND WITH_PROTOBUF_DEPENDENCY)
         set(CPPZMQ_INSTALL_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/cppzmq")
         
         # Check if submodule exists, and build the library
-        if(NOT WITH_SUBMODULES AND NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/libzmq/.git")
-            find_package(ZeroMQ REQUIRED)
+        if(NOT WITH_SUBMODULES)
+            find_package(cppzmq REQUIRED)
         else()
-            include_directories(${CPPZMQ_INSTALL_DIR})
-            target_link_libraries(${PROJECT_NAME} PUBLIC libzmq-static)
+            target_link_libraries(${PROJECT_NAME} PRIVATE cppzmq-static)
         endif()
         set(NET_PROTO_HRDS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.h")
         set(NET_PROTO_SRCS "${CMAKE_CURRENT_SOURCE_DIR}/buffer.pb.cc")
