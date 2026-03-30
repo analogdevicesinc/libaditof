@@ -21,13 +21,13 @@ jobs:
 - job: LinuxBuilds
   strategy:
     matrix:
-
+    
       #PC
       ubuntu_22_04_x86_64:
-      imageName: 'ubuntu-22.04'
-      EXTRA_CMAKE_FLAGS: "-DWITH_SUBMODULES=1 \
-                          -DWITH_PROTOBUF_DEPENDENCY=1 \
-                          -DWITH_NETWORK=1"
+        imageName: 'ubuntu-22.04'
+        EXTRA_CMAKE_FLAGS: "-DWITH_SUBMODULES=1 \
+                            -DWITH_PROTOBUF_DEPENDENCY=1 \
+                            -DWITH_NETWORK=1"
 
       ubuntu_24_04_x86_64:
         imageName: 'ubuntu-24.04'
