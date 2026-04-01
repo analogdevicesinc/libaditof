@@ -21,12 +21,6 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifdef USE_GLOG
-
-#error "USE_GLOG is not allowed in this build. Disable it to proceed."
-
-#else
-
 #ifndef LOG_H
 #define LOG_H
 
@@ -135,5 +129,3 @@ class Log {
 #define LOG(x) Log(x, __FILE__, __LINE__)
 
 #endif // LOG_COUT_H
-
-#endif // USE_GLOG

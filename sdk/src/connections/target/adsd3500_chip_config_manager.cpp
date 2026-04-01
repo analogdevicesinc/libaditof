@@ -26,12 +26,7 @@
 #include "adsd3500_protocol_manager.h"
 #include "adsd3500_sensor.h"
 #include "sensor-tables/device_parameters.h"
-
-#ifdef USE_GLOG
-#include <glog/logging.h>
-#else
 #include <aditof/log.h>
-#endif
 
 #include <cstring>
 
