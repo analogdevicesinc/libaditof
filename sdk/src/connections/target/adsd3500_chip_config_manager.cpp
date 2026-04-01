@@ -30,7 +30,32 @@
 
 #include <cstring>
 
-// Constants for CCBM mode reading
+// ADSD3500 command codes
+#define ADSD3500_CMD_GET_FW_VERSION 0x05
+#define ADSD3500_CMD_GET_CHIP_INFO 0x0032
+#define ADSD3500_CMD_CHECK_CCBM_SUPPORT 0x39
+#define ADSD3500_CMD_READ_MODE_MAP 0x24
+#define ADSD3500_CMD_READ_INI_CONTENT 0x25
+#define ADSD3500_CMD_READ_DEALIAS_PARAMS 0x02
+
+// Buffer and payload sizes
+#define ADSD3500_FW_VERSION_BUFFER_SIZE 44
+#define ADSD3500_FW_VERSION_STRING_LENGTH 4
+#define ADSD3500_INI_CONTENT_SIZE 0x26
+#define ADSD3500_DEALIAS_PARAMS_SIZE 32
+
+// Chip info register masks
+#define ADSD3500_CHIP_INFO_CCB_MASK 0x00FF
+#define ADSD3500_CHIP_INFO_IMAGER_MASK 0xFF00
+#define ADSD3500_CHIP_INFO_IMAGER_SHIFT 8
+
+// Invalid markers
+#define ADSD3500_INVALID_MODE_NUMBER 0xFF
+
+// Firmware version requirements
+#define ADSD3500_MIN_FW_VERSION_FOR_CHIP_INFO 3
+
+// CCBM mode reading constants
 #define NR_OF_MODES_FROM_CCB 10
 #define SIZE_OF_MODES_FROM_CCB 256
 
@@ -127,15 +152,17 @@ aditof::Status Adsd3500ChipConfigManager::discoverChipCapabilities() {
     }
 
     // Read firmware version
-    uint8_t fwData[44] = {0};
+    uint8_t fwData[ADSD3500_FW_VERSION_BUFFER_SIZE] = {0};
     fwData[0] = uint8_t(1);
-    status = m_protocolManager.adsd3500_read_payload_cmd(0x05, fwData, 44);
+    status = m_protocolManager.adsd3500_read_payload_cmd(
+        ADSD3500_CMD_GET_FW_VERSION, fwData, ADSD3500_FW_VERSION_BUFFER_SIZE);
     if (status != Status::OK) {
         LOG(ERROR)
             << "Failed to retrieve fw version and git hash for adsd3500!";
         return status;
     }
-    m_fwVersion = std::string((char *)(fwData), 4);
+    m_fwVersion =
+        std::string((char *)(fwData), ADSD3500_FW_VERSION_STRING_LENGTH);
 
     // Determine major version
     int majorVersion = m_fwVersion.at(0);
@@ -146,15 +173,16 @@ aditof::Status Adsd3500ChipConfigManager::discoverChipCapabilities() {
 
     // Read CCB and imager version (only supported in FW major version > 3)
     uint16_t readValue = 0;
-    if (majorVersion > 3) {
-        status = m_protocolManager.adsd3500_read_cmd(0x0032, &readValue);
+    if (majorVersion > ADSD3500_MIN_FW_VERSION_FOR_CHIP_INFO) {
+        status = m_protocolManager.adsd3500_read_cmd(ADSD3500_CMD_GET_CHIP_INFO,
+                                                     &readValue);
     } else {
         status = Status::GENERIC_ERROR;
     }
 
     if (status == Status::OK) {
         // Parse CCB version
-        uint8_t ccb_version = readValue & 0x00FF;
+        uint8_t ccb_version = readValue & ADSD3500_CHIP_INFO_CCB_MASK;
         switch (ccb_version) {
         case 1:
             m_ccbVersion = CCBVersion::CCB_VERSION0;
@@ -175,7 +203,8 @@ aditof::Status Adsd3500ChipConfigManager::discoverChipCapabilities() {
         }
 
         // Parse imager type
-        uint8_t imager_version = (readValue & 0xFF00) >> 8;
+        uint8_t imager_version = (readValue & ADSD3500_CHIP_INFO_IMAGER_MASK) >>
+                                 ADSD3500_CHIP_INFO_IMAGER_SHIFT;
         switch (imager_version) {
         case 1:
             m_imagerType = SensorImagerType::IMAGER_ADSD3100;
@@ -217,7 +246,8 @@ aditof::Status Adsd3500ChipConfigManager::readModesFromCCBM(
 
     // Check if CCB supports mode map table
     uint16_t data;
-    status = m_protocolManager.adsd3500_read_cmd(0x39, &data);
+    status = m_protocolManager.adsd3500_read_cmd(
+        ADSD3500_CMD_CHECK_CCBM_SUPPORT, &data);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to check if ccb has mode map table support!";
         return status;
@@ -231,7 +261,8 @@ aditof::Status Adsd3500ChipConfigManager::readModesFromCCBM(
     // Read mode map table from chip
     CcbMode modeStruct[NR_OF_MODES_FROM_CCB];
     status = m_protocolManager.adsd3500_read_payload_cmd(
-        0x24, (uint8_t *)&modeStruct[0], SIZE_OF_MODES_FROM_CCB);
+        ADSD3500_CMD_READ_MODE_MAP, (uint8_t *)&modeStruct[0],
+        SIZE_OF_MODES_FROM_CCB);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to read mode map table from ccb!";
         return status;
@@ -243,7 +274,7 @@ aditof::Status Adsd3500ChipConfigManager::readModesFromCCBM(
         memset((void *)&modeDetails, 0, sizeof(DepthSensorModeDetails));
 
         modeDetails.modeNumber = modeStruct[i].CFG_mode;
-        if (modeDetails.modeNumber == 0xFF) {
+        if (modeDetails.modeNumber == ADSD3500_INVALID_MODE_NUMBER) {
             continue; // Invalid mode
         }
 
@@ -265,13 +296,14 @@ aditof::Status Adsd3500ChipConfigManager::readModesFromCCBM(
 
         if (!modeDetails.isPCM) {
             status = m_protocolManager.adsd3500_read_payload_cmd(
-                0x25, (uint8_t *)(&iniTableContent), 0x26);
+                ADSD3500_CMD_READ_INI_CONTENT, (uint8_t *)(&iniTableContent),
+                ADSD3500_INI_CONTENT_SIZE);
             if (status != Status::OK) {
                 LOG(ERROR) << "Failed to read ini content from nvm";
                 return status;
             }
 
-            if (iniTableContent.INIIndex == 0xFF) {
+            if (iniTableContent.INIIndex == ADSD3500_INVALID_MODE_NUMBER) {
                 LOG(INFO) << "No ini content for mode "
                           << static_cast<int>(modeDetails.modeNumber)
                           << " in nvm!";
@@ -313,8 +345,9 @@ aditof::Status Adsd3500ChipConfigManager::readModesFromSDK(
     uint16_t height2 = 256;
 
     // Read dealias parameters to determine mode 5 dimensions
-    status = m_protocolManager.adsd3500_read_payload_cmd(0x02,
-                                                         tempDealiasParams, 32);
+    status = m_protocolManager.adsd3500_read_payload_cmd(
+        ADSD3500_CMD_READ_DEALIAS_PARAMS, tempDealiasParams,
+        ADSD3500_DEALIAS_PARAMS_SIZE);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to read dealias parameters for adsd3500!";
         return status;

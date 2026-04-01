@@ -27,6 +27,11 @@
 #include <aditof/log.h>
 #include <unistd.h>
 
+// ADSD3500 register addresses
+#define ADSD3500_REG_CHIP_STATUS 0x0020
+#define ADSD3500_REG_IMAGER_STATUS 0x0038
+
+// Timing constants
 #define ADSD3500_STATUS_READ_DELAY_US 2000
 
 Adsd3500InterruptManager::Adsd3500InterruptManager(
@@ -64,7 +69,8 @@ Adsd3500InterruptManager::adsd3500InterruptHandler(int signalValue) {
 
     usleep(ADSD3500_STATUS_READ_DELAY_US);
 
-    status = m_protocolManager->adsd3500_read_cmd(0x0020, &statusRegister);
+    status = m_protocolManager->adsd3500_read_cmd(ADSD3500_REG_CHIP_STATUS,
+                                                  &statusRegister);
     if (status != aditof::Status::OK) {
         LOG(ERROR) << "Failed to read status register!";
         return status;
@@ -78,7 +84,8 @@ Adsd3500InterruptManager::adsd3500InterruptHandler(int signalValue) {
     m_chipStatus = statusRegister;
 
     if (adsd3500Status == aditof::Adsd3500Status::IMAGER_ERROR) {
-        status = m_protocolManager->adsd3500_read_cmd(0x0038, &statusRegister);
+        status = m_protocolManager->adsd3500_read_cmd(
+            ADSD3500_REG_IMAGER_STATUS, &statusRegister);
         if (status != aditof::Status::OK) {
             LOG(ERROR) << "Failed to read imager status register!";
             return status;

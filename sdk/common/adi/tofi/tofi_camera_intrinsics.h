@@ -29,6 +29,8 @@
 #ifndef TOFI_CAMERA_INTRINSICS_H
 #define TOFI_CAMERA_INTRINSICS_H
 
+#include <cstdint>
+
 #ifdef __cplusplus
 extern "C" { // only need to export C interface if
              // used by C++ source code

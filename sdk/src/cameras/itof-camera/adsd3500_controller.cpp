@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 #include "adsd3500_controller.h"
+#include "adsd3500_registers.h"
 #include <aditof/log.h>
 #include <cassert>
 #include <sstream>
@@ -73,7 +74,8 @@ Status Adsd3500Controller::setToggleMode(int mode) {
     /*mode = 1: adsd3500 fsync automatically toggles at user specified framerate*/
     /*mode = 0: adsd3500 fsync does not automatically toggle*/
 
-    status = m_depthSensor->adsd3500_write_cmd(0x0025, mode);
+    status =
+        m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_FSYNC_TOGGLE_MODE, mode);
     if (status != Status::OK) {
         LOG(ERROR) << "Unable to set FSYNC Toggle mode!";
     }
@@ -82,7 +84,8 @@ Status Adsd3500Controller::setToggleMode(int mode) {
 }
 
 Status Adsd3500Controller::toggleFsync() {
-    Status status = m_depthSensor->adsd3500_write_cmd(0x0026, 0x0000);
+    Status status =
+        m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_FSYNC_TOGGLE, 0x0000);
     if (status != Status::OK) {
         LOG(ERROR) << "Unable to Toggle FSYNC!";
     }
@@ -91,116 +94,136 @@ Status Adsd3500Controller::toggleFsync() {
 
 // ========== Threshold Configuration ==========
 Status Adsd3500Controller::setABinvalidationThreshold(int threshold) {
-    return m_depthSensor->adsd3500_write_cmd(0x0010, threshold);
+    return m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_AB_THRESHOLD_SET,
+                                             threshold);
 }
 
 Status Adsd3500Controller::getABinvalidationThreshold(int &threshold) {
     threshold = 0;
     return m_depthSensor->adsd3500_read_cmd(
-        0x0015, reinterpret_cast<uint16_t *>(&threshold));
+        ADSD3500_REG_AB_THRESHOLD_GET,
+        reinterpret_cast<uint16_t *>(&threshold));
 }
 
 Status Adsd3500Controller::setConfidenceThreshold(int threshold) {
-    return m_depthSensor->adsd3500_write_cmd(0x0011, threshold);
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_CONFIDENCE_THRESHOLD_SET, threshold);
 }
 
 Status Adsd3500Controller::getConfidenceThreshold(int &threshold) {
     threshold = 0;
     return m_depthSensor->adsd3500_read_cmd(
-        0x0016, reinterpret_cast<uint16_t *>(&threshold));
+        ADSD3500_REG_CONFIDENCE_THRESHOLD_GET,
+        reinterpret_cast<uint16_t *>(&threshold));
 }
 
 Status Adsd3500Controller::setRadialThresholdMin(int threshold) {
-    return m_depthSensor->adsd3500_write_cmd(0x0012, threshold);
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_RADIAL_THRESHOLD_MIN_SET, threshold);
 }
 
 Status Adsd3500Controller::getRadialThresholdMin(int &threshold) {
     threshold = 0;
     return m_depthSensor->adsd3500_read_cmd(
-        0x0017, reinterpret_cast<uint16_t *>(&threshold));
+        ADSD3500_REG_RADIAL_THRESHOLD_MIN_GET,
+        reinterpret_cast<uint16_t *>(&threshold));
 }
 
 Status Adsd3500Controller::setRadialThresholdMax(int threshold) {
-    return m_depthSensor->adsd3500_write_cmd(0x0013, threshold);
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_RADIAL_THRESHOLD_MAX_SET, threshold);
 }
 
 Status Adsd3500Controller::getRadialThresholdMax(int &threshold) {
     threshold = 0;
     return m_depthSensor->adsd3500_read_cmd(
-        0x0018, reinterpret_cast<uint16_t *>(&threshold));
+        ADSD3500_REG_RADIAL_THRESHOLD_MAX_GET,
+        reinterpret_cast<uint16_t *>(&threshold));
 }
 
 // ========== JBLF (Joint Bilateral Filter) Configuration ==========
 Status Adsd3500Controller::setJBLFfilterEnableState(bool enable) {
-    return m_depthSensor->adsd3500_write_cmd(0x000C, enable ? uint16_t(1)
-                                                            : uint16_t(0));
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_JBLF_ENABLE_SET, enable ? uint16_t(1) : uint16_t(0));
 }
 
 Status Adsd3500Controller::getJBLFfilterEnableState(bool &enabled) {
     uint16_t enable = 0;
-    Status status = m_depthSensor->adsd3500_read_cmd(0x0019, &enable);
+    Status status =
+        m_depthSensor->adsd3500_read_cmd(ADSD3500_REG_JBLF_ENABLE_GET, &enable);
     enabled = (enable == 1);
     return status;
 }
 
 Status Adsd3500Controller::setJBLFfilterSize(int size) {
-    return m_depthSensor->adsd3500_write_cmd(0x000E, size);
+    return m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_JBLF_SIZE_SET, size);
 }
 
 Status Adsd3500Controller::getJBLFfilterSize(int &size) {
     size = 0;
     return m_depthSensor->adsd3500_read_cmd(
-        0x001A, reinterpret_cast<uint16_t *>(&size));
+        ADSD3500_REG_JBLF_SIZE_GET, reinterpret_cast<uint16_t *>(&size));
 }
 
 Status Adsd3500Controller::setJBLFMaxEdgeThreshold(uint16_t threshold) {
-    return m_depthSensor->adsd3500_write_cmd(0x006E, threshold);
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_JBLF_MAX_EDGE_THRESHOLD, threshold);
 }
 
 Status Adsd3500Controller::setJBLFABThreshold(uint16_t threshold) {
-    return m_depthSensor->adsd3500_write_cmd(0x006F, threshold);
+    return m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_JBLF_AB_THRESHOLD,
+                                             threshold);
 }
 
 Status Adsd3500Controller::setJBLFGaussianSigma(uint16_t value) {
-    return m_depthSensor->adsd3500_write_cmd(0x0070, value);
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_JBLF_GAUSSIAN_SIGMA_SET, value);
 }
 
 Status Adsd3500Controller::getJBLFGaussianSigma(uint16_t &value) {
-    return m_depthSensor->adsd3500_read_cmd(0x0071, &value);
+    return m_depthSensor->adsd3500_read_cmd(
+        ADSD3500_REG_JBLF_GAUSSIAN_SIGMA_GET, &value);
 }
 
 Status Adsd3500Controller::setJBLFExponentialTerm(uint16_t value) {
-    return m_depthSensor->adsd3500_write_cmd(0x0072, value);
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_JBLF_EXPONENTIAL_TERM_SET, value);
 }
 
 Status Adsd3500Controller::getJBLFExponentialTerm(uint16_t &value) {
-    return m_depthSensor->adsd3500_read_cmd(0x0073, &value);
+    return m_depthSensor->adsd3500_read_cmd(
+        ADSD3500_REG_JBLF_EXPONENTIAL_TERM_GET, &value);
 }
 
 // ========== MIPI and Communication Settings ==========
 Status Adsd3500Controller::setMIPIOutputSpeed(uint16_t speed) {
-    return m_depthSensor->adsd3500_write_cmd(0x0033, speed);
+    return m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_MIPI_OUTPUT_SPEED_SET,
+                                             speed);
 }
 
 Status Adsd3500Controller::getMIPIOutputSpeed(uint16_t &speed) {
-    return m_depthSensor->adsd3500_read_cmd(0x0034, &speed);
+    return m_depthSensor->adsd3500_read_cmd(ADSD3500_REG_MIPI_OUTPUT_SPEED_GET,
+                                            &speed);
 }
 
 Status Adsd3500Controller::setRawBypassMode(bool enable) {
-    return m_depthSensor->adsd3500_write_cmd(0xAC, enable ? 1 : 0);
+    return m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_RAW_BYPASS_MODE,
+                                             enable ? 1 : 0);
 }
 
 Status Adsd3500Controller::setEnableDeskewAtStreamOn(uint16_t value) {
-    return m_depthSensor->adsd3500_write_cmd(0x00AB, value);
+    return m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_ENABLE_DESKEW, value);
 }
 
 // ========== VCSEL Timing ==========
 Status Adsd3500Controller::setVCSELDelay(uint16_t delay) {
-    return m_depthSensor->adsd3500_write_cmd(0x0066, delay);
+    return m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_VCSEL_DELAY_SET,
+                                             delay);
 }
 
 Status Adsd3500Controller::getVCSELDelay(uint16_t &delay) {
-    return m_depthSensor->adsd3500_read_cmd(0x0067, &delay);
+    return m_depthSensor->adsd3500_read_cmd(ADSD3500_REG_VCSEL_DELAY_GET,
+                                            &delay);
 }
 
 // ========== Frame Rate Control ==========
@@ -220,32 +243,38 @@ Status Adsd3500Controller::setFrameRate(uint16_t fps) {
 }
 
 Status Adsd3500Controller::getFrameRate(uint16_t &fps) {
-    return m_depthSensor->adsd3500_read_cmd(0x001D, &fps);
+    return m_depthSensor->adsd3500_read_cmd(ADSD3500_REG_FRAME_RATE_GET, &fps);
 }
 
 // ========== Advanced Features ==========
 Status Adsd3500Controller::setEnableEdgeConfidence(uint16_t value) {
-    return m_depthSensor->adsd3500_write_cmd(0x0062, value);
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_ENABLE_EDGE_CONFIDENCE, value);
 }
 
 Status Adsd3500Controller::setEnablePhaseInvalidation(uint16_t value) {
-    return m_depthSensor->adsd3500_write_cmd(0x0080, value);
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_ENABLE_PHASE_INVALIDATION, value);
 }
 
 Status Adsd3500Controller::setEnableTemperatureCompensation(uint16_t value) {
-    return m_depthSensor->adsd3500_write_cmd(0x00E8, value);
+    return m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_ENABLE_TEMP_COMPENSATION, value);
 }
 
 Status Adsd3500Controller::getTemperatureCompensationStatus(uint16_t &value) {
-    return m_depthSensor->adsd3500_read_cmd(0x00F0, &value);
+    return m_depthSensor->adsd3500_read_cmd(
+        ADSD3500_REG_TEMP_COMPENSATION_STATUS, &value);
 }
 
 Status Adsd3500Controller::setEnableMetadatainAB(uint16_t value) {
-    return m_depthSensor->adsd3500_write_cmd(0x00AD, value);
+    return m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_ENABLE_METADATA_SET,
+                                             value);
 }
 
 Status Adsd3500Controller::getEnableMetadatainAB(uint16_t &value) {
-    return m_depthSensor->adsd3500_read_cmd(0x00AE, &value);
+    return m_depthSensor->adsd3500_read_cmd(ADSD3500_REG_ENABLE_METADATA_GET,
+                                            &value);
 }
 
 // ========== Generic Register Access ==========
@@ -263,13 +292,14 @@ Status Adsd3500Controller::getStatus(int &chipStatus, int &imagerStatus) {
 }
 
 Status Adsd3500Controller::getImagerErrorCode(uint16_t &errcode) {
-    return m_depthSensor->adsd3500_read_cmd(0x0038, &errcode);
+    return m_depthSensor->adsd3500_read_cmd(ADSD3500_REG_IMAGER_STATUS,
+                                            &errcode);
 }
 
 Status Adsd3500Controller::getSensorTemperature(uint16_t &tmpValue,
                                                 unsigned int usDelay) {
-    Status status =
-        m_depthSensor->adsd3500_read_cmd(0x0054, &tmpValue, usDelay);
+    Status status = m_depthSensor->adsd3500_read_cmd(
+        ADSD3500_REG_SENSOR_TEMPERATURE, &tmpValue, usDelay);
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get sensor temperature!";
     }
@@ -278,8 +308,8 @@ Status Adsd3500Controller::getSensorTemperature(uint16_t &tmpValue,
 
 Status Adsd3500Controller::getLaserTemperature(uint16_t &tmpValue,
                                                unsigned int usDelay) {
-    Status status =
-        m_depthSensor->adsd3500_read_cmd(0x0055, &tmpValue, usDelay);
+    Status status = m_depthSensor->adsd3500_read_cmd(
+        ADSD3500_REG_LASER_TEMPERATURE, &tmpValue, usDelay);
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get laser temperature!";
     }
@@ -289,7 +319,8 @@ Status Adsd3500Controller::getLaserTemperature(uint16_t &tmpValue,
 // ========== Calibration and Mode Management ==========
 Status Adsd3500Controller::disableCCBM(bool disable) {
     uint16_t value = disable ? 1 : 0;
-    Status status = m_depthSensor->adsd3500_write_cmd(0x00EF, value);
+    Status status =
+        m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_DISABLE_CCBM, value);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to " << (disable ? "disable" : "enable")
                    << " CCBM module";
@@ -301,7 +332,8 @@ Status Adsd3500Controller::isCCBMsupported(bool &supported) {
     Status status = Status::OK;
 
     uint16_t chipStatusReg = 0;
-    status = m_depthSensor->adsd3500_read_cmd(0x0020, &chipStatusReg);
+    status = m_depthSensor->adsd3500_read_cmd(ADSD3500_REG_CHIP_STATUS,
+                                              &chipStatusReg);
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get chip status from ADSD3500 status "
                         "register";
@@ -309,14 +341,15 @@ Status Adsd3500Controller::isCCBMsupported(bool &supported) {
     }
 
     // Check CCBM support bit (bit 0)
-    supported = (chipStatusReg & 0x0001) != 0;
+    supported = (chipStatusReg & ADSD3500_CHIP_STATUS_CCBM_SUPPORT_BIT) != 0;
 
     return status;
 }
 
 Status Adsd3500Controller::setEnableDynamicModeSwitching(bool en) {
     uint16_t value = en ? 1 : 0;
-    Status status = m_depthSensor->adsd3500_write_cmd(0x00C9, value);
+    Status status = m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_ENABLE_DYNAMIC_MODE_SWITCHING, value);
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to " << (en ? "enable" : "disable")
                      << " Dynamic Mode Switching";
@@ -343,7 +376,8 @@ Status Adsd3500Controller::setDynamicModeSwitchingSequence(
 
     // Write sequence to ADSD3500
     status = m_depthSensor->adsd3500_write_payload_cmd(
-        0x00CA, payload, static_cast<uint16_t>(sequence.size() * 2));
+        ADSD3500_REG_DYNAMIC_MODE_SEQUENCE, payload,
+        static_cast<uint16_t>(sequence.size() * 2));
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to set Dynamic Mode Switching sequence";
     }
