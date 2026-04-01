@@ -39,6 +39,13 @@
 #define ADSD3500_PAYLOAD_READ_DELAY_US 30000
 #define ADSD3500_PAYLOAD_WRITE_DELAY_US 100000
 
+// Protocol command codes
+#define ADSD3500_CMD_BURST_MODE 0x0019
+#define ADSD3500_CMD_READ_CCB 0x0013
+
+// Protocol packet markers
+#define ADSD3500_PROTOCOL_MARKER 0x10
+
 #define V4L2_CID_AD_DEV_CHIP_CONFIG                                            \
     (aditof::platform::Platform::getInstance().getV4L2ChipConfigControlId())
 
@@ -194,7 +201,7 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
     Status status = Status::OK;
 
     //switch to burst mode
-    uint32_t switchCmd = 0x0019;
+    uint32_t switchCmd = ADSD3500_CMD_BURST_MODE;
     uint16_t switchPayload = 0x0000;
 
     status = adsd3500_write_cmd(switchCmd, switchPayload);
@@ -216,7 +223,7 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
 
     buf[0] = 0x01;
     buf[1] = 0x00;
-    buf[2] = 0x10;
+    buf[2] = ADSD3500_PROTOCOL_MARKER;
 
     buf[3] = 0xAD;
     buf[6] = uint8_t(cmd & 0xFF);
@@ -255,9 +262,9 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
         return Status::GENERIC_ERROR;
     }
 
-    if (cmd == 0x13)
+    if (cmd == ADSD3500_CMD_READ_CCB)
         usleep(ADSD3500_BURST_CMD_SHORT_DELAY_US);
-    else if (cmd == 0x19)
+    else if (cmd == ADSD3500_CMD_BURST_MODE)
         usleep(ADSD3500_BURST_CMD_LONG_DELAY_US);
 
     memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
@@ -297,7 +304,7 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
            payload_len);
 
     //If we use the read ccb command we need to keep adsd3500 in burst mode
-    if (cmd == 0x13) {
+    if (cmd == ADSD3500_CMD_READ_CCB) {
         return status;
     }
 
@@ -306,9 +313,25 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
     extCtrls.controls = &extCtrl;
     extCtrls.count = 1;
 
-    uint8_t switchBuf[] = {0x01, 0x00, 0x10, 0xAD, 0x00, 0x00, 0x10,
-                           0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
-                           0x00, 0x00, 0x00, 0x00, 0x00};
+    uint8_t switchBuf[] = {0x01,
+                           0x00,
+                           ADSD3500_PROTOCOL_MARKER,
+                           0xAD,
+                           0x00,
+                           0x00,
+                           ADSD3500_PROTOCOL_MARKER,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00,
+                           ADSD3500_PROTOCOL_MARKER,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00};
 
     memcpy(extCtrl.p_u8, switchBuf, 19);
 
@@ -386,7 +409,7 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_write_payload_cmd(
     Status status = Status::OK;
 
     //switch to burst mode
-    uint32_t switchCmd = 0x0019;
+    uint32_t switchCmd = ADSD3500_CMD_BURST_MODE;
     uint16_t switchPayload = 0x0000;
 
     status = adsd3500_write_cmd(switchCmd, switchPayload);
@@ -445,9 +468,25 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_write_payload_cmd(
     extCtrls.controls = &extCtrl;
     extCtrls.count = 1;
 
-    uint8_t switchBuf[] = {0x01, 0x00, 0x10, 0xAD, 0x00, 0x00, 0x10,
-                           0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
-                           0x00, 0x00, 0x00, 0x00, 0x00};
+    uint8_t switchBuf[] = {0x01,
+                           0x00,
+                           ADSD3500_PROTOCOL_MARKER,
+                           0xAD,
+                           0x00,
+                           0x00,
+                           ADSD3500_PROTOCOL_MARKER,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00,
+                           ADSD3500_PROTOCOL_MARKER,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00,
+                           0x00};
 
     memcpy(extCtrl.p_u8, switchBuf, 19);
 

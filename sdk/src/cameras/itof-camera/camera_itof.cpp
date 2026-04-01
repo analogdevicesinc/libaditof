@@ -24,6 +24,7 @@
 #include "camera_itof.h"
 #include "aditof/frame.h"
 #include "aditof/frame_operations.h"
+#include "adsd3500_registers.h"
 #include "depth_parameter_mapper.h"
 #include "utils_ini.h"
 
@@ -58,8 +59,6 @@
 #undef NDEBUG
 #include <cassert>
 
-static const int skMetaDataBytesCount = 128;
-
 /**
  * @brief Constructor for CameraItof.
  *
@@ -88,6 +87,13 @@ CameraItof::CameraItof(
           depthSensor, m_calibrationMgr.get(), m_config.get())),
       m_sensorConfigHelper(std::make_unique<aditof::SensorConfigHelper>(
           depthSensor, m_config.get())),
+      m_initManager(std::make_unique<aditof::CameraInitializationManager>(
+          depthSensor, m_calibrationMgr.get(), m_adsd3500Ctrl.get(),
+          m_config.get())),
+      m_firmwareManager(
+          std::make_unique<aditof::CameraFirmwareManager>(depthSensor)),
+      m_frameAcqManager(std::make_unique<aditof::CameraFrameAcquisitionManager>(
+          depthSensor, m_calibrationMgr.get(), m_config.get())),
       m_depthSensor(depthSensor), m_devStarted(false), m_devStreaming(false),
       m_adsd3500Enabled(false), m_isOffline(false), m_xyzEnabled(true),
       m_xyzSetViaApi(false), m_cameraFps(0), m_modesVersion(0),
@@ -169,267 +175,44 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
     Status status = Status::OK;
 
     if (m_isOffline) {
-
-        LOG(INFO) << "Initializing camera: Offline";
-
-    } else {
-
-        LOG(INFO) << "Initializing camera: Online";
-        if (!m_adsd3500Enabled && !m_isOffline) {
-            LOG(ERROR) << "This usecase is no longer supported.";
-            return aditof::Status::UNAVAILABLE;
-        }
-
-        // Auto-discover config file if not explicitly provided
-        if (configFilepath.empty()) {
-            m_initConfigFilePath = autoDiscoverConfigFile();
-            if (!m_initConfigFilePath.empty()) {
-                LOG(INFO) << "Auto-discovered configuration file: "
-                          << m_initConfigFilePath;
-            }
-        } else {
-            m_initConfigFilePath = configFilepath;
-        }
-
-        // Setting up the UVC filters, samplegrabber interface, Video renderer and filters
-        // Setting UVC mediaformat and Running the stream is done once mode is set
-        if (!m_devStarted) {
-            status = m_depthSensor->open();
-            if (status != Status::OK) {
-                LOG(WARNING) << "Failed to open device";
-                return status;
-            }
-            m_devStarted = true;
-        }
-
-        if (!m_netLinkTest.empty()) {
-            m_depthSensor->setControl("netlinktest", "1");
-        }
-
-        // get imager type that is used toghether with ADSD3500
-        std::string controlValue;
-        status = m_depthSensor->getControl("imagerType", controlValue);
-        if (status == Status::OK) {
-            if (controlValue == ControlValue.at(ImagerType::ADSD3100)) {
-                m_imagerType = ImagerType::ADSD3100;
-            } else if (controlValue == ControlValue.at(ImagerType::ADSD3030)) {
-                m_imagerType = ImagerType::ADSD3030;
-            } else if (controlValue == ControlValue.at(ImagerType::ADTF3080)) {
-                m_imagerType = ImagerType::ADTF3080;
-            } else if (controlValue == ControlValue.at(ImagerType::ADTF3066)) {
-                m_imagerType = ImagerType::ADTF3066;
-            } else {
-                m_imagerType = ImagerType::UNSET;
-                LOG(ERROR) << "Unkown imager type: " << controlValue;
-                return Status::UNAVAILABLE;
-            }
-
-            status = m_depthSensor->getAvailableModes(m_availableModes);
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to get available frame types name!";
-                return status;
-            }
-
-            for (auto availablemodes : m_availableModes) {
-                DepthSensorModeDetails modeDetails;
-                status =
-                    m_depthSensor->getModeDetails(availablemodes, modeDetails);
-                if (status != Status::OK) {
-                    LOG(ERROR)
-                        << "Failed to get available frame types details!";
-                    return status;
-                }
-                m_availableSensorModeDetails.emplace_back(modeDetails);
-
-                uint8_t intrinsics[56] = {0};
-                uint8_t dealiasParams[32] = {0};
-                TofiXYZDealiasData dealiasStruct;
-                //the first element of readback_data for adsd3500_read_payload is used for the custom command
-                //it will be overwritten by the returned data
-                uint8_t mode = modeDetails.modeNumber;
-
-                intrinsics[0] = mode;
-                dealiasParams[0] = mode;
-                //hardcoded function values to return intrinsics
-                status = m_depthSensor->adsd3500_read_payload_cmd(
-                    0x01, intrinsics, 56);
-                if (status != Status::OK) {
-                    LOG(ERROR) << "Failed to read intrinsics for adsd3500!";
-                    return status;
-                }
-
-                //hardcoded function values to return dealias parameters
-                status = m_depthSensor->adsd3500_read_payload_cmd(
-                    0x02, dealiasParams, 32);
-                if (status != Status::OK) {
-                    LOG(ERROR)
-                        << "Failed to read dealias parameters for adsd3500!";
-                    return status;
-                }
-
-                memcpy(&dealiasStruct, dealiasParams,
-                       sizeof(TofiXYZDealiasData) - sizeof(CameraIntrinsics));
-                memcpy(&dealiasStruct.camera_intrinsics, intrinsics,
-                       sizeof(CameraIntrinsics));
-
-                m_calibrationMgr->setXYZDealiasData(mode, dealiasStruct);
-                memcpy(&m_details.intrinsics, &dealiasStruct.camera_intrinsics,
-                       sizeof(CameraIntrinsics));
-            }
-
-            std::string fwVersion;
-            std::string fwHash;
-
-            status = adsd3500GetFirmwareVersion(fwVersion, fwHash);
-
-            if (status == Status::OK) {
-                LOG(INFO) << "Current adsd3500 firmware version is: "
-                          << m_adsd3500FwGitHash.first;
-                LOG(INFO) << "Current adsd3500 firmware git hash is: "
-                          << m_adsd3500FwGitHash.second;
-            } else {
-                return status;
-            }
-        }
-
-        //Note: m_depth_params_map is created by retrieveDepthProcessParams
-        aditof::Status paramsStatus = retrieveDepthProcessParams();
-        if (paramsStatus != Status::OK) {
-            LOG(ERROR) << "Failed to load process parameters!";
-            return paramsStatus;
-        }
-
-        // Read and store raw CCB data only for non-ISP depth compute modes
-        // Check if any mode requires non-ISP processing
-        bool needsNonIspSupport = false;
-        for (uint8_t mode : m_availableModes) {
-            std::map<std::string, std::string> params;
-            if (m_config->getDepthParamsForMode(mode, params) == Status::OK) {
-                auto it = params.find("depthComputeIspEnable");
-                // non-ISP support needed if key is missing or set to "0"
-                if (it == params.end() || it->second != "1") {
-                    needsNonIspSupport = true;
-                    break;
-                }
-            }
-        }
-
-        if (needsNonIspSupport) {
-            LOG(INFO) << "Reading raw CCB data for non-ISP mode support...";
-            std::string rawCCB;
-            status = readAdsd3500CCB(rawCCB);
-            if (status != Status::OK) {
-                LOG(WARNING) << "Failed to read raw CCB data - non-ISP modes "
-                                "may not work correctly";
-                // Continue initialization - ISP modes will still work
-            } else {
-                m_calibrationMgr->setRawCCBData(rawCCB);
-                LOG(INFO) << "Raw CCB data stored successfully ("
-                          << rawCCB.size() << " bytes)";
-            }
-        } else {
-            LOG(INFO) << "All modes configured for ISP depth compute - "
-                      << "CCB data not required";
-        }
-
-        if (m_config->getFsyncMode() >= 0) {
-            status = adsd3500SetToggleMode(m_config->getFsyncMode());
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to set fsyncMode.";
-                return status;
-            }
-        } else {
-            LOG(WARNING) << "fsyncMode is not being set by SDK.";
-        }
-
-        // Platform-based configuration for MIPI and deskew
-        int platformMipiSpeed =
-            aditof::platform::Platform::getInstance().getMipiOutputSpeed();
-        int platformDeskewEnabled =
-            aditof::platform::Platform::getInstance().getDeskewEnabled();
-
-        // Apply platform defaults if not already configured
-        if (platformMipiSpeed >= 0 && m_config->getMipiOutputSpeed() < 0) {
-            m_config->setMipiOutputSpeed(platformMipiSpeed);
-            LOG(INFO) << "Using platform MIPI output speed: "
-                      << platformMipiSpeed;
-        }
-        if (platformDeskewEnabled >= 0 && m_config->getDeskewEnabled() < 0) {
-            m_config->setDeskewEnabled(platformDeskewEnabled);
-            LOG(INFO) << "Using platform deskew setting: "
-                      << platformDeskewEnabled;
-        }
-
-        // Use hardware defaults if platform didn't specify
-        if (m_config->getMipiOutputSpeed() < 0) {
-            m_config->setMipiOutputSpeed(0);
-            LOG(INFO) << "Using hardware default MIPI output speed";
-        }
-        if (m_config->getDeskewEnabled() < 0) {
-            m_config->setDeskewEnabled(0);
-            LOG(INFO) << "Using hardware default deskew setting";
-        }
-
-        // Apply MIPI output speed configuration
-        if (m_config->getMipiOutputSpeed() > 0) {
-            status = adsd3500SetMIPIOutputSpeed(m_config->getMipiOutputSpeed());
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to set MIPI output speed to "
-                           << m_config->getMipiOutputSpeed();
-                return status;
-            }
-            LOG(INFO) << "MIPI output speed set to "
-                      << m_config->getMipiOutputSpeed();
-        }
-
-        // Apply deskew configuration
-        if (m_config->getDeskewEnabled() > 0) {
-            status =
-                adsd3500SetEnableDeskewAtStreamOn(m_config->getDeskewEnabled());
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to enable deskew at stream on";
-                return status;
-            }
-            LOG(INFO) << "Deskew enabled at stream on";
-        }
-
-        if (m_config->getTempCompensation() >= 0) {
-            status = adsd3500SetEnableTemperatureCompensation(
-                m_config->getTempCompensation());
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to set enableTempCompenstation.";
-                return status;
-            }
-        } else {
-            LOG(WARNING) << "enableTempCompenstation is not being set by SDK.";
-        }
-
-        if (m_config->getEdgeConfidence() >= 0) {
-            status =
-                adsd3500SetEnableEdgeConfidence(m_config->getEdgeConfidence());
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to set enableEdgeConfidence.";
-                return status;
-            }
-        } else {
-            LOG(WARNING) << "enableEdgeConfidence is not being set by SDK.";
-        }
-
-        std::string serialNumber;
-        status = readSerialNumber(serialNumber);
-        if (status == Status::OK) {
-            LOG(INFO) << "Module serial number: " << serialNumber;
-        } else if (status == Status::UNAVAILABLE) {
-            LOG(INFO) << "Serial read is not supported in this firmware!";
-        } else {
-            LOG(ERROR) << "Failed to read serial number!";
-            return status;
-        }
-
-        LOG(INFO) << "Camera initialized";
+        // Offline mode: prepare for playback from recorded file
+        status = m_initManager->initializeOfflineMode();
+        return status;
     }
 
-    return status;
+    // Online mode: initialize hardware
+    if (!m_adsd3500Enabled) {
+        LOG(ERROR) << "This usecase is no longer supported.";
+        return Status::UNAVAILABLE;
+    }
+
+    // Store config file path for later use
+    m_initConfigFilePath = configFilepath;
+
+    // Optional netlink test
+    if (!m_netLinkTest.empty()) {
+        m_depthSensor->setControl("netlinktest", "1");
+    }
+
+    // Delegate hardware initialization to the manager
+    status = m_initManager->initializeOnlineMode(
+        m_details, m_availableModes, m_availableSensorModeDetails, m_imagerType,
+        m_adsd3500FwGitHash, configFilepath);
+
+    if (status != Status::OK) {
+        return status;
+    }
+
+    m_devStarted = true;
+
+    // Load depth process parameters from config or firmware
+    status = retrieveDepthProcessParams();
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to load process parameters!";
+        return status;
+    }
+
+    return Status::OK;
 }
 
 /**
@@ -678,9 +461,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         m_pcmFrame = m_modeDetailsCache.isPCM;
 
-        uint16_t chipCmd = 0xDA00;
+        uint16_t chipCmd = ADSD3500_CMD_MODE_SWITCH_BASE;
         chipCmd += mode;
-        status = m_depthSensor->adsd3500_write_cmd(chipCmd, 0x280F, 200000);
+        status = m_depthSensor->adsd3500_write_cmd(
+            chipCmd, ADSD3500_CMD_MODE_SWITCH_PAYLOAD, 200000);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to switch mode in chip using host commands!";
             return status;
@@ -1060,7 +844,7 @@ aditof::Status CameraItof::adsd3500ResetIniParamsForMode(const uint16_t mode) {
 
     assert(!m_isOffline);
 
-    status = m_depthSensor->adsd3500_write_cmd(0x40, mode);
+    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_MODE_SELECT, mode);
 
     return status;
 }
@@ -1148,152 +932,13 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
  */
 aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     using namespace aditof;
-    Status status = Status::OK;
 
-    if (frame == nullptr) {
-        return Status::INVALID_ARGUMENT;
-    }
-
-    FrameDetails frameDetails;
-    frame->getDetails(frameDetails);
-
-    if (m_details.frameType != frameDetails) {
-        frame->setDetails(m_details.frameType, m_confBitsPerPixel,
-                          m_abBitsPerPixel);
-    }
-
-    uint16_t *frameDataLocation = nullptr;
-    if (!m_pcmFrame) {
-        status = frame->getData("frameData", &frameDataLocation);
-    } else {
-        status = frame->getData("ab", &frameDataLocation);
-    }
-
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to get frame data location, status: "
-                   << (int)status;
-        return status;
-    }
-    if (!frameDataLocation) {
-        LOG(ERROR) << "Frame data location is null despite success status";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (m_config->getDropFirstFrame() && m_dropFrameOnce && !m_isOffline) {
-        status = m_depthSensor->getFrame(frameDataLocation, index);
-        if (status != Status::OK) {
-            m_dropFrameOnce = true;
-            LOG(INFO) << "Failed to drop first frame!";
-            return status;
-        }
-        m_dropFrameOnce = false;
-        LOG(INFO) << "Dropped first frame";
-    }
-
-    status = m_depthSensor->getFrame(frameDataLocation, index);
-    if (status != Status::OK) {
-        LOG(WARNING) << "Failed to get frame from device";
-        return status;
-    }
-
-    // For raw bypass mode, frame is already complete (raw Bayer data)
-    // Skip all post-processing (XYZ, metadata, etc.)
-    if (m_modeDetailsCache.isRawBypass) {
-        return Status::OK;
-    }
-
-    // The incoming sensor frames are already processed. Need to just create XYZ data
-    if (m_xyzEnabled && m_depthEnabled && frame->haveDataType("xyz")) {
-        uint16_t *depthFrame = nullptr;
-        uint16_t *xyzFrame = nullptr;
-
-        Status getDepthStatus = frame->getData("depth", &depthFrame);
-        Status getXYZStatus = frame->getData("xyz", &xyzFrame);
-
-        if (getDepthStatus == Status::OK && getXYZStatus == Status::OK &&
-            depthFrame != nullptr && xyzFrame != nullptr) {
-            // Note: ComputeXYZ takes non-const XYZTable*, so we need a copy
-            XYZTable xyzTable = m_calibrationMgr->getXYZTable();
-            Algorithms::ComputeXYZ((const uint16_t *)depthFrame, &xyzTable,
-                                   (int16_t *)xyzFrame,
-                                   m_modeDetailsCache.baseResolutionHeight,
-                                   m_modeDetailsCache.baseResolutionWidth);
-        } else {
-            LOG(WARNING) << "XYZ enabled but frame buffers not allocated. "
-                         << "Depth status: " << (int)getDepthStatus
-                         << ", XYZ status: " << (int)getXYZStatus;
-        }
-    }
-
-    if (!m_depthEnabled && frame->haveDataType("depth")) {
-        uint16_t *depthFrame;
-
-        status = frame->getData("depth", &depthFrame);
-        if (status != Status::OK || depthFrame == nullptr) {
-            LOG(ERROR) << "Failed to get depth frame location";
-            return status;
-        }
-        memset(depthFrame, 0,
-               m_modeDetailsCache.baseResolutionHeight *
-                   m_modeDetailsCache.baseResolutionWidth * sizeof(uint16_t));
-    }
-
-    if (!m_abEnabled && frame->haveDataType("ab")) {
-        uint16_t *abFrame;
-
-        status = frame->getData("ab", &abFrame);
-        if (status != Status::OK || abFrame == nullptr) {
-            LOG(ERROR) << "Failed to get ab frame location";
-            return status;
-        }
-        memset(abFrame, 0,
-               m_modeDetailsCache.baseResolutionHeight *
-                   m_modeDetailsCache.baseResolutionWidth * sizeof(uint16_t));
-    }
-
-    Metadata metadata;
-
-    if (m_config->getMetadataInAB() && m_abEnabled) {
-        uint16_t *abFrame;
-        status = frame->getData("ab", &abFrame);
-        if (status != Status::OK || abFrame == nullptr) {
-            LOG(ERROR) << "Failed to get ab frame location";
-            return status;
-        }
-        static_assert(sizeof(Metadata) <= skMetaDataBytesCount,
-                      "Metadata struct exceeds AB frame header size");
-        memcpy(reinterpret_cast<uint8_t *>(&metadata), abFrame,
-               sizeof(metadata));
-        memset(abFrame, 0, sizeof(metadata));
-    } else {
-        // If metadata from ADSD3500 is not available/disabled, generate one here
-        memset(static_cast<void *>(&metadata), 0, sizeof(metadata));
-        metadata.width = m_modeDetailsCache.baseResolutionWidth;
-        metadata.height = m_modeDetailsCache.baseResolutionHeight;
-        metadata.imagerMode = m_modeDetailsCache.modeNumber;
-        metadata.bitsInDepth = m_depthBitsPerPixel;
-        metadata.bitsInAb = m_abBitsPerPixel;
-        metadata.bitsInConfidence = m_confBitsPerPixel;
-
-        // For frame with PCM content we need to store ab bits
-        if (m_pcmFrame) {
-            metadata.bitsInAb = 16;
-        }
-    }
-
-    metadata.xyzEnabled = m_xyzEnabled;
-
-    uint16_t *metadataLocation;
-    status = frame->getData("metadata", &metadataLocation);
-    if (status != Status::OK || metadataLocation == nullptr) {
-        LOG(ERROR) << "Failed to get metadata location";
-        return status;
-    }
-
-    memcpy(reinterpret_cast<uint8_t *>(metadataLocation),
-           reinterpret_cast<uint8_t *>(&metadata), sizeof(metadata));
-
-    return Status::OK;
+    // Delegate frame acquisition and processing to the frame acquisition manager
+    return m_frameAcqManager->requestFrame(
+        frame, index, m_details.frameType, m_modeDetailsCache, m_isOffline,
+        m_pcmFrame, m_depthEnabled, m_abEnabled, m_confEnabled, m_xyzEnabled,
+        m_confBitsPerPixel, m_abBitsPerPixel, m_depthBitsPerPixel,
+        m_dropFrameOnce);
 }
 
 /**
@@ -1549,26 +1194,14 @@ aditof::Status CameraItof::enableDepthCompute(bool enable) {
     return aditof::Status::UNAVAILABLE;
 }
 
-#pragma pack(push, 1)
-typedef union {
-    uint8_t cmd_header_byte[16];
-    struct {
-        uint8_t id8;                // 0xAD
-        uint16_t chunk_size16;      // 256 is flash page size
-        uint8_t cmd8;               // 0x04 is the CMD for fw upgrade
-        uint32_t total_size_fw32;   // 4 bytes (total size of firmware)
-        uint32_t header_checksum32; // 4 bytes header checksum
-        uint32_t crc_of_fw32;       // 4 bytes CRC of the Firmware Binary
-    };
-} cmd_header_t;
-#pragma pack(pop)
-
 /**
  * @brief Updates the ADSD3500 firmware from a binary file.
  *
- * Reads a firmware binary file and programs it into the ADSD3500 ISP via the
- * burst mode protocol. Includes CRC validation and status monitoring via interrupt
- * callbacks. Waits for the chip to confirm successful reprogramming.
+ * Delegates firmware update operation to CameraFirmwareManager, which handles:
+ * - Firmware file validation and loading
+ * - Mode switching (Standard → Burst → Standard)
+ * - Chunked transmission with CRC validation
+ * - Interrupt-based completion detection
  *
  * @param[in] fwFilePath Path to the firmware binary file (.bin).
  *
@@ -1582,147 +1215,11 @@ typedef union {
  */
 aditof::Status
 CameraItof::adsd3500UpdateFirmware(const std::string &fwFilePath) {
-
     using namespace aditof;
-    Status status = Status::OK;
-
     assert(!m_isOffline);
 
-    m_fwUpdated = false;
-    m_adsd3500Status = Adsd3500Status::OK;
-    aditof::SensorInterruptCallback cb = [this](Adsd3500Status status) {
-        m_adsd3500Status = status;
-        m_fwUpdated = true;
-    };
-    status = m_depthSensor->adsd3500_register_interrupt_callback(cb);
-    bool interruptsAvailable = (status == Status::OK);
-
-    // Read Chip ID in STANDARD mode
-    uint16_t chip_id;
-    status = m_depthSensor->adsd3500_read_cmd(0x0112, &chip_id);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to read adsd3500 chip id!";
-        return status;
-    }
-
-    LOG(INFO) << "The readback chip ID is: " << chip_id;
-
-    // Switch to BURST mode.
-    status = m_depthSensor->adsd3500_write_cmd(0x0019, 0x0000);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to switch to burst mode!";
-        return status;
-    }
-
-    // Send FW content, each chunk is 256 bytes
-    const int flashPageSize = 256;
-
-    // Read the firmware binary file
-    std::ifstream fw_file(fwFilePath, std::ios::binary);
-    // copy all data into buffer
-    std::vector<uint8_t> buffer(std::istreambuf_iterator<char>(fw_file), {});
-
-    uint32_t fw_len = buffer.size();
-    uint8_t *fw_content = buffer.data();
-    cmd_header_t fw_upgrade_header;
-    fw_upgrade_header.id8 = 0xAD;
-    fw_upgrade_header.chunk_size16 = 0x0100; // 256=0x100
-    fw_upgrade_header.cmd8 = 0x04;           // FW Upgrade CMD = 0x04
-    fw_upgrade_header.total_size_fw32 = fw_len;
-    fw_upgrade_header.header_checksum32 = 0;
-
-    for (int i = 1; i < 8; i++) {
-        fw_upgrade_header.header_checksum32 +=
-            fw_upgrade_header.cmd_header_byte[i];
-    }
-
-    uint32_t res = crcFast(fw_content, fw_len, true) ^ 0xFFFFFFFF;
-    fw_upgrade_header.crc_of_fw32 = ~res;
-
-    status = m_depthSensor->adsd3500_write_payload(
-        fw_upgrade_header.cmd_header_byte, 16);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to send fw upgrade header";
-        return status;
-    }
-
-    int packetsToSend;
-    if ((fw_len % flashPageSize) != 0) {
-        packetsToSend = (fw_len / flashPageSize + 1);
-    } else {
-        packetsToSend = (fw_len / flashPageSize);
-    }
-
-    uint8_t data_out[flashPageSize];
-
-    for (int i = 0; i < packetsToSend; i++) {
-        int start = flashPageSize * i;
-        int end = flashPageSize * (i + 1);
-
-        for (int j = start; j < end; j++) {
-            if (j < static_cast<int>(fw_len)) {
-                data_out[j - start] = fw_content[j];
-            } else {
-                // padding with 0x00
-                data_out[j - start] = 0x00;
-            }
-        }
-        status = m_depthSensor->adsd3500_write_payload(data_out, flashPageSize);
-        if (status != Status::OK) {
-            LOG(ERROR) << "Failed to send packet number " << i << " out of "
-                       << packetsToSend << " packets!";
-            return status;
-        }
-
-        if (i % 25 == 0) {
-            LOG(INFO) << "Succesfully sent " << i << " out of " << packetsToSend
-                      << " packets";
-        }
-    }
-
-    //Commands to switch back to standard mode
-    uint8_t switchBuf[] = {0xAD, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
-                           0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    status = m_depthSensor->adsd3500_write_payload(
-        switchBuf, sizeof(switchBuf) / sizeof(switchBuf[0]));
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to switch adsd3500 to standard mode!";
-        return status;
-    }
-
-    if (interruptsAvailable) {
-        LOG(INFO) << "Waiting for ADSD3500 to update itself";
-        int secondsTimeout = 60;
-        int secondsWaited = 0;
-        int secondsWaitingStep = 1;
-        while (!m_fwUpdated && secondsWaited < secondsTimeout) {
-            LOG(INFO) << ".";
-            std::this_thread::sleep_for(
-                std::chrono::seconds(secondsWaitingStep));
-            secondsWaited += secondsWaitingStep;
-        }
-        LOG(INFO) << "Waited: " << secondsWaited << " seconds";
-        m_depthSensor->adsd3500_unregister_interrupt_callback(cb);
-        if (!m_fwUpdated && secondsWaited >= secondsTimeout) {
-            LOG(WARNING) << "Adsd3500 firmware updated has timeout after: "
-                         << secondsWaited << "seconds";
-            return aditof::Status::GENERIC_ERROR;
-        }
-
-        if (m_adsd3500Status == Adsd3500Status::OK ||
-            m_adsd3500Status == Adsd3500Status::FIRMWARE_UPDATE_COMPLETE) {
-            LOG(INFO) << "Adsd3500 firmware updated succesfully!";
-        } else {
-            LOG(ERROR) << "Adsd3500 firmware updated but with error: "
-                       << (int)m_adsd3500Status;
-        }
-    } else {
-        LOG(INFO) << "Adsd3500 firmware updated succesfully! Waiting 60 "
-                     "seconds since interrupts support was not detected.";
-        std::this_thread::sleep_for(std::chrono::seconds(60));
-    }
-
-    return aditof::Status::OK;
+    // Delegate firmware update to the firmware manager
+    return m_firmwareManager->updateFirmware(fwFilePath);
 }
 
 /**
@@ -3010,7 +2507,8 @@ aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
 
     assert(!m_isOffline);
 
-    status = m_depthSensor->adsd3500_write_cmd(0x0080, en ? 0x0001 : 0x0000);
+    status = m_depthSensor->adsd3500_write_cmd(
+        ADSD3500_REG_ENABLE_PHASE_INVALIDATION, en ? 0x0001 : 0x0000);
 
     return status;
 }
@@ -3064,12 +2562,14 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
 
     uint16_t *sequence0 = reinterpret_cast<uint16_t *>(&entireSequence);
     uint16_t *sequence1 = reinterpret_cast<uint16_t *>(&entireSequence) + 1;
-    status = m_depthSensor->adsd3500_write_cmd(0x0081, *sequence0);
+    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_DMS_SEQUENCE_0,
+                                               *sequence0);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to set sequence 0 for the Dynamic Mode Switching";
         return status;
     }
-    status = m_depthSensor->adsd3500_write_cmd(0x0082, *sequence1);
+    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_DMS_SEQUENCE_1,
+                                               *sequence1);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to set sequence 1 for the Dynamic Mode Switching";
         return status;
@@ -3077,13 +2577,15 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
 
     uint16_t *repCount0 = reinterpret_cast<uint16_t *>(&entireRepCount);
     uint16_t *repCount1 = reinterpret_cast<uint16_t *>(&entireRepCount) + 1;
-    status = m_depthSensor->adsd3500_write_cmd(0x0083, *repCount0);
+    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_DMS_REPEAT_COUNT_0,
+                                               *repCount0);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to set mode repeat count 0 for the Dynamic Mode "
                       "Switching";
         return status;
     }
-    status = m_depthSensor->adsd3500_write_cmd(0x0084, *repCount1);
+    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_DMS_REPEAT_COUNT_1,
+                                               *repCount1);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to set mode repeat count 0 for the Dynamic Mode "
                       "Switching";

@@ -27,6 +27,9 @@
 #include "adsd3500_controller.h"
 #include "calibration_manager.h"
 #include "camera_configuration.h"
+#include "camera_firmware_manager.h"
+#include "camera_frame_acquisition_manager.h"
+#include "camera_initialization_manager.h"
 #include "recording_manager.h"
 #include "sensor_config_helper.h"
 #include "tofi/tofi_compute.h"
@@ -45,6 +48,9 @@ namespace aditof {
 class Adsd3500Controller;
 class CalibrationManager;
 class CameraConfiguration;
+class CameraFirmwareManager;
+class CameraFrameAcquisitionManager;
+class CameraInitializationManager;
 class DepthParameterMapper; // Forward declaration to break circular dependency
 class RecordingManager;
 class SensorConfigHelper;
@@ -235,6 +241,12 @@ class CameraItof : public aditof::Camera {
     std::unique_ptr<aditof::SensorConfigHelper> m_sensorConfigHelper;
     // Depth parameter mapper (Phase 2D refactoring)
     std::unique_ptr<aditof::DepthParameterMapper> m_depthParamMapper;
+    // Camera initialization manager (Phase 8A refactoring)
+    std::unique_ptr<aditof::CameraInitializationManager> m_initManager;
+    // Camera firmware manager (Phase 8B refactoring)
+    std::unique_ptr<aditof::CameraFirmwareManager> m_firmwareManager;
+    // Camera frame acquisition manager (Phase 8C refactoring)
+    std::unique_ptr<aditof::CameraFrameAcquisitionManager> m_frameAcqManager;
 
     aditof::CameraDetails m_details;
     std::shared_ptr<aditof::DepthSensorInterface> m_depthSensor;
@@ -270,11 +282,11 @@ class CameraItof : public aditof::Camera {
     // - m_depth_params_map, m_depth_params_map_reset
     // NOTE: Calibration data now managed by m_calibrationMgr:
     // - m_rawCCBData, m_xyz_dealias_data, m_xyzTable
+    // NOTE: Firmware update state now managed by m_firmwareManager:
+    // - m_fwUpdated, m_adsd3500Status
     std::pair<std::string, std::string> m_adsd3500FwGitHash;
     int m_adsd3500FwVersionInt;
     int m_modesVersion;
-    bool m_fwUpdated;
-    aditof::Adsd3500Status m_adsd3500Status;
     bool m_enableDepthCompute;
     std::string m_initConfigFilePath;
     bool m_userJsonLoaded = false;

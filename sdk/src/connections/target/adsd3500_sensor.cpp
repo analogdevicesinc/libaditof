@@ -22,6 +22,7 @@
  * SOFTWARE.
  */
 #include "adsd3500_sensor.h"
+#include "../cameras/itof-camera/adsd3500_registers.h"
 #include "aditof/frame_operations.h"
 #include "aditof/utils.h"
 #include "adsd3500_interrupt_notifier.h"
@@ -502,7 +503,8 @@ aditof::Status Adsd3500Sensor::open() {
                           << " of " << MAX_RESET_ATTEMPTS;
                 adsd3500_reset();
 
-                adsd3500StateStatus = adsd3500_read_cmd(0x0020, &adsd3500State);
+                adsd3500StateStatus =
+                    adsd3500_read_cmd(ADSD3500_REG_CHIP_STATUS, &adsd3500State);
                 if (adsd3500StateStatus != Status::OK) {
                     LOG(INFO) << "Could not read the status register";
                     continue;
@@ -515,9 +517,10 @@ aditof::Status Adsd3500Sensor::open() {
                 }
 
 #ifdef DUAL
-                chipIDStatus = adsd3500_read_cmd(0x0116, &chipID, 110 * 1000);
+                chipIDStatus = adsd3500_read_cmd(ADSD3500_REG_CHIP_ID_EXT,
+                                                 &chipID, 110 * 1000);
 #else
-                chipIDStatus = adsd3500_read_cmd(0x0112, &chipID);
+                chipIDStatus = adsd3500_read_cmd(ADSD3500_REG_CHIP_ID, &chipID);
 #endif
                 if (chipIDStatus != Status::OK) {
                     LOG(INFO) << "Could not read chip ID";
