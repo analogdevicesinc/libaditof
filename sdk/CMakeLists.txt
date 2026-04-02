@@ -260,8 +260,16 @@ set(LIBTOFI_COMPUTE_CLOSED_SOURCE_PATH "${LIBTOFI_LIBDIR_PATH}/libtofi_compute.s
 set(LIBTOFI_CONFIG_CLOSED_SOURCE_PATH "${LIBTOFI_LIBDIR_PATH}/libtofi_config.so")
 
 # Link pthread for all builds (used by frame_handler, network, and target code)
+# Force -pthread for compatibility with older glibc (Ubuntu 18.04/20.04 in Azure pipeline)
 find_package(Threads REQUIRED)
-target_link_libraries(${PROJECT_NAME} PUBLIC Threads::Threads)
+if(UNIX AND NOT APPLE)
+    # Use -pthread flag for both compile and link (works across all glibc versions)
+    set(THREADS_PREFER_PTHREAD_FLAG ON)
+    target_compile_options(${PROJECT_NAME} PUBLIC -pthread)
+    target_link_libraries(${PROJECT_NAME} PUBLIC -pthread)
+else()
+    target_link_libraries(${PROJECT_NAME} PUBLIC Threads::Threads)
+endif()
 
 # Link dl for dynamic loading (used by tofi libraries on target)
 if(UNIX)
