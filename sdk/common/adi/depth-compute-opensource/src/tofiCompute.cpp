@@ -246,3 +246,18 @@ void FreeTofiCompute(TofiComputeContext *p_tofi_compute_context) {
     delete p;
     delete p_tofi_compute_context;
 };
+
+/**
+ * @brief Retrieves the version string of the ToFi compute library.
+ *
+ * @param[out] depth_compute_version Buffer to receive version string (must be at least 64 bytes)
+ * @return 0 on success
+ */
+uint32_t GetVersion(char *depth_compute_version) {
+    if (depth_compute_version == nullptr) {
+        return 1;
+    }
+    // Opensource implementation version
+    snprintf(depth_compute_version, 64, "VERSIONINFO : opensource-1.0.0");
+    return 0;
+}
