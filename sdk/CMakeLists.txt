@@ -259,6 +259,15 @@ endif()
 set(LIBTOFI_COMPUTE_CLOSED_SOURCE_PATH "${LIBTOFI_LIBDIR_PATH}/libtofi_compute.so")
 set(LIBTOFI_CONFIG_CLOSED_SOURCE_PATH "${LIBTOFI_LIBDIR_PATH}/libtofi_config.so")
 
+# Link pthread for all builds (used by frame_handler, network, and target code)
+find_package(Threads REQUIRED)
+target_link_libraries(${PROJECT_NAME} PUBLIC Threads::Threads)
+
+# Link dl for dynamic loading (used by tofi libraries on target)
+if(UNIX)
+    target_link_libraries(${PROJECT_NAME} PUBLIC ${CMAKE_DL_LIBS})
+endif()
+
 if ( ON_TARGET AND UNIX )
     if (NOT USE_DEPTH_COMPUTE_OPENSOURCE)
         add_library(libtofi_compute SHARED IMPORTED)
@@ -273,11 +282,11 @@ if ( ON_TARGET AND UNIX )
                         IMPORTED_NO_SONAME 1
                         )
 
-        target_link_libraries(${PROJECT_NAME} PRIVATE libtofi_compute)
-        target_link_libraries(${PROJECT_NAME} PRIVATE libtofi_config)
+        target_link_libraries(${PROJECT_NAME} PUBLIC libtofi_compute)
+        target_link_libraries(${PROJECT_NAME} PUBLIC libtofi_config)
     else()
-        target_link_libraries(${PROJECT_NAME} PRIVATE tofi_compute)
-        target_link_libraries(${PROJECT_NAME} PRIVATE tofi_config)
+        target_link_libraries(${PROJECT_NAME} PUBLIC tofi_compute)
+        target_link_libraries(${PROJECT_NAME} PUBLIC tofi_config)
     endif()
 endif()
 
