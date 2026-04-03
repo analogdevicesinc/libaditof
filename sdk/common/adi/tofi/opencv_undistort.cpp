@@ -104,9 +104,7 @@ void UndistortPoints(float *_srcx, float *_srcy, float *_dstx, float *_dsty,
         x = (x - cx) * ifx;
         y = (y - cy) * ify;
 
-        // if (_distCoeffs) {
         // compensate tilt distortion
-
         x0 = x;
         y0 = y;
 

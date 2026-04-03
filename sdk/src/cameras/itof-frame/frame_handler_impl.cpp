@@ -776,7 +776,7 @@ aditof::Status FrameHandlerImpl::SaveMetaAsTxt(const char *filename,
 
     std::ofstream out(filename);
     if (!out.is_open()) {
-        std::cerr << "Failed to open file for writing: " << filename << "\n";
+        LOG(ERROR) << "Failed to open file for writing: " << filename;
         return aditof::Status::GENERIC_ERROR;
     }
 

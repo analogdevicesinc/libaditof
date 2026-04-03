@@ -108,12 +108,17 @@ Status CameraInitializationManager::initializeOnlineMode(
     std::string fwVersion, fwHash;
     status = readFirmwareVersion(fwVersion, fwHash);
     if (status != Status::OK) {
-        return status;
+        LOG(WARNING) << "Could not read firmware version - device may not "
+                        "support this command yet";
+        LOG(WARNING)
+            << "Continuing initialization without firmware version info";
+        fwVersion = "unknown";
+        fwHash = "unknown";
+    } else {
+        LOG(INFO) << "Current adsd3500 firmware version is: " << fwVersion;
+        LOG(INFO) << "Current adsd3500 firmware git hash is: " << fwHash;
     }
     adsd3500FwVersion = {fwVersion, fwHash};
-
-    LOG(INFO) << "Current adsd3500 firmware version is: " << fwVersion;
-    LOG(INFO) << "Current adsd3500 firmware git hash is: " << fwHash;
 
     // Load CCB data if any mode needs non-ISP processing
     status = loadCCBDataIfNeeded(availableModes);
@@ -160,12 +165,17 @@ Status CameraInitializationManager::openSensor(bool &devStarted) {
 }
 
 Status CameraInitializationManager::detectImagerType(ImagerType &detectedType) {
-    // Map of imager type enum values to string representations
+    // Map of imager type enum values to string representations (numeric values from sensor)
+    // Sensor getControl("imagerType") returns std::to_string((int)SensorImagerType)
     static const std::unordered_map<ImagerType, std::string> ControlValue = {
-        {ImagerType::ADSD3100, "adsd3100"},
-        {ImagerType::ADSD3030, "adsd3030"},
-        {ImagerType::ADTF3080, "adtf3080"},
-        {ImagerType::ADTF3066, "adtf3066"}};
+        {ImagerType::ADSD3100,
+         "1"}, // Maps to SensorImagerType::IMAGER_ADSD3100
+        {ImagerType::ADSD3030,
+         "2"}, // Maps to SensorImagerType::IMAGER_ADSD3030
+        {ImagerType::ADTF3080,
+         "3"}, // Maps to SensorImagerType::IMAGER_ADTF3080
+        {ImagerType::ADTF3066,
+         "4"}}; // Maps to SensorImagerType::IMAGER_ADTF3066
 
     std::string controlValue;
     Status status = m_depthSensor->getControl("imagerType", controlValue);
@@ -178,7 +188,11 @@ Status CameraInitializationManager::detectImagerType(ImagerType &detectedType) {
     for (const auto &entry : ControlValue) {
         if (controlValue == entry.second) {
             detectedType = entry.first;
-            LOG(INFO) << "Detected imager type: " << entry.second;
+            // Look up human-readable name from imagerType map
+            auto nameIt = imagerType.find(entry.first);
+            std::string imagerName =
+                (nameIt != imagerType.end()) ? nameIt->second : "unknown";
+            LOG(INFO) << "Detected imager type: " << imagerName;
             return Status::OK;
         }
     }
@@ -207,9 +221,6 @@ Status CameraInitializationManager::discoverAvailableModes(
             return status;
         }
         modeDetails.push_back(details);
-        LOG(INFO) << "Discovered mode " << (int)mode << ": "
-                  << details.baseResolutionWidth << "x"
-                  << details.baseResolutionHeight;
     }
 
     return Status::OK;

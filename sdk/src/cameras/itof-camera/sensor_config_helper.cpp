@@ -87,14 +87,11 @@ Status SensorConfigHelper::configureModeDetails(
         if (lensScatterEnabled) {
             LOG(INFO) << "Lens scatter compensation enabled - sensor will "
                          "output raw frames";
-            m_depthSensor->setControl("rawBypassMode", "1");
 
             // Update INI params to disable ISP depth computation
             std::map<std::string, std::string> updatedParams = globalIniParams;
             updatedParams["partialDepthEnable"] = "1";
             m_config->setIniKeyValPairs(updatedParams);
-        } else {
-            m_depthSensor->setControl("rawBypassMode", "0");
         }
 
         depthEnabled = true;

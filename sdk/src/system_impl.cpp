@@ -32,7 +32,6 @@
 #include "aditof/version.h"
 
 #ifdef HAS_NETWORK
-//#include <lws_config.h>
 #include <zmq.hpp>
 #endif
 

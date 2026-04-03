@@ -35,7 +35,6 @@
 class FrameImpl {
   public:
     FrameImpl();
-    //~FrameImpl();
     FrameImpl(const FrameImpl &op);
     FrameImpl &operator=(const FrameImpl &op);
     ~FrameImpl();

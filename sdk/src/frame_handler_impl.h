@@ -52,33 +52,19 @@ class FrameHandlerImpl {
     //the api should only use frame objects when saving/reading data from file
     //the conversion between formats should happen inside the functions
 
-    //store frame to file
     aditof::Status saveFrameToFile(aditof::Frame &frame,
                                    const std::string &fileName = "");
 
-    //TO DO: write function to save frames on different thread
-    //aditof::Status enqueueFrameToSaveToFile(aditof::Frame frame);
     aditof::Status saveFrameToFileMultithread(aditof::Frame &frame,
                                               const std::string &filename = "");
 
-    //read new frame from file and process metadata to get new frame
-    //charateristics if we have different frame types in the same file
     aditof::Status readNextFrame(aditof::Frame &frame,
                                  const std::string &fullFileName = "");
 
-    //We could offer support for a couple of standart formats (avi/mp4/..)
-    //and let the users decide between them
     aditof::Status setCustomFormat(const std::string &format);
 
-    //aditof::Status splitFrames(bool enable);
     aditof::Status storeFramesToSingleFile(bool enable);
-    //aditof::Status storeSingleFrameToFile(bool enable);
-    //aditof::Status storeToSingleFile(bool enable);
 
-    //we should be able to give the users the ability to choose which data
-    //type they want to store (depth/ab/conf/metadata/full-data) or any combinations
-    //between this 2
-    //NOTE: metadata should be always enabled for a better data processing
     aditof::Status setFrameContent(const std::string &frameContent);
     aditof::Status SnapShotFrames(const char *baseFileName,
                                   aditof::Frame *frame, const uint8_t *ab,
@@ -100,18 +86,9 @@ class FrameHandlerImpl {
 
     aditof::Status createFile(const std::string &fileName);
     void threadWritter();
-    //aditof::Status writtingThread(std::string fileName = "");
-    //We should be able do decide if we want to store frames in the same file
-    //or store them in different files
+
     bool m_concatFrames;
-
-    //Let the users decide if they want to use multithreading or not
     bool m_enableMultithreading;
-
-    //we should offer a standart format that would be compatible with our examples
-    //(viewer/data-collect/python bindings/etc)
-    //it would be nice if we could give the users the posibility to store data in other
-    //formats (mp4, avi, etc)
     bool m_customFormat;
     std::string m_customFormatType;
 

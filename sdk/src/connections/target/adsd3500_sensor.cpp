@@ -485,6 +485,19 @@ aditof::Status Adsd3500Sensor::open() {
             goto cleanup_on_open_error;
         }
 
+        // Initialize protocol manager after video devices are opened (required for reset)
+        if (!m_protocolManager) {
+            m_protocolManager = std::make_unique<Adsd3500ProtocolManager>(
+                m_implData->videoDevs, m_implData->ctrlBuf, m_adsd3500_mutex);
+        }
+
+        // Initialize interrupt manager BEFORE reset (required for callback registration)
+        if (!m_interruptManager) {
+            m_interruptManager = std::make_unique<Adsd3500InterruptManager>(
+                m_protocolManager.get(), m_chipStatus, m_imagerStatus,
+                m_interruptAvailable, m_interruptCallbackMap);
+        }
+
         //Check chip status and reset if there are any errors.
         if (m_firstRun) {
             aditof::Status chipIDStatus = aditof::Status::GENERIC_ERROR;
@@ -563,12 +576,7 @@ aditof::Status Adsd3500Sensor::open() {
         }
     }
 
-    // Initialize protocol manager after video devices are opened
-    // Must be created BEFORE queryAdsd3500() is called
-    if (!m_protocolManager) {
-        m_protocolManager = std::make_unique<Adsd3500ProtocolManager>(
-            m_implData->videoDevs, m_implData->ctrlBuf, m_adsd3500_mutex);
-    }
+    // Protocol manager and interrupt manager already created above before reset
 
     // Initialize chip config manager after protocol manager
     if (!m_chipConfigManager) {
@@ -609,13 +617,6 @@ aditof::Status Adsd3500Sensor::open() {
         m_iniConfigManager = std::make_unique<IniConfigManager>(
             m_iniFileStructList, m_ccbmINIContent, m_ccbmEnabled,
             m_implData->imagerType);
-    }
-
-    // Initialize interrupt manager
-    if (!m_interruptManager) {
-        m_interruptManager = std::make_unique<Adsd3500InterruptManager>(
-            m_protocolManager.get(), m_chipStatus, m_imagerStatus,
-            m_interruptAvailable, m_interruptCallbackMap);
     }
 
     if (status == aditof::Status::OK) {
@@ -2019,6 +2020,9 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
  */
 aditof::Status Adsd3500Sensor::adsd3500_register_interrupt_callback(
     aditof::SensorInterruptCallback &cb) {
+    if (!m_interruptManager) {
+        return aditof::Status::UNAVAILABLE;
+    }
     return m_interruptManager->adsd3500_register_interrupt_callback(cb);
 }
 
@@ -2033,6 +2037,9 @@ aditof::Status Adsd3500Sensor::adsd3500_register_interrupt_callback(
  */
 aditof::Status Adsd3500Sensor::adsd3500_unregister_interrupt_callback(
     aditof::SensorInterruptCallback &cb) {
+    if (!m_interruptManager) {
+        return aditof::Status::UNAVAILABLE;
+    }
     return m_interruptManager->adsd3500_unregister_interrupt_callback(cb);
 }
 

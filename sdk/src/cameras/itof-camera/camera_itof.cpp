@@ -588,7 +588,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 s += param.first + "=" + param.second + "\n";
             }
             dataSize = s.size();
-            //LOG(INFO) << s;
 
             aditof::Status localStatus;
 
@@ -716,8 +715,6 @@ CameraItof::getFrameProcessParams(std::map<std::string, std::string> &params) {
     aditof::Status status = aditof::Status::OK;
 
     assert(!m_isOffline);
-
-    //params = m_depth_params_map[m_details.mode]; Should really be this
 
     status = m_depthSensor->getDepthComputeParams(params);
     if (status != aditof::Status::OK) {

@@ -39,9 +39,7 @@ class DeviceParameters {
         std::string imagerType, const uint16_t &chipID);
 };
 
-using namespace std;
-
-static map<string, string> adsd3100_partialDepth = {
+static std::map<std::string, std::string> adsd3100_partialDepth = {
     {"abThreshMin", "3.0"},
     {"confThresh", "25.0"},
     {"radialThreshMin", "30.0"},
@@ -66,7 +64,7 @@ static map<string, string> adsd3100_partialDepth = {
     {"xyzEnable", "1"},
     {"fps", "10"}};
 
-static map<string, string> adsd3100_dual_fullDepth = {
+static std::map<std::string, std::string> adsd3100_dual_fullDepth = {
     {"abThreshMin", "3.0"},
     {"confThresh", "25.0"},
     {"radialThreshMin", "100.0"},
@@ -91,7 +89,7 @@ static map<string, string> adsd3100_dual_fullDepth = {
     {"xyzEnable", "1"},
     {"fps", "10"}};
 
-static map<string, string> adsd3100_fullDepth = {
+static std::map<std::string, std::string> adsd3100_fullDepth = {
     {"abThreshMin", "3.0"},
     {"confThresh", "25.0"},
     {"radialThreshMin", "100.0"},
@@ -116,7 +114,7 @@ static map<string, string> adsd3100_fullDepth = {
     {"xyzEnable", "1"},
     {"fps", "40"}};
 
-static map<string, string> adsd_PCM = {{"abThreshMin", "3.0"},
+static std::map<std::string, std::string> adsd_PCM = {{"abThreshMin", "3.0"},
                                        {"confThresh", "25.0"},
                                        {"radialThreshMin", "100.0"},
                                        {"radialThreshMax", "10000.0"},
@@ -140,7 +138,7 @@ static map<string, string> adsd_PCM = {{"abThreshMin", "3.0"},
                                        {"xyzEnable", "0"},
                                        {"fps", "15"}};
 
-static map<string, string> adsd3030_fullDepth = {
+static std::map<std::string, std::string> adsd3030_fullDepth = {
     {"abThreshMin", "3.0"},
     {"confThresh", "25.0"},
     {"radialThreshMin", "100.0"},
@@ -165,7 +163,7 @@ static map<string, string> adsd3030_fullDepth = {
     {"xyzEnable", "1"},
     {"fps", "40"}};
 
-static map<string, string> adtf3080_fullDepth = {
+static std::map<std::string, std::string> adtf3080_fullDepth = {
     {"abThreshMin", "3.0"},
     {"confThresh", "25.0"},
     {"radialThreshMin", "100.0"},
@@ -193,7 +191,7 @@ static map<string, string> adtf3080_fullDepth = {
 /**
  * @brief Default depth computation parameters for ADTF3066 imager.
  */
-static map<string, string> adtf3066_fullDepth = {
+static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"abThreshMin", "3.0"},
     {"confThresh", "25.0"},
     {"radialThreshMin", "100.0"},

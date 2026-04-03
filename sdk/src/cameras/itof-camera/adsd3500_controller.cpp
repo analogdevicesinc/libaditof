@@ -41,7 +41,7 @@ Status Adsd3500Controller::getFirmwareVersion(std::string &fwVersion,
     uint8_t fwData[44] = {0};
     fwData[0] = uint8_t(1);
 
-    status = m_depthSensor->adsd3500_read_payload_cmd(0x36, fwData, 44);
+    status = m_depthSensor->adsd3500_read_payload_cmd(0x05, fwData, 44);
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to read firmware version from ADSD3500";
         return status;

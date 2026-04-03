@@ -190,8 +190,8 @@ aditof::Status BufferProcessor::open() {
 
     memset(&m_videoFormat, 0, sizeof(m_videoFormat));
     if (xioctl(m_outputVideoDev->fd, VIDIOC_G_FMT, &m_videoFormat) == -1) {
-        // LOG(ERROR) << m_videoDeviceName << " VIDIOC_G_FMT error";
-        // return Status::GENERIC_ERROR;
+        LOG(ERROR) << m_videoDeviceName << " VIDIOC_G_FMT error";
+        return Status::GENERIC_ERROR;
     }
 
     return status;
