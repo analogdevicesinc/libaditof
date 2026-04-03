@@ -80,51 +80,51 @@
 #define ADSD3500_REG_CONFIDENCE_THRESHOLD_GET 0x0016
 
 /** Radial threshold minimum (write) */
-#define ADSD3500_REG_RADIAL_THRESHOLD_MIN_SET 0x0012
+#define ADSD3500_REG_RADIAL_THRESHOLD_MIN_SET 0x0027
 /** Radial threshold minimum (read) */
-#define ADSD3500_REG_RADIAL_THRESHOLD_MIN_GET 0x0017
+#define ADSD3500_REG_RADIAL_THRESHOLD_MIN_GET 0x0028
 
 /** Radial threshold maximum (write) */
-#define ADSD3500_REG_RADIAL_THRESHOLD_MAX_SET 0x0013
+#define ADSD3500_REG_RADIAL_THRESHOLD_MAX_SET 0x0029
 /** Radial threshold maximum (read) */
-#define ADSD3500_REG_RADIAL_THRESHOLD_MAX_GET 0x0018
+#define ADSD3500_REG_RADIAL_THRESHOLD_MAX_GET 0x0030
 
 // ============================================================================
 // Joint Bilateral Filter (JBLF) Configuration
 // ============================================================================
 
 /** JBLF filter enable (write) - 1=enabled, 0=disabled */
-#define ADSD3500_REG_JBLF_ENABLE_SET 0x000C
+#define ADSD3500_REG_JBLF_ENABLE_SET 0x0013
 /** JBLF filter enable (read) */
-#define ADSD3500_REG_JBLF_ENABLE_GET 0x0019
+#define ADSD3500_REG_JBLF_ENABLE_GET 0x0017
 
 /** JBLF filter size (write) */
-#define ADSD3500_REG_JBLF_SIZE_SET 0x000E
+#define ADSD3500_REG_JBLF_SIZE_SET 0x0014
 /** JBLF filter size (read) */
-#define ADSD3500_REG_JBLF_SIZE_GET 0x001A
+#define ADSD3500_REG_JBLF_SIZE_GET 0x0018
 
 /** JBLF maximum edge threshold */
-#define ADSD3500_REG_JBLF_MAX_EDGE_THRESHOLD 0x006E
+#define ADSD3500_REG_JBLF_MAX_EDGE_THRESHOLD 0x0074
 
 /** JBLF AB threshold */
-#define ADSD3500_REG_JBLF_AB_THRESHOLD 0x006F
+#define ADSD3500_REG_JBLF_AB_THRESHOLD 0x0075
 
 /** JBLF Gaussian sigma (write) */
-#define ADSD3500_REG_JBLF_GAUSSIAN_SIGMA_SET 0x0070
+#define ADSD3500_REG_JBLF_GAUSSIAN_SIGMA_SET 0x006B
 /** JBLF Gaussian sigma (read) */
-#define ADSD3500_REG_JBLF_GAUSSIAN_SIGMA_GET 0x0071
+#define ADSD3500_REG_JBLF_GAUSSIAN_SIGMA_GET 0x0069
 
 /** JBLF exponential term (write) */
-#define ADSD3500_REG_JBLF_EXPONENTIAL_TERM_SET 0x0072
+#define ADSD3500_REG_JBLF_EXPONENTIAL_TERM_SET 0x006C
 /** JBLF exponential term (read) */
-#define ADSD3500_REG_JBLF_EXPONENTIAL_TERM_GET 0x0073
+#define ADSD3500_REG_JBLF_EXPONENTIAL_TERM_GET 0x006A
 
 // ============================================================================
 // MIPI and Communication Settings
 // ============================================================================
 
 /** MIPI output speed configuration (write) */
-#define ADSD3500_REG_MIPI_OUTPUT_SPEED_SET 0x0033
+#define ADSD3500_REG_MIPI_OUTPUT_SPEED_SET 0x0031
 /** MIPI output speed configuration (read) */
 #define ADSD3500_REG_MIPI_OUTPUT_SPEED_GET 0x0034
 
@@ -141,10 +141,10 @@
 /** VCSEL delay (write) */
 #define ADSD3500_REG_VCSEL_DELAY_SET 0x0066
 /** VCSEL delay (read) */
-#define ADSD3500_REG_VCSEL_DELAY_GET 0x0067
+#define ADSD3500_REG_VCSEL_DELAY_GET 0x0068
 
 /** Frame rate (read) - actual frame rate in fps */
-#define ADSD3500_REG_FRAME_RATE_GET 0x001D
+#define ADSD3500_REG_FRAME_RATE_GET 0x0023
 
 // ============================================================================
 // Advanced Processing Features
@@ -154,17 +154,17 @@
 #define ADSD3500_REG_ENABLE_EDGE_CONFIDENCE 0x0062
 
 /** Enable phase invalidation */
-#define ADSD3500_REG_ENABLE_PHASE_INVALIDATION 0x0080
+#define ADSD3500_REG_ENABLE_PHASE_INVALIDATION 0x0072
 
 /** Enable temperature compensation (write) */
-#define ADSD3500_REG_ENABLE_TEMP_COMPENSATION 0x00E8
+#define ADSD3500_REG_ENABLE_TEMP_COMPENSATION 0x0021
 /** Temperature compensation status (read) */
-#define ADSD3500_REG_TEMP_COMPENSATION_STATUS 0x00F0
+#define ADSD3500_REG_TEMP_COMPENSATION_STATUS 0x0076
 
 /** Enable metadata in AB frame (write) */
-#define ADSD3500_REG_ENABLE_METADATA_SET 0x00AD
+#define ADSD3500_REG_ENABLE_METADATA_SET 0x0036
 /** Enable metadata in AB frame (read) */
-#define ADSD3500_REG_ENABLE_METADATA_GET 0x00AE
+#define ADSD3500_REG_ENABLE_METADATA_GET 0x0037
 
 // ============================================================================
 // Temperature Sensors

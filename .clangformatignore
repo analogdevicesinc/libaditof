@@ -14,3 +14,5 @@ sdk/src/platform/platform_config.h.in
 **/*.h.in
 **/*.cpp.in
 **/*.cmake.in
+# CMake-generated files
+sdk/include/aditof/version-kit.h
