@@ -211,6 +211,12 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
         std::shared_ptr<uint8_t> data;
         size_t size = 0;
         std::shared_ptr<uint16_t> tofiBuffer;
+        // V4L2 buffer timestamp (captured during VIDIOC_DQBUF)
+        uint64_t timestamp_sec = 0;  // CLOCK_MONOTONIC seconds
+        uint64_t timestamp_usec = 0; // Microseconds
+        // Wall-clock timestamp (for human-readable display)
+        uint64_t wallclock_sec = 0;  // CLOCK_REALTIME seconds (UNIX epoch)
+        uint64_t wallclock_usec = 0; // Microseconds
     };
 
     // Thread-safe pool of empty raw frame buffers for use by capture thread

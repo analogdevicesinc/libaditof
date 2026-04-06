@@ -312,7 +312,15 @@ Status FrameHandlerImpl::readNextFrame(aditof::Frame &frame,
         return Status::UNAVAILABLE;
     }
 
-    m_file.read(reinterpret_cast<char *>(&m_metadataStruct), METADATA_SIZE);
+    // Read 128-byte metadata region into temp buffer
+    // (Metadata struct may be smaller than 128 bytes)
+    uint8_t metadataBuffer[METADATA_SIZE];
+    m_file.read(reinterpret_cast<char *>(metadataBuffer), METADATA_SIZE);
+
+    // Copy actual metadata struct (handles different struct sizes)
+    std::memcpy(
+        &m_metadataStruct, metadataBuffer,
+        std::min(sizeof(m_metadataStruct), static_cast<size_t>(METADATA_SIZE)));
 
     m_frDetails.width = m_metadataStruct.width;
     m_frDetails.height = m_metadataStruct.height;
@@ -379,8 +387,10 @@ Status FrameHandlerImpl::readNextFrame(aditof::Frame &frame,
     uint16_t *xyzData;
 
     frame.getData("metadata", &metaData);
-    memcpy(metaData, reinterpret_cast<uint8_t *>(&m_metadataStruct),
-           METADATA_SIZE);
+    // Copy metadata struct to frame buffer (128-byte metadata region)
+    // Zero out the buffer first, then copy actual struct
+    std::memset(metaData, 0, METADATA_SIZE);
+    std::memcpy(metaData, &m_metadataStruct, sizeof(m_metadataStruct));
 
     if (m_metadataStruct.bitsInDepth) {
         frame.getData("depth", &depthData);

@@ -730,6 +730,18 @@ void BufferProcessor::captureFrameThread() {
         Tofi_v4l2_buffer v4l2_frame;
         v4l2_frame.data = v4l2_frame_holder;
         v4l2_frame.size = buf_data_len;
+        // Capture V4L2 buffer timestamp (frame arrival at MIPI driver)
+        v4l2_frame.timestamp_sec = static_cast<uint64_t>(buf.timestamp.tv_sec);
+        v4l2_frame.timestamp_usec =
+            static_cast<uint64_t>(buf.timestamp.tv_usec);
+
+        // Also capture wall-clock time for human-readable timestamp
+        struct timespec wall_time;
+        if (clock_gettime(CLOCK_REALTIME, &wall_time) == 0) {
+            v4l2_frame.wallclock_sec = static_cast<uint64_t>(wall_time.tv_sec);
+            v4l2_frame.wallclock_usec =
+                static_cast<uint64_t>(wall_time.tv_nsec / 1000);
+        }
 
         if (!m_capture_to_process_Q.push(std::move(v4l2_frame))) {
             LOG(WARNING) << "captureFrameThread: Push timeout to bufferPool, "
@@ -1042,6 +1054,23 @@ void BufferProcessor::processThread() {
             memcpy(reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
                        numPixels * sizeof(uint16_t),
                    metadataSave, METADATA_SIZE);
+        }
+
+        // Inject V4L2 buffer timestamp into metadata BEFORE recording/pushing
+        // The metadata is embedded in the first 128 bytes of the AB section
+        if (!m_isRawBypassMode && tofi_compute_io_buff) {
+            const size_t numPixels =
+                static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight;
+            uint8_t *metadataPtr =
+                reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
+                numPixels * sizeof(uint16_t);
+
+            aditof::Metadata *meta =
+                reinterpret_cast<aditof::Metadata *>(metadataPtr);
+            meta->timestamp_sec = process_frame.timestamp_sec;
+            meta->timestamp_usec = process_frame.timestamp_usec;
+            meta->wallclock_sec = process_frame.wallclock_sec;
+            meta->wallclock_usec = process_frame.wallclock_usec;
         }
 
         // Only attempt to write if recording is still active and stream is open

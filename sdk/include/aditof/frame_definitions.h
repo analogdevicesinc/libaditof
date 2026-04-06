@@ -25,6 +25,8 @@
 #define FRAME_DEFINITIONS_H
 
 #include <cstdint>
+#include <ctime>
+#include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -246,6 +248,32 @@ struct Metadata {
     * @brief Laser temperature in degrees Celsius
     */
     int32_t laserTemperature;
+
+    /**
+    * @brief V4L2 buffer timestamp seconds (CLOCK_MONOTONIC)
+    * Monotonic time in seconds since boot - useful for precise timing.
+    * Set to 0 if timestamp is unavailable.
+    */
+    uint64_t timestamp_sec;
+
+    /**
+    * @brief V4L2 buffer timestamp microseconds (CLOCK_MONOTONIC)
+    * Fractional part of the monotonic timestamp in microseconds.
+    */
+    uint64_t timestamp_usec;
+
+    /**
+    * @brief Wall-clock timestamp (UNIX epoch seconds)
+    * Real-world date/time when frame was captured (seconds since Jan 1, 1970).
+    * More human-readable than monotonic timestamp.
+    */
+    uint64_t wallclock_sec;
+
+    /**
+    * @brief Wall-clock timestamp microseconds
+    * Fractional part of the wall-clock timestamp in microseconds.
+    */
+    uint64_t wallclock_usec;
 };
 #pragma pack(pop)
 
@@ -258,10 +286,11 @@ inline std::ostream &operator<<(std::ostream &o, const struct Metadata &meta) {
       << static_cast<unsigned int>(meta.outputConfiguration)
       << "\tBitsInDepth: " << static_cast<unsigned int>(meta.bitsInDepth)
       << "\tBitsInAb: " << static_cast<unsigned int>(meta.bitsInAb)
-      << "\tBitsInConfidenc: "
+      << "\tBitsInConfidence: "
       << static_cast<unsigned int>(meta.bitsInConfidence)
       << "\tInvalidPhaseValue: " << meta.invalidPhaseValue
-      << "\tFrequencyIndex: " << static_cast<unsigned int>(meta.frequencyIndex)
+      << "\tFrequencyIndex: " << meta.frequencyIndex
+      << "\tABFrequencyIndex: " << meta.abFrequencyIndex
       << "\tFrameNumber: " << meta.frameNumber
       << "\tImagerMode: " << static_cast<unsigned int>(meta.imagerMode)
       << "\tNumberOfPhases: " << static_cast<unsigned int>(meta.numberOfPhases)
@@ -271,7 +300,21 @@ inline std::ostream &operator<<(std::ostream &o, const struct Metadata &meta) {
       << "\tElapsedTimeFractionalValue: " << meta.elapsedTimeFractionalValue
       << "\tElapsedTimeSecondsValue: " << meta.elapsedTimeSecondsValue
       << "\tSensorTemperature: " << meta.sensorTemperature
-      << "\tLaserTemperature: " << meta.laserTemperature << "\n";
+      << "\tLaserTemperature: " << meta.laserTemperature;
+    if (meta.timestamp_sec > 0 || meta.timestamp_usec > 0) {
+        o << "\tV4L2_Monotonic: " << meta.timestamp_sec << "."
+          << std::setfill('0') << std::setw(6) << meta.timestamp_usec << "s";
+    }
+    if (meta.wallclock_sec > 0) {
+        // Convert to human-readable time
+        time_t t = static_cast<time_t>(meta.wallclock_sec);
+        struct tm *tm_info = localtime(&t);
+        char time_str[64];
+        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+        o << "\tTimestamp: " << time_str << "." << std::setfill('0')
+          << std::setw(6) << meta.wallclock_usec;
+    }
+    o << "\n";
     return o;
 }
 

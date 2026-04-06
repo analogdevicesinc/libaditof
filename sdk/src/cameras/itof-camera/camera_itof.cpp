@@ -1464,11 +1464,31 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         }
         static_assert(sizeof(Metadata) <= skMetaDataBytesCount,
                       "Metadata struct exceeds AB frame header size");
+        // Copy metadata from AB frame (includes V4L2 timestamp injected by buffer_processor)
         memcpy(reinterpret_cast<uint8_t *>(&metadata), abFrame,
                sizeof(metadata));
         memset(abFrame, 0, sizeof(metadata));
     } else {
         // If metadata from ADSD3500 is not available/disabled, generate one here
+        // But first try to extract timestamps from AB frame if available
+        uint64_t saved_timestamp_sec = 0;
+        uint64_t saved_timestamp_usec = 0;
+        uint64_t saved_wallclock_sec = 0;
+        uint64_t saved_wallclock_usec = 0;
+
+        if (m_abEnabled) {
+            uint16_t *abFrame;
+            Status abStatus = frame->getData("ab", &abFrame);
+            if (abStatus == Status::OK && abFrame != nullptr) {
+                // Extract timestamp fields from AB metadata
+                Metadata *abMeta = reinterpret_cast<Metadata *>(abFrame);
+                saved_timestamp_sec = abMeta->timestamp_sec;
+                saved_timestamp_usec = abMeta->timestamp_usec;
+                saved_wallclock_sec = abMeta->wallclock_sec;
+                saved_wallclock_usec = abMeta->wallclock_usec;
+            }
+        }
+
         memset(static_cast<void *>(&metadata), 0, sizeof(metadata));
         metadata.width = m_modeDetailsCache.baseResolutionWidth;
         metadata.height = m_modeDetailsCache.baseResolutionHeight;
@@ -1476,6 +1496,12 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         metadata.bitsInDepth = m_depthBitsPerPixel;
         metadata.bitsInAb = m_abBitsPerPixel;
         metadata.bitsInConfidence = m_confBitsPerPixel;
+
+        // Restore timestamps
+        metadata.timestamp_sec = saved_timestamp_sec;
+        metadata.timestamp_usec = saved_timestamp_usec;
+        metadata.wallclock_sec = saved_wallclock_sec;
+        metadata.wallclock_usec = saved_wallclock_usec;
 
         // For frame with PCM content we need to store ab bits
         if (m_pcmFrame) {

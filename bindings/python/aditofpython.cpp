@@ -155,7 +155,11 @@ PYBIND11_MODULE(aditofpython, m) {
                        &aditof::Metadata::elapsedTimeSecondsValue)
         .def_readwrite("sensorTemperature",
                        &aditof::Metadata::sensorTemperature)
-        .def_readwrite("laserTemperature", &aditof::Metadata::laserTemperature);
+        .def_readwrite("laserTemperature", &aditof::Metadata::laserTemperature)
+        .def_readwrite("timestamp_sec", &aditof::Metadata::timestamp_sec)
+        .def_readwrite("timestamp_usec", &aditof::Metadata::timestamp_usec)
+        .def_readwrite("wallclock_sec", &aditof::Metadata::wallclock_sec)
+        .def_readwrite("wallclock_usec", &aditof::Metadata::wallclock_usec);
 
     // Camera declarations
 
