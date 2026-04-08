@@ -2767,27 +2767,6 @@ void CameraItof::dropFirstFrame(bool dropFrame) {
 /**
  * @brief Applies a sensor configuration string to the underlying depth sensor.
  *
- * Forwards a sensor-specific configuration string to the depth sensor interface
- * for custom hardware setup.
- *
- * @param[in] sensorConf Configuration string to apply.
- *
- * @return aditof::Status::OK if configuration applied;
- *         error codes from depth sensor if configuration fails.
- *
- * @note This function asserts that the camera is not in offline mode.
- */
-aditof::Status
-CameraItof::setSensorConfiguration(const std::string &sensorConf) {
-    aditof::Status status = aditof::Status::OK;
-
-    assert(!m_isOffline);
-
-    status = m_depthSensor->setSensorConfiguration(sensorConf);
-
-    return status;
-}
-
 /**
  * @brief Sets the FSYNC toggle mode (master vs. slave operation).
  *

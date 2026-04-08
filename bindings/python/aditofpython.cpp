@@ -426,8 +426,6 @@ PYBIND11_MODULE(aditofpython, m) {
         .def("loadDepthParamsFromJsonFile",
              &aditof::Camera::loadDepthParamsFromJsonFile,
              py::arg("loadPathFile"), py::arg("mode"))
-        .def("setSensorConfiguration", &aditof::Camera::setSensorConfiguration,
-             py::arg("sensorConf"))
         .def("adsd3500SetToggleMode", &aditof::Camera::adsd3500SetToggleMode,
              py::arg("mode"))
         .def("adsd3500ToggleFsync", &aditof::Camera::adsd3500ToggleFsync)
@@ -899,9 +897,6 @@ PYBIND11_MODULE(aditofpython, m) {
                 return device.setDepthComputeParams(cppParams);
             },
             py::arg("params"))
-        .def("setSensorConfiguration",
-             &aditof::DepthSensorInterface::setSensorConfiguration,
-             py::arg("sensorConf"))
         .def(
             "getIniParamsArrayForMode",
             [](aditof::DepthSensorInterface &device, int mode) {

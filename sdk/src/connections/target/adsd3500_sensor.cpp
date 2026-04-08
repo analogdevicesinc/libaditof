@@ -2825,28 +2825,6 @@ aditof::Status Adsd3500Sensor::adsd3500_get_status(int &chipStatus,
 }
 
 /**
- * @brief Sets the sensor configuration mode.
- *
- * Configures the sensor with the specified configuration mode (e.g., "standard", "custom")
- * by delegating to the mode selector's setConfiguration method.
- *
- * @param[in] sensorConf Configuration mode identifier string
- *
- * @return Status::OK on success, error status if configuration is invalid
- */
-aditof::Status
-Adsd3500Sensor::setSensorConfiguration(const std::string &sensorConf) {
-    aditof::Status status;
-    status = m_modeSelector.setConfiguration(sensorConf);
-    if (status == aditof::Status::OK) {
-        LOG(INFO) << "Using sensor configuration: " << sensorConf;
-    } else {
-        LOG(ERROR) << "Invalid sensor configuration provided!";
-    }
-    return status;
-}
-
-/**
  * @brief Converts a numeric status ID to Adsd3500Status enumeration.
  *
  * Maps hardware status codes from the ADSD3500 ISP to the corresponding

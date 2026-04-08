@@ -297,15 +297,6 @@ class DepthSensorInterface {
     setDepthComputeParams(const std::map<std::string, std::string> &params) = 0;
 
     /**
-     * @brief Set sensor configutation table
-     * @param sensorConf - Configuration table name string like
-     * e.g. standard, standardraw, custom and customraw
-     * @return Status
-     */
-    virtual aditof::Status
-    setSensorConfiguration(const std::string &sensorConf) = 0;
-
-    /**
      * @brief Get ini parameters for Depth Compute library as string
      * @param[in] mode - desired mode
      * @param[out] iniStr - a string that contain ini params
