@@ -13,7 +13,7 @@
 #include <iostream>
 #include <map>
 #include <thread>
-#include <vector>
+#include <cstdlib>
 
 using namespace aditof;
 
