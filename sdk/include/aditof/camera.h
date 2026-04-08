@@ -568,15 +568,6 @@ class SDK_API Camera {
     adsd3500ResetIniParamsForMode(const uint16_t mode) = 0;
 
     /**
-     * @brief Set sensor configutation table
-     * @param sensorConf - Configuration table name string like
-     * e.g. standard, standardraw, custom and customraw
-     * @return Status
-     */
-    virtual aditof::Status
-    setSensorConfiguration(const std::string &sensorConf) = 0;
-
-    /**
      * @brief Allow drop first frame
      * @param dropFrame - Drop the first frame if true
      * @return void

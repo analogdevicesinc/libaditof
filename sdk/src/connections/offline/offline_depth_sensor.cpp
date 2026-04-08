@@ -579,24 +579,6 @@ aditof::Status OfflineDepthSensor::initTargetDepthCompute(
 
 /**
  * @brief Sets the sensor configuration.
- *
- * This is a stub implementation for offline sensor that accepts but does not apply configuration.
- *
- * @param[in] sensorConf Sensor configuration string
- *
- * @return Status::OK on success
- */
-aditof::Status
-OfflineDepthSensor::setSensorConfiguration(const std::string &sensorConf) {
-
-    using namespace aditof;
-
-    Status status = Status::OK;
-
-    return status;
-}
-
-/**
  * @brief Retrieves INI parameters for a specific mode.
  *
  * This is a stub implementation for offline sensor that does not populate INI parameters.
