@@ -16,13 +16,16 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <dirent.h>
 #include <fstream>
-#include <linux/videodev2.h>
 #include <sstream>
-#include <sys/stat.h>
 #include <thread>
+
+#ifndef _WIN32
+#include <dirent.h>
+#include <linux/videodev2.h>
+#include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 #ifdef PLATFORM_NEEDS_MEDIA_CONFIG
 #include "media_config.h"
@@ -250,7 +253,9 @@ uint32_t Platform::getV4L2ConfidenceBitsControlId() const {
  * @return V4L2 pixel format code for 8-bit data.
  */
 uint32_t Platform::getV4L2PixelFormat8bit() const {
-#ifdef NXP
+#ifdef _WIN32
+    return 0; // Not applicable on Windows
+#elif defined(NXP)
     return V4L2_PIX_FMT_SBGGR8;
 #else
     return V4L2_PIX_FMT_SRGGB8;
@@ -299,6 +304,11 @@ size_t Platform::calculateBufferSize(int widthInBytes,
 Status Platform::findToFSensors(std::vector<SensorInfo> &sensors) {
     sensors.clear();
 
+#ifdef _WIN32
+    // Windows stub - no hardware sensors available
+    LOG(WARNING) << "findToFSensors not supported on Windows";
+    return Status::GENERIC_ERROR;
+#else
     DIR *dir = opendir("/dev");
     if (!dir) {
         LOG(ERROR) << "Failed to open /dev directory";
@@ -337,6 +347,7 @@ Status Platform::findToFSensors(std::vector<SensorInfo> &sensors) {
     }
 
     return sensors.empty() ? Status::GENERIC_ERROR : Status::OK;
+#endif // !_WIN32
 }
 
 /**
@@ -425,6 +436,10 @@ Status Platform::parseMediaPipeline(const std::string &mediaDevice,
                                     std::string &subdevPath,
                                     std::string &deviceName) {
 
+#ifdef _WIN32
+    // Windows stub - no media pipeline support
+    return Status::GENERIC_ERROR;
+#else
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "media-ctl -d %s -p 2>/dev/null",
              mediaDevice.c_str());
@@ -495,6 +510,7 @@ Status Platform::parseMediaPipeline(const std::string &mediaDevice,
 
     return (!devPath.empty() && !subdevPath.empty()) ? Status::OK
                                                      : Status::GENERIC_ERROR;
+#endif // !_WIN32
 }
 
 /**

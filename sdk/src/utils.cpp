@@ -38,19 +38,20 @@
 #include <sys/types.h>
 #ifdef _WIN32
 #include <direct.h>
+#else
+#include <dirent.h>
+#include <mntent.h>
+#include <sys/sysmacros.h>
+#include <unistd.h>
 #endif
 #include <cstdlib>
 #include <ctime>
-#include <dirent.h>
 #include <iomanip>
 #include <iostream>
 #include <limits.h>
-#include <mntent.h>
 #include <random>
 #include <sstream>
 #include <sys/stat.h>
-#include <sys/sysmacros.h>
-#include <unistd.h>
 
 #include <algorithm>
 #include <cstring>
@@ -65,6 +66,7 @@ using namespace aditof;
 
 const std::string recordingFolder = "recordings/";
 
+#ifndef _WIN32
 // detect_storage_class.cpp
 // Compile:
 //   g++ -std=c++14 detect_storage_class.cpp -o detect_storage_class
@@ -372,6 +374,7 @@ class StorageDetector {
         return name;
     }
 };
+#endif // !_WIN32
 
 #ifdef STANDALONE_DETECT_STORAGE
 int main(int argc, char **argv) {
@@ -712,6 +715,7 @@ bool Utils::generateRecordingPath(std::string &filePath,
         }
     }
 
+#ifndef _WIN32
     StorageDetector sd;
     int storageType = sd.detect(folderName);
 
@@ -721,6 +725,7 @@ bool Utils::generateRecordingPath(std::string &filePath,
                      << storageType
                      << " (1=mmc/SD, 2=NVMe/HDD, 0=unknown, -1=error)";
     }
+#endif
 
     filePath = folderName + fileBaseName;
 
