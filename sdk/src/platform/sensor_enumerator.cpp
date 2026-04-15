@@ -26,11 +26,13 @@
 #include "connections/target/adsd3500_sensor.h"
 #include <aditof/log.h>
 
-#include <dirent.h>
 #include <errno.h>
 #include <string.h>
+#ifndef _WIN32
+#include <dirent.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 #include <cstdio>
 #include <cstdlib>

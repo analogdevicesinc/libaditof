@@ -33,21 +33,23 @@
 #include "tofi/tofi_config.h"
 #include <aditof/log.h>
 #include <algorithm>
-#include <arm_neon.h>
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <fstream>
+#include <sstream>
+#include <thread>
+#ifndef _WIN32
+#include <arm_neon.h>
 #include <dirent.h>
 #include <fcntl.h>
-#include <fstream>
 #include <linux/videodev2.h>
 #include <signal.h>
-#include <sstream>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
-#include <thread>
 #include <unistd.h>
+#endif
 #include <unordered_map>
 
 #define MAX_SUBFRAMES_COUNT                                                    \

@@ -28,21 +28,23 @@
 #include <aditof/log.h>
 #include <aditof/utils.h>
 #include <algorithm>
-#include <arm_neon.h>
 #include <cmath>
-#include <dlfcn.h>
 #include <exception>
-#include <fcntl.h>
 #include <fstream>
-#include <linux/videodev2.h>
 #include <memory>
 #include <sstream>
+#include <unordered_map>
+#include <vector>
+#ifndef _WIN32
+#include <arm_neon.h>
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <linux/videodev2.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <unordered_map>
-#include <vector>
+#endif
 
 #include "buffer_processor.h"
 #include <aditof/frame_handler.h>

@@ -41,7 +41,9 @@
 #include <json.h>
 #include <limits.h>
 #include <sstream>
+#ifndef _WIN32
 #include <unistd.h>
+#endif
 
 #include <aditof/log.h>
 #include <chrono>

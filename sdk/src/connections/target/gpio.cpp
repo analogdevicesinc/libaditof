@@ -25,10 +25,12 @@
 #include <aditof/log.h>
 
 #include <errno.h>
+#ifndef _WIN32
 #include <fcntl.h>
 #include <linux/gpio.h>
 #include <sys/ioctl.h>
 #include <unistd.h>
+#endif
 
 using namespace aditof;
 
