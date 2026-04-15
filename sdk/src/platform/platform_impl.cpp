@@ -37,6 +37,14 @@
 #define XSTR(x) STR(x)
 #define STR(x) #x
 
+// Platform reset timing (microseconds)
+#ifndef PLATFORM_RESET_PULSE_US
+#define PLATFORM_RESET_PULSE_US 100      // Reset pulse width: 100us
+#endif
+#ifndef PLATFORM_RESET_DELAY_US
+#define PLATFORM_RESET_DELAY_US 100000   // Reset stabilization delay: 100ms
+#endif
+
 namespace aditof {
 namespace platform {
 
