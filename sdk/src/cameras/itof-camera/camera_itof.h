@@ -129,8 +129,6 @@ class CameraItof : public aditof::Camera {
     loadDepthParamsFromJsonFile(const std::string &pathFile,
                                 const int16_t mode_in_use = -1) override;
 
-
-
     void dropFirstFrame(bool dropFrame) override;
 
     aditof::Status
