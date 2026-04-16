@@ -151,13 +151,13 @@ NetworkDepthSensor::~NetworkDepthSensor() {
 
 aditof::Status NetworkDepthSensor::getDepthComputeParams(
     std::map<std::string, std::string> &params) {
-    using namespace aditof;
+
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("GetDepthComputeParam");
@@ -165,23 +165,24 @@ aditof::Status NetworkDepthSensor::getDepthComputeParams(
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
-    if (status == Status::OK) {
+    if (status == aditof::Status::OK) {
         params["abThreshMin"] =
             (net->recv_buff[m_sensorIndex].strings_payload(0));
         params["abSumThresh"] =
@@ -213,13 +214,13 @@ aditof::Status NetworkDepthSensor::getDepthComputeParams(
 
 aditof::Status NetworkDepthSensor::setDepthComputeParams(
     const std::map<std::string, std::string> &params) {
-    using namespace aditof;
+
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("SetDepthComputeParam");
@@ -249,38 +250,38 @@ aditof::Status NetworkDepthSensor::setDepthComputeParams(
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
     return status;
 }
 
 aditof::Status NetworkDepthSensor::open() {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (net->ServerConnect(m_implData->ip) != 0) {
         LOG(WARNING) << "Server Connect Failed";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Open");
@@ -288,23 +289,24 @@ aditof::Status NetworkDepthSensor::open() {
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
-    if (status == Status::OK) {
+    if (status == aditof::Status::OK) {
         m_implData->opened = true;
 
         // Create a new thread that periodically checks for inactivity on client-network then goes back to sleep
@@ -316,14 +318,13 @@ aditof::Status NetworkDepthSensor::open() {
 }
 
 aditof::Status NetworkDepthSensor::start() {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
 #ifdef RECV_ASYNC
@@ -334,17 +335,17 @@ aditof::Status NetworkDepthSensor::start() {
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].message().c_str() != reply_async) {
         LOG(WARNING) << "Target is not build to send in async mode";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
 #endif
@@ -356,21 +357,22 @@ aditof::Status NetworkDepthSensor::start() {
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     net->FrameSocketConnection(m_implData->ip);
 
@@ -378,7 +380,6 @@ aditof::Status NetworkDepthSensor::start() {
 }
 
 aditof::Status NetworkDepthSensor::stop() {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
@@ -389,7 +390,7 @@ aditof::Status NetworkDepthSensor::stop() {
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Stop");
@@ -397,21 +398,22 @@ aditof::Status NetworkDepthSensor::stop() {
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     // close the frame socket
     net->closeConnectionFrameSocket();
@@ -421,14 +423,13 @@ aditof::Status NetworkDepthSensor::stop() {
 
 aditof::Status
 NetworkDepthSensor::getAvailableModes(std::vector<uint8_t> &modes) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("GetAvailableModes");
@@ -436,18 +437,18 @@ NetworkDepthSensor::getAvailableModes(std::vector<uint8_t> &modes) {
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     // Cleanup array (if required) before filling it with the available types
@@ -460,7 +461,8 @@ NetworkDepthSensor::getAvailableModes(std::vector<uint8_t> &modes) {
         modes.emplace_back(net->recv_buff[m_sensorIndex].int32_payload(i));
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
@@ -468,13 +470,13 @@ NetworkDepthSensor::getAvailableModes(std::vector<uint8_t> &modes) {
 aditof::Status
 NetworkDepthSensor::getModeDetails(const uint8_t &mode,
                                    aditof::DepthSensorModeDetails &details) {
-    using namespace aditof;
+
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("GetModeDetails");
@@ -483,18 +485,18 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
     details.modeNumber = mode;
     details.pixelFormatIndex = net->recv_buff[m_sensorIndex]
@@ -550,19 +552,19 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
         sizeof(uint16_t);
 #endif // DUAL
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
     return status;
 }
 
 aditof::Status NetworkDepthSensor::setMode(const uint8_t &mode) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("SetModeByIndex");
@@ -571,35 +573,35 @@ aditof::Status NetworkDepthSensor::setMode(const uint8_t &mode) {
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
 
 aditof::Status
 NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("SetMode");
@@ -636,23 +638,24 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
-    if (status == Status::OK) {
+    if (status == aditof::Status::OK) {
         m_implData->modeDetailsCache = type;
     }
 
@@ -660,7 +663,6 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 }
 
 aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
@@ -668,19 +670,19 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
 #ifdef RECV_ASYNC
     int ret = net->getFrame(buffer, frame_size);
     if (ret == -1) {
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     } else {
         if (m_state == ST_RECORD) {
             writeFrame((uint8_t *)buffer, frame_size);
         }
     }
-    return Status::OK;
+    return aditof::Status::OK;
 
 #else
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("GetFrame");
@@ -689,27 +691,28 @@ aditof::Status NetworkDepthSensor::getFrame(uint16_t *buffer, uint32_t index) {
     uint32_t sz;
     if (net->SendCommand(static_cast<void *>(buffer), &sz) != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     int ret = net->getFrame(buffer, frame_size);
     if (ret == -1) {
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
-    if (status != Status::OK) {
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
+    if (status != aditof::Status::OK) {
         LOG(WARNING) << "getFrame() failed on target";
         return status;
     }
@@ -730,14 +733,13 @@ aditof::Status NetworkDepthSensor::getHeader(uint8_t *buffer,
 
 aditof::Status NetworkDepthSensor::getAvailableControls(
     std::vector<std::string> &controls) const {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("GetAvailableControls");
@@ -745,23 +747,24 @@ aditof::Status NetworkDepthSensor::getAvailableControls(
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
-    if (status == Status::OK) {
+    if (status == aditof::Status::OK) {
         controls.clear();
 
         for (int i = 0;
@@ -777,14 +780,13 @@ aditof::Status NetworkDepthSensor::getAvailableControls(
 
 aditof::Status NetworkDepthSensor::setControl(const std::string &control,
                                               const std::string &value) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("SetControl");
@@ -794,35 +796,35 @@ aditof::Status NetworkDepthSensor::setControl(const std::string &control,
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
 
 aditof::Status NetworkDepthSensor::getControl(const std::string &control,
                                               std::string &value) const {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("GetControl");
@@ -831,23 +833,24 @@ aditof::Status NetworkDepthSensor::getControl(const std::string &control,
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
-    if (status == Status::OK) {
+    if (status == aditof::Status::OK) {
         value = net->recv_buff[m_sensorIndex].strings_payload(0);
     }
 
@@ -880,14 +883,13 @@ aditof::Status NetworkDepthSensor::getName(std::string &name) const {
 aditof::Status NetworkDepthSensor::adsd3500_read_cmd(uint16_t cmd,
                                                      uint16_t *data,
                                                      unsigned int usDelay) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Adsd3500ReadCmd");
@@ -899,23 +901,24 @@ aditof::Status NetworkDepthSensor::adsd3500_read_cmd(uint16_t cmd,
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
-    if (status == Status::OK) {
+    if (status == aditof::Status::OK) {
         *data = static_cast<uint16_t>(
             net->recv_buff[m_sensorIndex].int32_payload(0));
     }
@@ -926,14 +929,13 @@ aditof::Status NetworkDepthSensor::adsd3500_read_cmd(uint16_t cmd,
 aditof::Status NetworkDepthSensor::adsd3500_write_cmd(uint16_t cmd,
                                                       uint16_t data,
                                                       unsigned int usDelay) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Adsd3500WriteCmd");
@@ -947,35 +949,35 @@ aditof::Status NetworkDepthSensor::adsd3500_write_cmd(uint16_t cmd,
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
 
 aditof::Status NetworkDepthSensor::adsd3500_read_payload_cmd(
     uint32_t cmd, uint8_t *readback_data, uint16_t payload_len) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Adsd3500ReadPayloadCmd");
@@ -989,23 +991,24 @@ aditof::Status NetworkDepthSensor::adsd3500_read_payload_cmd(
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
-    if (status == Status::OK) {
+    if (status == aditof::Status::OK) {
         memcpy(readback_data,
                net->recv_buff[m_sensorIndex].bytes_payload(0).c_str(),
                net->recv_buff[m_sensorIndex].bytes_payload(0).length());
@@ -1016,14 +1019,13 @@ aditof::Status NetworkDepthSensor::adsd3500_read_payload_cmd(
 
 aditof::Status NetworkDepthSensor::adsd3500_read_payload(uint8_t *payload,
                                                          uint16_t payload_len) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Adsd3500ReadPayload");
@@ -1033,23 +1035,24 @@ aditof::Status NetworkDepthSensor::adsd3500_read_payload(uint8_t *payload,
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
-    if (status == Status::OK) {
+    if (status == aditof::Status::OK) {
         memcpy(payload, net->recv_buff[m_sensorIndex].bytes_payload(0).c_str(),
                net->recv_buff[m_sensorIndex].bytes_payload(0).length());
     }
@@ -1060,14 +1063,13 @@ aditof::Status NetworkDepthSensor::adsd3500_read_payload(uint8_t *payload,
 aditof::Status
 NetworkDepthSensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
                                                uint16_t payload_len) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Adsd3500WritePayloadCmd");
@@ -1080,21 +1082,22 @@ NetworkDepthSensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
@@ -1102,14 +1105,13 @@ NetworkDepthSensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
 aditof::Status
 NetworkDepthSensor::adsd3500_write_payload(uint8_t *payload,
                                            uint16_t payload_len) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Adsd3500WritePayload");
@@ -1120,34 +1122,34 @@ NetworkDepthSensor::adsd3500_write_payload(uint8_t *payload,
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
 
 aditof::Status NetworkDepthSensor::adsd3500_getInterruptandReset() {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Adsd3500GetInterruptAndReset");
@@ -1155,34 +1157,34 @@ aditof::Status NetworkDepthSensor::adsd3500_getInterruptandReset() {
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
 
 aditof::Status NetworkDepthSensor::adsd3500_reset() {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Adsd3500Reset");
@@ -1190,21 +1192,22 @@ aditof::Status NetworkDepthSensor::adsd3500_reset() {
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
@@ -1225,14 +1228,13 @@ aditof::Status NetworkDepthSensor::adsd3500_unregister_interrupt_callback(
 
 aditof::Status NetworkDepthSensor::adsd3500_get_status(int &chipStatus,
                                                        int &imagerStatus) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("Adsd3500GetStatus");
@@ -1240,24 +1242,25 @@ aditof::Status NetworkDepthSensor::adsd3500_get_status(int &chipStatus,
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     chipStatus = net->recv_buff[m_sensorIndex].int32_payload(0);
     imagerStatus = net->recv_buff[m_sensorIndex].int32_payload(1);
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
@@ -1265,14 +1268,13 @@ aditof::Status NetworkDepthSensor::adsd3500_get_status(int &chipStatus,
 aditof::Status NetworkDepthSensor::initTargetDepthCompute(
     uint8_t *iniFile, uint16_t iniFileLength, uint8_t *calData,
     uint32_t calDataLength) {
-    using namespace aditof;
 
     Network *net = m_implData->handle.net;
     std::unique_lock<std::mutex> mutex_lock(m_implData->handle.net_mutex);
 
     if (!net->isServer_Connected()) {
         LOG(WARNING) << "Not connected to server";
-        return Status::UNREACHABLE;
+        return aditof::Status::UNREACHABLE;
     }
 
     net->send_buff[m_sensorIndex].set_func_name("InitTargetDepthCompute");
@@ -1286,21 +1288,22 @@ aditof::Status NetworkDepthSensor::initTargetDepthCompute(
 
     if (net->SendCommand() != 0) {
         LOG(WARNING) << "Send Command Failed";
-        return Status::INVALID_ARGUMENT;
+        return aditof::Status::INVALID_ARGUMENT;
     }
 
     if (net->recv_server_data() != 0) {
         LOG(WARNING) << "Receive Data Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
     if (net->recv_buff[m_sensorIndex].server_status() !=
         payload::ServerStatus::REQUEST_ACCEPTED) {
         LOG(WARNING) << "API execution on Target Failed";
-        return Status::GENERIC_ERROR;
+        return aditof::Status::GENERIC_ERROR;
     }
 
-    Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+    aditof::Status status =
+        static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
     return status;
 }
@@ -1336,10 +1339,11 @@ void NetworkDepthSensor::checkForServerUpdates() {
 }
 
 aditof::Status LOG(WARNING) << "API execution on Target Failed";
-return Status::GENERIC_ERROR;
+return aditof::Status::GENERIC_ERROR;
 }
 
-Status status = static_cast<Status>(net->recv_buff[m_sensorIndex].status());
+aditof::Status status =
+    static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
 
 return status;
 }
