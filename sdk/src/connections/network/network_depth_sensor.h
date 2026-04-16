@@ -93,7 +93,6 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface {
     virtual aditof::Status setDepthComputeParams(
         const std::map<std::string, std::string> &params) override;
 
-
     aditof::Status getIniParamsArrayForMode(int mode,
                                             std::string &iniStr) override;
 
