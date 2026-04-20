@@ -10,6 +10,7 @@ csv_file=""
 final_test_results_path=""
 force_build=false
 force_cleanup=false
+repo=""
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -34,11 +35,16 @@ while [[ $# -gt 0 ]]; do
             force_cleanup=true
             shift
             ;;
+        --repo)
+            repo="$2"
+            shift 2
+            ;;
         -h|--help)
-            printf '%s\n' "Usage: $0 -f|--file CSV_FILE -o|--output PATH [-r|--repeat COUNT] [-b|--build] [-c|--cleanup]"
+            printf '%s\n' "Usage: $0 -f|--file CSV_FILE -o|--output PATH [-r|--repeat COUNT] [--repo NAME] [-b|--build] [-c|--cleanup]"
             printf '%s\n' "  -f, --file CSV_FILE    CSV test list file (required)"
             printf '%s\n' "  -o, --output PATH      Output folder for final results script (required)"
             printf '%s\n' "  -r, --repeat COUNT     Number of times to run tests (default: 1)"
+            printf '%s\n' "      --repo NAME        Repository name: 'adcam' or 'libaditof' (required)"
             printf '%s\n' "  -b, --build            Force rebuild of Docker container even if it exists"
             printf '%s\n' "  -c, --cleanup          Force cleanup of Docker container on exit"
             printf '%s\n' "  -h, --help             Show this help message"
@@ -51,6 +57,20 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Check if repo is specified
+if [ -z "$repo" ]; then
+    echo "Error: repository name is required. Use --repo to specify 'adcam' or 'libaditof'."
+    echo "Use -h or --help for usage information"
+    exit 1
+fi
+
+# Validate repo value
+if [ "$repo" != "adcam" ] && [ "$repo" != "libaditof" ]; then
+    echo "Error: invalid repository name '$repo'. Must be either 'adcam' or 'libaditof'."
+    echo "Use -h or --help for usage information"
+    exit 1
+fi
 
 # Check if CSV file was provided
 if [[ -z "$csv_file" ]]; then
@@ -149,7 +169,7 @@ SCRIPT_EOF
 
 # Use pushd/popd to return automatically, and print results path on exit
 pushd "$script_dir/docker" > /dev/null
-trap 'exec 1>&3 2>&4;print_results_path;[[ "$force_cleanup" == "true" ]] && ./cleanup.sh > /dev/null; popd > /dev/null;' EXIT
+trap 'exec 1>&3 2>&4;print_results_path;[[ "$force_cleanup" == "true" ]] && ./container_delete.sh > /dev/null; popd > /dev/null;' EXIT
 
 # Save original stdout and stderr
 exec 3>&1 4>&2
@@ -165,11 +185,11 @@ if ! docker image inspect "$IMAGE_TAG" >/dev/null 2>&1 || [[ "$force_build" == "
 		printf '%s\n' "Force build requested, rebuilding Docker container..."
 	fi
 	# Cleanup previous artifacts
-	./cleanup.sh
+	./container_delete.sh
 
-	# Build the container (compilation happens inside build.sh)
+	# Build the container (compilation happens inside container_build.sh )
 	set +e
-	./build.sh -l ~/dev/libs/
+	./container_build.sh  -l ~/dev/libs/ --repo "$repo"
 	BUILD_RC=$?
 	set -e
 else
@@ -194,5 +214,5 @@ exec 1>&3 2>&4
 exec > >(tee -a "$script_log_libaditof") 2>&1
 
 # If build succeeded, run tests
-printf '%b\n' "Test executing: ./run_tests.sh -f ${csv_file} -o ${output_path} -n ${repeat_count}\n"
-./run_tests.sh -f "$csv_file" -o ${output_path} -n ${repeat_count}
+printf '%b\n' "Test executing: ./container_run_tests.sh -f ${csv_file} -o ${output_path} -n ${repeat_count}\n"
+./container_run_tests.sh -f "$csv_file" -o ${output_path} -n ${repeat_count}
