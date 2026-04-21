@@ -678,17 +678,45 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             m_depthSensor->setControl("lensScatterCompensationEnabled", "0");
         }
 
-        // Apply VGA rotation setting from JSON config
-        auto rotationIt = m_iniKeyValPairs.find("enableRotation");
-        if (rotationIt != m_iniKeyValPairs.end()) {
-            m_depthSensor->setControl("enableRotation", rotationIt->second);
-        }
-
         status = m_depthSensor->setMode(mode);
         if (status != Status::OK) {
             LOG(WARNING) << "Failed to set frame type";
             return status;
         }
+
+        // Apply VGA rotation setting
+        // ADTF3066: rotation enabled by default; only override if user explicitly loaded a JSON
+        // Other imagers: rotation disabled by default; respect JSON if present
+        std::string rotationValue;
+        auto rotationIt = m_iniKeyValPairs.find("enableRotation");
+
+        if (m_imagerType == aditof::ImagerType::ADTF3066) {
+            if (m_userJsonLoaded && rotationIt != m_iniKeyValPairs.end()) {
+                // User explicitly loaded JSON - respect their setting
+                rotationValue = rotationIt->second;
+                LOG(INFO) << "ADTF3066 rotation overridden by user JSON: "
+                          << rotationValue;
+            } else {
+                // Default: enabled for ADTF3066
+                rotationValue = "1";
+                m_iniKeyValPairs["enableRotation"] = rotationValue;
+                m_depth_params_map[mode] = m_iniKeyValPairs;
+                LOG(INFO) << "ADTF3066 rotation enabled by default";
+            }
+        } else {
+            if (rotationIt != m_iniKeyValPairs.end()) {
+                rotationValue = rotationIt->second;
+                LOG(INFO) << "Rotation from JSON config: " << rotationValue;
+            } else {
+                rotationValue = "0";
+                m_iniKeyValPairs["enableRotation"] = rotationValue;
+                m_depth_params_map[mode] = m_iniKeyValPairs;
+                LOG(INFO) << "Rotation using default: disabled";
+            }
+        }
+
+        // Always apply the rotation control after setMode
+        m_depthSensor->setControl("enableRotation", rotationValue);
 
         status = m_depthSensor->getModeDetails(mode, m_modeDetailsCache);
         if (status != Status::OK) {
@@ -774,9 +802,18 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         }
 
         // Store the frame details in camera details
+        // When 90° rotation is enabled, the pixel data is transposed:
+        // the SDK buffer layout becomes H×W, so report swapped dimensions.
+        bool rotationEnabled = (rotationValue == "1");
+        uint32_t reportedWidth = m_modeDetailsCache.baseResolutionWidth;
+        uint32_t reportedHeight = m_modeDetailsCache.baseResolutionHeight;
+        if (rotationEnabled) {
+            std::swap(reportedWidth, reportedHeight);
+        }
+
         m_details.mode = mode;
-        m_details.frameType.width = m_modeDetailsCache.baseResolutionWidth;
-        m_details.frameType.height = m_modeDetailsCache.baseResolutionHeight;
+        m_details.frameType.width = reportedWidth;
+        m_details.frameType.height = reportedHeight;
         m_details.frameType.totalCaptures = 1;
         m_details.frameType.dataDetails.clear();
         // Use m_modeDetailsCache.frameContent (updated) not (*modeIt).frameContent (stale)
@@ -787,8 +824,8 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
             FrameDataDetails fDataDetails;
             fDataDetails.type = item;
-            fDataDetails.width = m_modeDetailsCache.baseResolutionWidth;
-            fDataDetails.height = m_modeDetailsCache.baseResolutionHeight;
+            fDataDetails.width = reportedWidth;
+            fDataDetails.height = reportedHeight;
             fDataDetails.subelementSize = sizeof(uint16_t);
             fDataDetails.subelementsPerElement = 1;
 
@@ -2556,6 +2593,7 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
 
     assert(!m_isOffline);
 
+    m_userJsonLoaded = true;
     m_depth_params_map.clear();
 
     // Parse json

@@ -1071,10 +1071,13 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         uint8_t bitsInConf =
             skipToFiProcessing ? 0 : m_bitsInConf[type.modeNumber];
 
+        bool isADSD3100 =
+            (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3100);
+
         status = m_bufferProcessor->setVideoProperties(
             type.baseResolutionWidth, type.baseResolutionHeight,
             type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
-            bitsInAB, bitsInConf, skipToFiProcessing);
+            bitsInAB, bitsInConf, skipToFiProcessing, isADSD3100);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             goto cleanup_on_error;
@@ -2413,6 +2416,7 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
         m_implData->fw_ver = std::string((char *)(fwData), 4);
 
         uint16_t readValue = 0;
+        uint16_t revision_ver = 0;
         int majorVersion = m_implData->fw_ver.at(0);
         if (majorVersion ==
             0) { // 0 means beta version, so version start at position 1
@@ -2420,6 +2424,7 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
         }
         if (majorVersion > 3) {
             status = adsd3500_read_cmd(0x0032, &readValue);
+            status = adsd3500_read_cmd(0x0115, &revision_ver);
         } else {
             status = Status::GENERIC_ERROR;
         }
@@ -2449,30 +2454,40 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
             } // switch (ccb_version)
 
             uint8_t imager_version = (readValue & 0xFF00) >> 8;
+            revision_ver = revision_ver & 0x3;
+            imager_version = (revision_ver == 2)
+                                 ? (imager_version + revision_ver)
+                                 : imager_version;
             switch (imager_version) {
             case 1: {
                 m_implData->imagerType = SensorImagerType::IMAGER_ADSD3100;
                 m_modeSelector.setControl("imagerType", "adsd3100");
+                LOG(INFO) << "Detected imager: ADSD3100";
                 break;
             }
             case 2: {
-                m_implData->imagerType = SensorImagerType::IMAGER_ADSD3030;
-                m_modeSelector.setControl("imagerType", "adsd3030");
+                m_implData->imagerType = SensorImagerType::IMAGER_ADTF3066;
+                m_modeSelector.setControl("imagerType", "adtf3030");
+                LOG(INFO) << "Detected imager: ADSD3030";
                 break;
             }
             case 3: {
                 m_implData->imagerType = SensorImagerType::IMAGER_ADTF3080;
                 m_modeSelector.setControl("imagerType", "adtf3080");
+                LOG(INFO) << "Detected imager: ADTF3080";
                 break;
             }
             case 4: {
-                m_implData->imagerType = SensorImagerType::IMAGER_ADTF3066;
+                m_implData->imagerType = SensorImagerType::IMAGER_ADSD3030;
                 m_modeSelector.setControl("imagerType", "adtf3066");
+                LOG(INFO) << "Detected imager: ADTF3066";
                 break;
             }
             default: {
-                LOG(WARNING) << "Unknown imager type read from ADSD3500: "
-                             << imager_version;
+                LOG(WARNING) << "Unknown imager type read from ADSD3500: 0x"
+                             << std::hex << static_cast<int>(imager_version)
+                             << std::dec << " (register 0x0032 = 0x" << std::hex
+                             << readValue << std::dec << ")";
             }
             } // switch (imager_version)
         } else {
