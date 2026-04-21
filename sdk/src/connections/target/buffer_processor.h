@@ -134,7 +134,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
                                       int modeNumber, uint8_t bitsInAB,
                                       uint8_t bitsInConf,
                                       bool isRawBypass = false,
-                                      bool isADSD3100= false);
+                                      bool isADSD3100 = false);
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
@@ -250,8 +250,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
         m_lensScatterCompensationEnabled; // When true, raw bypass uses TofiCompute
     bool
         m_needsRotation; // When true, rotate frames 90 degrees clockwise (for ADTF3080)
-    bool
-        m_isADSD3100; // True for ADSD3100 imager
+    bool m_isADSD3100; // True for ADSD3100 imager
 
   public:
     // Stream record and playback support
