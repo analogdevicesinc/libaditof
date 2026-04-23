@@ -1338,16 +1338,6 @@ void NetworkDepthSensor::checkForServerUpdates() {
     }
 }
 
-aditof::Status LOG(WARNING) << "API execution on Target Failed";
-return aditof::Status::GENERIC_ERROR;
-}
-
-aditof::Status status =
-    static_cast<aditof::Status>(net->recv_buff[m_sensorIndex].status());
-
-return status;
-}
-
 aditof::Status
 NetworkDepthSensor::getIniParamsArrayForMode(int mode, std::string &iniStr) {
 
