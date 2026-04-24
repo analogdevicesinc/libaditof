@@ -655,6 +655,11 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         }
 
         m_iniKeyValPairs = m_depth_params_map[mode];
+
+        // Set target mode on sensor BEFORE configureSensorModeDetails() so that
+        // runtime config bit depths (abBits, confidenceBits) update the correct
+        // mode's m_bitsInAB[]/m_bitsInConf[] arrays for buffer allocation
+        m_depthSensor->setControl("targetModeNumber", std::to_string(mode));
         configureSensorModeDetails();
 
         // Apply raw bypass mode setting before configuring V4L2 driver

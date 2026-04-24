@@ -236,6 +236,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_controls.emplace("availableCCBM", "0");
     m_controls.emplace("lensScatterCompensationEnabled", "0");
     m_controls.emplace("enableRotation", "0");
+    m_controls.emplace("targetModeNumber", "-1");
 
     // Define the commands that correspond to the sensor controls
     m_implData->controlsCommands["abAveraging"] = CTRL_AB_AVG;
@@ -811,6 +812,8 @@ aditof::Status Adsd3500Sensor::setMode(const uint8_t &mode) {
     }
 
     m_implData->modeDetails = modeTable;
+    // Reset target mode now that setMode has used the updated bit arrays
+    m_targetModeNumber = -1;
     return aditof::Status::OK;
 }
 
@@ -1272,6 +1275,16 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
         return Status::OK;
     }
 
+    // Set the target mode for subsequent bit depth updates from runtime config.
+    // Must be called before configureSensorModeDetails() so that abBits/
+    // confidenceBits controls update the correct mode's arrays.
+    if (control == "targetModeNumber") {
+        m_targetModeNumber = (int8_t)std::stoi(value);
+        LOG(INFO) << "Target mode for runtime bit config set to "
+                  << (int)m_targetModeNumber;
+        return Status::OK;
+    }
+
     std::vector<std::string> convertor = {"0",  "4",  "8", "10",
                                           "12", "14", "16"};
 
@@ -1293,12 +1306,32 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
             return Status::INVALID_ARGUMENT;
         }
 
+        // Determine which mode's bit arrays to update:
+        // Use m_targetModeNumber if set (runtime config before setMode),
+        // otherwise fall back to current mode
+        uint8_t modeNum = (m_targetModeNumber >= 0)
+                              ? static_cast<uint8_t>(m_targetModeNumber)
+                              : m_implData->modeDetails.modeNumber;
+        uint8_t actualBits = (uint8_t)std::stoi(convertor[bitIndex]);
+
         if (control == "phaseDepthBits") {
             m_modeSelector.setControl("depthBits", convertor[bitIndex]);
         } else if (control == "abBits") {
             m_modeSelector.setControl("abBits", convertor[bitIndex]);
+            // Update runtime bit config so setMode/setVideoProperties uses correct value
+            if (modeNum < m_bitsInAB.size()) {
+                m_bitsInAB[modeNum] = actualBits;
+                LOG(INFO) << "Runtime config: m_bitsInAB[" << (int)modeNum
+                          << "] = " << (int)actualBits;
+            }
         } else if (control == "confidenceBits") {
             m_modeSelector.setControl("confBits", convertor[bitIndex]);
+            // Update runtime bit config so setMode/setVideoProperties uses correct value
+            if (modeNum < m_bitsInConf.size()) {
+                m_bitsInConf[modeNum] = actualBits;
+                LOG(INFO) << "Runtime config: m_bitsInConf[" << (int)modeNum
+                          << "] = " << (int)actualBits;
+            }
         }
     }
 
