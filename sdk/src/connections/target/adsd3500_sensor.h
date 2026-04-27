@@ -223,7 +223,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     uint16_t m_chipId;
     bool m_lensScatterEnabled = false;
     bool m_rotationEnabled = false;
-    int8_t m_targetModeNumber = -1; 
+    int8_t m_targetModeNumber = -1;
 
   public:
     // Stream record and playback support
