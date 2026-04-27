@@ -24,36 +24,11 @@
 
 /**
  * @file adsd3500_sensor.cpp
- * @brief ADSD3500 sensor driver with SOLID refactoring in progress (2,275 lines)
+ * @brief ADSD3500 dual ISP sensor driver for ADTF3175D Time-of-Flight imager
  *
- * REFACTORING STATUS: Partially refactored with extracted responsibilities.
- * New SOLID-compliant classes delegate specific concerns:
- *
- * EXTRACTED RESPONSIBILITIES (INTEGRATED):
- * - Adsd3500Recorder (adsd3500_recorder.h/cpp, 128 lines)
- *   Methods: startRecording(), stopRecording() [DELEGATED ✓]
- *   Responsibility: Frame recording and playback operations
- *
- * - Adsd3500ModeManager (adsd3500_mode_manager.h/cpp, 205 lines)
- *   Methods: setMode(), getCurrentMode() [CREATED, pending full integration]
- *   Responsibility: Mode configuration, format setup, buffer allocation
- *
- * - Adsd3500Device (adsd3500_device.h/cpp, 187 lines)
- *   Methods: open(), close(), getVideoDriver() [CREATED, pending integration]
- *   Responsibility: Device lifecycle, V4L2 initialization
- *
- * - Adsd3500CommandImpl (adsd3500_command_impl.h/cpp, 68 lines)
- *   Methods: readCommand(), writeCommand(), readPayload(), writePayload()
- *   Responsibility: Protocol command operations [CREATED, pending integration]
- *
- * REMAINING RESPONSIBILITIES (To extract):
- * - Device initialization (open() - 370 lines)
- * - Mode switching (setMode() - 280 lines)
- * - Protocol commands (adsd3500_read_cmd, etc. - delegated to ProtocolManager)
- *
- * INTEGRATION PROGRESS: 2/4 classes actively used (Recorder, ModeManager initialized)
- *
- * This file maintains backward compatibility while gradually migrating to SOLID design.
+ * Implements DepthSensorInterface for the ADSD3500 chip, providing V4L2-based
+ * frame acquisition, mode configuration, protocol commands, and recording/playback.
+ * Coordinates multiple subsystems via specialized manager classes.
  */
 #include "adsd3500_sensor.h"
 #include "../cameras/itof-camera/adsd3500_registers.h"
@@ -241,8 +216,6 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_sensorDetails.id = driverPath;
     m_sensorConfiguration = "standard";
 
-    // Controls are now managed by SensorControlRegistry (initialized in its constructor)
-    // V4L2 control command IDs are defined below
     m_implData->controlsCommands["abAveraging"] = CTRL_AB_AVG;
     m_implData->controlsCommands["depthEnable"] = CTRL_DEPTH_EN;
     m_implData->controlsCommands["phaseDepthBits"] = CTRL_PHASE_DEPTH_BITS;
@@ -250,10 +223,7 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_implData->controlsCommands["confidenceBits"] = CTRL_CONFIDENCE_BITS;
 
     m_bufferProcessor = new BufferProcessor();
-
-    // Initialize SOLID refactoring classes
     m_recorder = std::make_unique<aditof::Adsd3500Recorder>(m_bufferProcessor);
-    m_modeManager = std::make_unique<aditof::Adsd3500ModeManager>();
 }
 
 /**
@@ -534,10 +504,8 @@ aditof::Status Adsd3500Sensor::open() {
                 status = Status::GENERIC_ERROR;
                 goto cleanup_on_open_error;
             }
-            LOG(INFO) << "Initialized VideoDeviceDriver abstraction layer";
         }
 
-        // Initialize subdevice driver for control operations
         if (!m_subdeviceDriver) {
             m_subdeviceDriver = std::make_unique<V4L2VideoDeviceDriver>();
             Status subdevStatus =
@@ -548,7 +516,6 @@ aditof::Status Adsd3500Sensor::open() {
                 status = Status::GENERIC_ERROR;
                 goto cleanup_on_open_error;
             }
-            LOG(INFO) << "Initialized SubdeviceDriver abstraction layer";
         }
 
         //Check chip status and reset if there are any errors.
@@ -719,14 +686,14 @@ aditof::Status Adsd3500Sensor::start() {
         for (unsigned int i = 0; i < dev->nVideoBuffers; i++) {
             status = m_videoDriver->queueBuffer(i);
             if (status != Status::OK) {
-                LOG(WARNING) << "Queue buffer error via VideoDeviceDriver";
+                LOG(WARNING) << "Queue buffer error";
                 return Status::GENERIC_ERROR;
             }
         }
 
         status = m_videoDriver->streamOn();
         if (status != Status::OK) {
-            LOG(WARNING) << "VIDIOC_STREAMON error via VideoDeviceDriver";
+            LOG(WARNING) << "VIDIOC_STREAMON error";
             return Status::GENERIC_ERROR;
         }
 
@@ -763,7 +730,7 @@ aditof::Status Adsd3500Sensor::stop() {
 
             status = m_videoDriver->streamOff();
             if (status != Status::OK) {
-                LOG(WARNING) << "VIDIOC_STREAMOFF error via VideoDeviceDriver";
+                LOG(WARNING) << "VIDIOC_STREAMOFF error";
                 return Status::GENERIC_ERROR;
             }
 
@@ -973,10 +940,9 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         ctrl.id = CTRL_SET_MODE;
         ctrl.value = type.modeNumber;
 
-        // Set mode using SubdeviceDriver
         status = m_subdeviceDriver->setControl(CTRL_SET_MODE, type.modeNumber);
         if (status != Status::OK) {
-            LOG(ERROR) << "Setting Mode error via SubdeviceDriver";
+            LOG(ERROR) << "Setting Mode error";
             goto cleanup_on_error;
         }
 
@@ -1009,11 +975,9 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             dev->videoBuffers = nullptr;
             dev->nVideoBuffers = 0;
 
-            // Release buffers using VideoDeviceDriver
             status = m_videoDriver->requestBuffers(0, V4L2_MEMORY_MMAP);
             if (status != Status::OK) {
-                LOG(WARNING) << "VIDIOC_REQBUFS release error via "
-                                "VideoDeviceDriver";
+                LOG(WARNING) << "VIDIOC_REQBUFS release error";
                 goto cleanup_on_error;
             }
         }
@@ -1027,7 +991,6 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
                               .getV4L2PixelFormat8bit();
         }
 
-        /* Set the frame format in the driver using VideoDeviceDriver */
         VideoFormat videoFormat;
         videoFormat.pixelFormat = pixelFormat;
         // Raw bypass mode: frameWidthInBytes is in bytes (pixels × 2), convert to pixels
@@ -1043,7 +1006,7 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
         status = m_videoDriver->setFormat(videoFormat);
         if (status != Status::OK) {
-            LOG(WARNING) << "Setting Pixel Format error via VideoDeviceDriver";
+            LOG(WARNING) << "Setting Pixel Format error";
             goto cleanup_on_error;
         }
 
@@ -1061,13 +1024,12 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             m_implData->modeDetails.frameHeightInBytes = videoFormat.height;
         }
 
-        /* Allocate the video buffers in the driver using VideoDeviceDriver */
         unsigned int requestedBufferCount =
             m_capturesPerFrame + EXTRA_BUFFERS_COUNT;
         status = m_videoDriver->requestBuffers(requestedBufferCount,
                                                V4L2_MEMORY_MMAP);
         if (status != Status::OK) {
-            LOG(WARNING) << "VIDIOC_REQBUFS error via VideoDeviceDriver";
+            LOG(WARNING) << "VIDIOC_REQBUFS error";
             goto cleanup_on_error;
         }
 
@@ -1081,15 +1043,13 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
         for (dev->nVideoBuffers = 0; dev->nVideoBuffers < requestedBufferCount;
              dev->nVideoBuffers++) {
-            // Query buffer using VideoDeviceDriver to get mapping details
             VideoBufferInfo bufferInfo;
             status = m_videoDriver->queryBuffer(dev->nVideoBuffers, bufferInfo);
             if (status != Status::OK) {
-                LOG(WARNING) << "queryBuffer error via VideoDeviceDriver";
+                LOG(WARNING) << "queryBuffer error";
                 goto cleanup_on_error;
             }
 
-            // Map buffer using info from VideoDeviceDriver
             dev->videoBuffers[dev->nVideoBuffers].start =
                 mmap(NULL, bufferInfo.length, PROT_READ | PROT_WRITE,
                      MAP_SHARED, dev->fd, bufferInfo.offset);
@@ -1397,13 +1357,12 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
     if (control == "netlinktest") {
         return Status::OK;
     }
-    // Send the command that sets the control value using SubdeviceDriver
+    // Send the command that sets the control value
     int controlValue = std::stoi(value);
     status = m_subdeviceDriver->setControl(
         m_implData->controlsCommands[control], controlValue);
     if (status != Status::OK) {
-        LOG(WARNING) << "Failed to set control: " << control
-                     << " via SubdeviceDriver";
+        LOG(WARNING) << "Failed to set control: " << control;
         return Status::GENERIC_ERROR;
     }
 
@@ -1447,13 +1406,12 @@ aditof::Status Adsd3500Sensor::getControl(const std::string &control,
         return m_controlRegistry.getControl(control, value);
     }
 
-    // For V4L2 controls, read from hardware using SubdeviceDriver
+    // For V4L2 controls, read from hardware
     int controlValue = 0;
     Status status = m_subdeviceDriver->getControl(
         m_implData->controlsCommands[control], controlValue);
     if (status != Status::OK) {
-        LOG(WARNING) << "Failed to get control: " << control
-                     << " via SubdeviceDriver";
+        LOG(WARNING) << "Failed to get control: " << control;
         return Status::GENERIC_ERROR;
     }
     value = std::to_string(controlValue);
