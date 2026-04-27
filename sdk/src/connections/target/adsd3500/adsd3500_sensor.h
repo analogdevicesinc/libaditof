@@ -23,10 +23,7 @@
  */
 #include "aditof/depth_sensor_interface.h"
 #include "adsd3500_chip_config_manager.h"
-#include "adsd3500_command_interface.h"
-#include "adsd3500_device.h"
 #include "adsd3500_interrupt_manager.h"
-#include "adsd3500_mode_manager.h"
 #include "adsd3500_mode_selector.h"
 #include "adsd3500_protocol_manager.h"
 #include "adsd3500_recorder.h"
@@ -282,12 +279,6 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
         m_subdeviceDriver; // Abstracts V4L2 subdevice operations
 
     // SOLID refactoring: Extracted responsibilities
-    std::unique_ptr<aditof::Adsd3500Device>
-        m_device; // Device lifecycle management (open/close/init)
     std::unique_ptr<aditof::Adsd3500Recorder>
         m_recorder; // Recording and playback operations
-    std::unique_ptr<aditof::Adsd3500ModeManager>
-        m_modeManager; // Mode configuration and switching
-    std::unique_ptr<aditof::Adsd3500CommandInterface>
-        m_commandInterface; // Protocol command operations
 };
