@@ -22,10 +22,15 @@
  * SOFTWARE.
  */
 #include "aditof/depth_sensor_interface.h"
+#include "adsd3500_chip_config_manager.h"
+#include "adsd3500_interrupt_manager.h"
 #include "adsd3500_mode_selector.h"
+#include "adsd3500_protocol_manager.h"
 #include "buffer_processor.h"
 #include "connections/target/v4l_buffer_access_interface.h"
+#include "ini_config_manager.h"
 #include "sensor-tables/ini_file_definitions.h"
+#include "v4l2_buffer_manager.h"
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -75,6 +80,22 @@ struct IniTableEntry {
     uint16_t spare7;
     uint16_t spare8;
     uint16_t modeNumber;
+};
+
+enum class SensorImagerType {
+    IMAGER_UNKNOWN,
+    IMAGER_ADSD3100,
+    IMAGER_ADSD3030,
+    IMAGER_ADTF3080,
+    IMAGER_ADTF3066
+};
+
+enum class CCBVersion {
+    CCB_UNKNOWN,
+    CCB_VERSION0,
+    CCB_VERSION1,
+    CCB_VERSION2,
+    CCB_VERSION3
 };
 
 class Adsd3500Sensor : public aditof::DepthSensorInterface,
@@ -248,4 +269,14 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::vector<std::streampos> m_frameIndex;
     std::recursive_mutex
         m_adsd3500_mutex; // Protects ADSD3500 command/payload operations (recursive for nested calls)
+    std::unique_ptr<Adsd3500ProtocolManager>
+        m_protocolManager; // Manages chip communication protocol
+    std::unique_ptr<Adsd3500ChipConfigManager>
+        m_chipConfigManager; // Manages chip configuration discovery
+    std::unique_ptr<V4L2BufferManager>
+        m_bufferManager; // Manages V4L2 buffer operations
+    std::unique_ptr<IniConfigManager>
+        m_iniConfigManager; // Manages INI configuration parameters
+    std::unique_ptr<Adsd3500InterruptManager>
+        m_interruptManager; // Manages hardware interrupt callbacks
 };
