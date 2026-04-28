@@ -347,8 +347,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             return Status::INVALID_ARGUMENT;
         }
 
-        m_iniKeyValPairs = m_depth_params_map[mode];
-
         // Set target mode on sensor BEFORE configureSensorModeDetails() so that
         // runtime config bit depths (abBits, confidenceBits) update the correct
         // mode's m_bitsInAB[]/m_bitsInConf[] arrays for buffer allocation
@@ -1384,9 +1382,6 @@ void CameraItof::dropFirstFrame(bool dropFrame) {
     m_config->setDropFirstFrame(dropFrame);
 }
 
-/**
- * @brief Applies a sensor configuration string to the underlying depth sensor.
- *
 /**
  * @brief Sets the FSYNC toggle mode (master vs. slave operation).
  *
