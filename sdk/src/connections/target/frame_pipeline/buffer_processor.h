@@ -137,15 +137,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
                                       int WidthInBytes, int HeightInBytes,
                                       int modeNumber, uint8_t bitsInAB,
                                       uint8_t bitsInConf,
-<<<<<<< HEAD:sdk/src/connections/target/buffer_processor.h
                                       bool isRawBypass = false,
-                                      bool isADSD3100 = false);
-=======
-                                      bool isRawBypass = false) override;
-    aditof::Status setVideoProperties(const aditof::FrameConfiguration &config,
-                                      int WidthInBytes,
-                                      int HeightInBytes) override;
->>>>>>> c5e45d26 (refactor(sdk): apply SOLID principles and fix resource cleanup warnings):sdk/src/connections/target/frame_pipeline/buffer_processor.h
+                                      bool isADSD3100 = false) override;
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,

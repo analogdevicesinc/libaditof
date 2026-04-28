@@ -27,8 +27,6 @@
 #include <aditof/status_definitions.h>
 #include <cstdint>
 
-#include "frame_configuration.h"
-
 // Forward declarations
 struct VideoDev;
 class TofiConfig;
@@ -82,27 +80,15 @@ class BufferProcessorInterface {
      * @param bitsInAB Bit depth for AB (amplitude/brightness) data
      * @param bitsInConf Bit depth for confidence data
      * @param isRawBypass True if ISP is bypassing depth computation
+     * @param isADSD3100 True if using ADSD3100 imager (affects processing)
      * @return Status::OK on success, Status::GENERIC_ERROR on allocation failure
      */
     virtual Status setVideoProperties(int frameWidth, int frameHeight,
                                       int WidthInBytes, int HeightInBytes,
                                       int modeNumber, uint8_t bitsInAB,
                                       uint8_t bitsInConf,
-                                      bool isRawBypass = false) = 0;
-
-    /**
-     * @brief Configures video properties using FrameConfiguration value object.
-     *
-     * Type-safe alternative to parameter-based setVideoProperties.
-     * Provides compile-time validation of frame configuration.
-     *
-     * @param config Frame configuration value object
-     * @param WidthInBytes Raw frame width in bytes (stride)
-     * @param HeightInBytes Raw frame height in bytes
-     * @return Status::OK on success, Status::GENERIC_ERROR on allocation failure
-     */
-    virtual Status setVideoProperties(const FrameConfiguration &config,
-                                      int WidthInBytes, int HeightInBytes) = 0;
+                                      bool isRawBypass = false,
+                                      bool isADSD3100 = false) = 0;
 
     /**
      * @brief Configures ToFi depth computation properties.

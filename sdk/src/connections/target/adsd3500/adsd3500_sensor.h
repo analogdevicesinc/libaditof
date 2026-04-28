@@ -145,8 +145,6 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     virtual aditof::Status setDepthComputeParams(
         const std::map<std::string, std::string> &params) override;
     virtual aditof::Status
-    setSensorConfiguration(const std::string &sensorConf) override;
-    virtual aditof::Status
     getIniParamsArrayForMode(int mode, std::string &iniStr) override;
 
   public: // implements Adsd3500HardwareInterface
