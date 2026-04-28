@@ -129,6 +129,7 @@ class CalibrationManager {
         10 * 1024 * 1024; // 10 MB safety limit
 
     std::shared_ptr<DepthSensorInterface> m_depthSensor;
+    std::shared_ptr<Adsd3500HardwareInterface> m_adsd3500Hardware;
     std::string m_rawCCBData; // Raw Camera Calibration Block for non-ISP modes
     TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
     XYZTable m_xyzTable;

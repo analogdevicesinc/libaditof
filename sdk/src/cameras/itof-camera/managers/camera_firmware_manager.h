@@ -180,6 +180,7 @@ class CameraFirmwareManager {
 
   private:
     std::shared_ptr<DepthSensorInterface> m_depthSensor;
+    std::shared_ptr<Adsd3500HardwareInterface> m_adsd3500Hardware;
 
     static constexpr int FLASH_PAGE_SIZE = 256;   ///< Firmware packet size
     static constexpr int UPDATE_TIMEOUT_SEC = 60; ///< Max wait for completion

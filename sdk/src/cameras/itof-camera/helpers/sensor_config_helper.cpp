@@ -5,7 +5,7 @@
  * All rights reserved.
  */
 #include "sensor_config_helper.h"
-#include "camera_configuration.h"
+#include "../managers/camera_configuration.h"
 #include <aditof/log.h>
 
 using namespace aditof;

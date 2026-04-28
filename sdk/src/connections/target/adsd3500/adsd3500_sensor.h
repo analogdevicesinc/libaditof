@@ -103,6 +103,8 @@ enum class CCBVersion {
 };
 
 class Adsd3500Sensor : public aditof::DepthSensorInterface,
+                       public aditof::Adsd3500HardwareInterface,
+                       public aditof::RecordableInterface,
                        public aditof::V4lBufferAccessInterface,
                        public std::enable_shared_from_this<Adsd3500Sensor> {
   public:
@@ -111,7 +113,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
                    const std::string &captureDev);
     ~Adsd3500Sensor();
 
-  public:
+  public: // implements DepthSensorInterface
     virtual aditof::Status open() override;
     virtual aditof::Status start() override;
     virtual aditof::Status stop() override;
@@ -135,7 +137,19 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     getDetails(aditof::SensorDetails &details) const override;
     virtual aditof::Status getHandle(void **handle) override;
     virtual aditof::Status getName(std::string &name) const override;
+    virtual aditof::Status
+    initTargetDepthCompute(uint8_t *iniFile, uint16_t iniFileLength,
+                           uint8_t *calData, uint32_t calDataLength) override;
+    virtual aditof::Status
+    getDepthComputeParams(std::map<std::string, std::string> &params) override;
+    virtual aditof::Status setDepthComputeParams(
+        const std::map<std::string, std::string> &params) override;
+    virtual aditof::Status
+    setSensorConfiguration(const std::string &sensorConf) override;
+    virtual aditof::Status
+    getIniParamsArrayForMode(int mode, std::string &iniStr) override;
 
+  public: // implements Adsd3500HardwareInterface
     virtual aditof::Status adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
                                              unsigned int usDelay = 0) override;
     virtual aditof::Status
@@ -160,9 +174,12 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     virtual aditof::Status adsd3500_get_status(int &chipStatus,
                                                int &imagerStatus) override;
 
-  public: // implements V4lBufferAccessInterface
-    // Methods that give a finer control than getFrame()
-    // And worksif there is only one v4lbuffer (if many, then I don't know, maybe restructure this interface)
+  public: // implements RecordableInterface
+    aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
+                                  uint32_t paramSize) override;
+    aditof::Status stopRecording() override;
+
+  public: // V4lBufferAccessInterface implementation
     virtual aditof::Status waitForBuffer() override;
     virtual aditof::Status
     dequeueInternalBuffer(struct v4l2_buffer &buf) override;
@@ -173,20 +190,11 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     enqueueInternalBuffer(struct v4l2_buffer &buf) override;
     virtual aditof::Status
     getDeviceFileDescriptor(int &fileDescriptor) override;
-    virtual aditof::Status
-    initTargetDepthCompute(uint8_t *iniFile, uint16_t iniFileLength,
-                           uint8_t *calData, uint32_t calDataLength) override;
 
-  public:
+  public: // Interrupt handling
     aditof::Status adsd3500InterruptHandler(int signalValue);
-    virtual aditof::Status
-    getDepthComputeParams(std::map<std::string, std::string> &params) override;
-    virtual aditof::Status setDepthComputeParams(
-        const std::map<std::string, std::string> &params) override;
-    aditof::Status getIniParamsArrayForMode(int mode,
-                                            std::string &iniStr) override;
 
-  private:
+  private: // Private helper methods
     aditof::Status writeConfigBlock(const uint32_t offset);
     aditof::Status waitForBufferPrivate(struct VideoDev *dev = nullptr);
     aditof::Status dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
@@ -214,7 +222,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     aditof::Status
     createIniParams(std::vector<iniFileStruct> &iniFileStructList);
 
-  private:
+  private: // Internal implementation details
     struct ImplData;
     std::string m_sensorName;
     aditof::SensorDetails m_sensorDetails;
@@ -250,17 +258,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     bool m_rotationEnabled = false;
     int8_t m_targetModeNumber = -1;
 
-  public:
-    // Stream record and playback support (delegated to Adsd3500Recorder)
-    aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
-                                  uint32_t paramSize) override;
-    aditof::Status stopRecording() override;
-    aditof::Status setPlaybackFile(const std::string filePath) override;
-    aditof::Status stopPlayback() override;
-    aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) override;
-    aditof::Status getFrameCount(uint32_t &frameCount) override;
-
-  private:
+  private: // Manager instances (SOLID refactoring)
     std::recursive_mutex
         m_adsd3500_mutex; // Protects ADSD3500 command/payload operations (recursive for nested calls)
     std::unique_ptr<Adsd3500ProtocolManager>
@@ -278,7 +276,6 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::unique_ptr<aditof::VideoDeviceDriver>
         m_subdeviceDriver; // Abstracts V4L2 subdevice operations
 
-    // SOLID refactoring: Extracted responsibilities
     std::unique_ptr<aditof::Adsd3500Recorder>
-        m_recorder; // Recording and playback operations
+        m_recorder; // Recording operations (implements RecordableInterface portion)
 };

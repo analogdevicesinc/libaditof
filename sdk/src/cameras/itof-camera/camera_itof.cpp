@@ -24,11 +24,13 @@
 #include "camera_itof.h"
 #include "aditof/frame.h"
 #include "aditof/frame_operations.h"
-#include "adsd3500_registers.h"
-#include "depth_parameter_mapper.h"
+#include "hardware/adsd3500_registers.h"
+#include "helpers/depth_parameter_mapper.h"
 #include "utils_ini.h"
 
 #include "../../platform/platform_impl.h"
+#include "aditof/adsd3500_hardware_interface.h"
+#include "aditof/playback_interface.h"
 #include "aditof/utils.h"
 #include "crc.h"
 #include "tofi/algorithms.h"
@@ -94,10 +96,19 @@ CameraItof::CameraItof(
           std::make_unique<aditof::CameraFirmwareManager>(depthSensor)),
       m_frameAcqManager(std::make_unique<aditof::CameraFrameAcquisitionManager>(
           depthSensor, m_calibrationMgr.get(), m_config.get())),
-      m_depthSensor(depthSensor), m_devStarted(false), m_devStreaming(false),
-      m_adsd3500Enabled(false), m_isOffline(false), m_xyzEnabled(true),
-      m_xyzSetViaApi(false), m_cameraFps(0), m_modesVersion(0),
+      m_depthSensor(depthSensor), m_adsd3500Hardware(nullptr),
+      m_devStarted(false), m_devStreaming(false), m_adsd3500Enabled(false),
+      m_isOffline(false), m_xyzEnabled(true), m_xyzSetViaApi(false),
+      m_cameraFps(0), m_modesVersion(0),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFrameOnce(true) {
+
+    m_adsd3500Hardware =
+        std::dynamic_pointer_cast<aditof::Adsd3500HardwareInterface>(
+            depthSensor);
+
+    if (!m_adsd3500Hardware) {
+        LOG(WARNING) << "Sensor does not support ADSD3500 hardware interface";
+    }
 
     // Initialize DepthParameterMapper after camera is constructed (avoids circular dependency)
     m_depthParamMapper = std::make_unique<aditof::DepthParameterMapper>(this);
@@ -110,11 +121,6 @@ CameraItof::CameraItof(
     m_netLinkTest = netLinkTest;
     m_isOffline = false;
 
-    // Define some of the controls of this camera
-    // For now there are none. To add one use: m_controls.emplace("your_control_name", "default_control_value");
-    // And handle the control action in setControl()
-
-    // Check Depth Sensor
     if (!depthSensor) {
         LOG(WARNING) << "Invalid instance of a depth sensor";
         return;
@@ -175,26 +181,21 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
     Status status = Status::OK;
 
     if (m_isOffline) {
-        // Offline mode: prepare for playback from recorded file
         status = m_initManager->initializeOfflineMode();
         return status;
     }
 
-    // Online mode: initialize hardware
     if (!m_adsd3500Enabled) {
         LOG(ERROR) << "This usecase is no longer supported.";
         return Status::UNAVAILABLE;
     }
 
-    // Store config file path for later use
     m_initConfigFilePath = configFilepath;
 
-    // Optional netlink test
     if (!m_netLinkTest.empty()) {
         m_depthSensor->setControl("netlinktest", "1");
     }
 
-    // Delegate hardware initialization to the manager
     status = m_initManager->initializeOnlineMode(
         m_details, m_availableModes, m_availableSensorModeDetails, m_imagerType,
         m_adsd3500FwGitHash, configFilepath);
@@ -251,9 +252,13 @@ aditof::Status CameraItof::stop() {
     aditof::Status status = aditof::Status::OK;
 
     if (m_isOffline) {
-        status = m_depthSensor->stopPlayback();
-        if (status != aditof::Status::OK) {
-            LOG(INFO) << "Failed to stop playback of offline file!";
+        auto playbackInterface =
+            std::dynamic_pointer_cast<aditof::PlaybackInterface>(m_depthSensor);
+        if (playbackInterface) {
+            status = playbackInterface->stopPlayback();
+            if (status != aditof::Status::OK) {
+                LOG(INFO) << "Failed to stop playback of offline file!";
+            }
         }
     }
 
@@ -320,7 +325,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     Status status = Status::OK;
 
     if (m_isOffline) {
-        // Load playback header via RecordingManager
         status =
             m_recordingMgr->loadPlaybackHeader(m_modeDetailsCache, m_details);
         if (status != Status::OK) {
@@ -463,7 +467,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         uint16_t chipCmd = ADSD3500_CMD_MODE_SWITCH_BASE;
         chipCmd += mode;
-        status = m_depthSensor->adsd3500_write_cmd(
+        status = m_adsd3500Hardware->adsd3500_write_cmd(
             chipCmd, ADSD3500_CMD_MODE_SWITCH_PAYLOAD, 200000);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to switch mode in chip using host commands!";
@@ -527,7 +531,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_details.frameType.height = reportedHeight;
         m_details.frameType.totalCaptures = 1;
         m_details.frameType.dataDetails.clear();
-        // Use m_modeDetailsCache.frameContent (updated) not (*modeIt).frameContent (stale)
         for (const auto &item : m_modeDetailsCache.frameContent) {
             if (item == "xyz" && !m_xyzEnabled) {
                 continue;
@@ -841,7 +844,8 @@ aditof::Status CameraItof::adsd3500ResetIniParamsForMode(const uint16_t mode) {
 
     assert(!m_isOffline);
 
-    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_MODE_SELECT, mode);
+    status =
+        m_adsd3500Hardware->adsd3500_write_cmd(ADSD3500_REG_MODE_SELECT, mode);
 
     return status;
 }
@@ -930,7 +934,6 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
 aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     using namespace aditof;
 
-    // Delegate frame acquisition and processing to the frame acquisition manager
     return m_frameAcqManager->requestFrame(
         frame, index, m_details.frameType, m_modeDetailsCache, m_isOffline,
         m_pcmFrame, m_depthEnabled, m_abEnabled, m_confEnabled, m_xyzEnabled,
@@ -1097,7 +1100,7 @@ aditof::Status CameraItof::readSerialNumber(std::string &serialNumber,
 
     uint8_t serial[32] = {0};
 
-    status = m_depthSensor->adsd3500_read_payload_cmd(0x19, serial, 32);
+    status = m_adsd3500Hardware->adsd3500_read_payload_cmd(0x19, serial, 32);
     if (status != aditof::Status::OK) {
         LOG(ERROR) << "Failed to read serial number!";
         return status;
@@ -1215,112 +1218,7 @@ CameraItof::adsd3500UpdateFirmware(const std::string &fwFilePath) {
     using namespace aditof;
     assert(!m_isOffline);
 
-    // Delegate firmware update to the firmware manager
     return m_firmwareManager->updateFirmware(fwFilePath);
-}
-
-/**
- * @brief Reads the ADSD3500 CCB (Configuration Calibration Block) from sensor memory.
- *
- * Retrieves the configuration calibration block via payload read commands, with
- * automatic chunking and CRC validation. Includes safety limits to prevent
- * unbounded memory allocation.
- *
- * @param[out] ccb String populated with the CCB data (excluding 4-byte CRC trailer).
- *
- * @return aditof::Status::OK if CCB read successfully and CRC valid;
- *         aditof::Status::GENERIC_ERROR if header invalid, read fails, or CRC mismatch.
- *
- * @note This function asserts that the camera is not in offline mode.
- * @note Maximum CCB file size is 10 MB (safety limit).
- * @note The chip is automatically switched back to standard mode after reading.
- */
-aditof::Status CameraItof::readAdsd3500CCB(std::string &ccb) {
-    using namespace aditof;
-    Status status = Status::OK;
-
-    assert(!m_isOffline);
-
-    uint8_t ccbHeader[16] = {0};
-    ccbHeader[0] = 1;
-
-    //For this case adsd3500 will remain in burst mode
-    //A manuall switch to standard mode will be required at the end of the function
-    status = m_depthSensor->adsd3500_read_payload_cmd(0x13, ccbHeader, 16);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to get ccb command header";
-        return status;
-    }
-
-    uint16_t chunkSize;
-    uint32_t ccbFileSize;
-    uint32_t crcOfCCB;
-
-    memcpy(&chunkSize, ccbHeader + 1, 2);
-    memcpy(&ccbFileSize, ccbHeader + 4, 4);
-    memcpy(&crcOfCCB, ccbHeader + 12, 4);
-
-    // Validate header values to prevent division by zero and unbounded allocation
-    const uint32_t MAX_CCB_FILE_SIZE = 10 * 1024 * 1024; // 10 MB safety limit
-    if (chunkSize == 0 || ccbFileSize == 0 || ccbFileSize > MAX_CCB_FILE_SIZE) {
-        LOG(ERROR) << "Invalid CCB header: chunkSize=" << chunkSize
-                   << " fileSize=" << ccbFileSize;
-        return Status::GENERIC_ERROR;
-    }
-
-    uint16_t numOfChunks = ccbFileSize / chunkSize;
-    std::vector<uint8_t> ccbContent(ccbFileSize); // RAII: automatic cleanup
-
-    for (int i = 0; i < numOfChunks; i++) {
-        status = m_depthSensor->adsd3500_read_payload(
-            ccbContent.data() + i * chunkSize, chunkSize);
-        if (status != Status::OK) {
-            LOG(ERROR) << "Failed to read chunk number " << i << " out of "
-                       << numOfChunks + 1 << " chunks for adsd3500!";
-            return status;
-        }
-    }
-
-    //read last chunk. smaller size than the rest
-    if (ccbFileSize % chunkSize != 0) {
-        status = m_depthSensor->adsd3500_read_payload(
-            ccbContent.data() + numOfChunks * chunkSize,
-            ccbFileSize % chunkSize);
-        if (status != Status::OK) {
-            LOG(ERROR) << "Failed to read chunk number " << numOfChunks + 1
-                       << " out of " << numOfChunks + 1
-                       << " chunks for adsd3500!";
-            return status;
-        }
-    }
-
-    //Commands to switch back to standard mode
-    uint8_t switchBuf[] = {0xAD, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
-                           0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    status = m_depthSensor->adsd3500_write_payload(
-        switchBuf, sizeof(switchBuf) / sizeof(switchBuf[0]));
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to switch adsd3500 to standard mode!";
-        return status;
-    }
-
-    LOG(INFO) << "Succesfully read ccb from adsd3500. Checking crc...";
-
-    uint32_t computedCrc =
-        crcFast(ccbContent.data(), ccbFileSize - 4, true) ^ 0xFFFFFFFF;
-
-    if (crcOfCCB == ~computedCrc) {
-        LOG(INFO) << "Crc of ccb is valid.";
-    } else {
-        LOG(ERROR) << "Invalid crc for ccb read from memory!";
-        return Status::GENERIC_ERROR;
-    }
-
-    //remove the trailling 4 bytes containing the crc
-    ccb = std::string(reinterpret_cast<char *>(ccbContent.data()),
-                      ccbFileSize - 4);
-
-    return status;
 }
 
 /**
@@ -1539,7 +1437,6 @@ aditof::Status CameraItof::adsd3500SetToggleMode(int mode) {
         return status;
     }
 
-    // Update camera state: mode 2 = slave (not master)
     if (mode == 2) {
         m_adsd3500_master = false;
     }
@@ -1594,7 +1491,7 @@ aditof::Status CameraItof::adsd3500GetFirmwareVersion(std::string &fwVersion,
     uint8_t fwData[44] = {0};
     fwData[0] = uint8_t(1);
 
-    status = m_depthSensor->adsd3500_read_payload_cmd(0x05, fwData, 44);
+    status = m_adsd3500Hardware->adsd3500_read_payload_cmd(0x05, fwData, 44);
     if (status != Status::OK) {
         LOG(INFO) << "Failed to retrieve fw version and git hash for "
                      "adsd3500!";
@@ -2308,7 +2205,7 @@ aditof::Status CameraItof::adsd3500GetStatus(int &chipStatus,
 
     assert(!m_isOffline);
 
-    status = m_depthSensor->adsd3500_get_status(chipStatus, imagerStatus);
+    status = m_adsd3500Hardware->adsd3500_get_status(chipStatus, imagerStatus);
     if (status != aditof::Status::OK) {
         LOG(ERROR) << "Failed to read chip/imager status!";
         return status;
@@ -2504,7 +2401,7 @@ aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
 
     assert(!m_isOffline);
 
-    status = m_depthSensor->adsd3500_write_cmd(
+    status = m_adsd3500Hardware->adsd3500_write_cmd(
         ADSD3500_REG_ENABLE_PHASE_INVALIDATION, en ? 0x0001 : 0x0000);
 
     return status;
@@ -2559,14 +2456,14 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
 
     uint16_t *sequence0 = reinterpret_cast<uint16_t *>(&entireSequence);
     uint16_t *sequence1 = reinterpret_cast<uint16_t *>(&entireSequence) + 1;
-    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_DMS_SEQUENCE_0,
-                                               *sequence0);
+    status = m_adsd3500Hardware->adsd3500_write_cmd(ADSD3500_REG_DMS_SEQUENCE_0,
+                                                    *sequence0);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to set sequence 0 for the Dynamic Mode Switching";
         return status;
     }
-    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_DMS_SEQUENCE_1,
-                                               *sequence1);
+    status = m_adsd3500Hardware->adsd3500_write_cmd(ADSD3500_REG_DMS_SEQUENCE_1,
+                                                    *sequence1);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to set sequence 1 for the Dynamic Mode Switching";
         return status;
@@ -2574,15 +2471,15 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
 
     uint16_t *repCount0 = reinterpret_cast<uint16_t *>(&entireRepCount);
     uint16_t *repCount1 = reinterpret_cast<uint16_t *>(&entireRepCount) + 1;
-    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_DMS_REPEAT_COUNT_0,
-                                               *repCount0);
+    status = m_adsd3500Hardware->adsd3500_write_cmd(
+        ADSD3500_REG_DMS_REPEAT_COUNT_0, *repCount0);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to set mode repeat count 0 for the Dynamic Mode "
                       "Switching";
         return status;
     }
-    status = m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_DMS_REPEAT_COUNT_1,
-                                               *repCount1);
+    status = m_adsd3500Hardware->adsd3500_write_cmd(
+        ADSD3500_REG_DMS_REPEAT_COUNT_1, *repCount1);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to set mode repeat count 0 for the Dynamic Mode "
                       "Switching";

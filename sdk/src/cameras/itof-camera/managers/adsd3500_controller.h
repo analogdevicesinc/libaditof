@@ -408,6 +408,8 @@ class Adsd3500Controller {
 
   private:
     std::shared_ptr<DepthSensorInterface> m_depthSensor; ///< Sensor interface
+    std::shared_ptr<Adsd3500HardwareInterface>
+        m_adsd3500Hardware; ///< ADSD3500 hardware interface
 };
 
 } // namespace aditof
