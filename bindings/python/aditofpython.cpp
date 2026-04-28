@@ -27,6 +27,9 @@
 #include "pybind11/stl.h"
 
 #include <aditof/aditof.h>
+#include <aditof/adsd3500_hardware_interface.h>
+#include <aditof/playback_interface.h>
+#include <aditof/recordable_interface.h>
 #include <aditof/version-kit.h>
 #if defined(_MSC_VER)
 #include <BaseTsd.h>
@@ -751,10 +754,15 @@ PYBIND11_MODULE(aditofpython, m) {
             "adsd3500_read_cmd",
             [](aditof::DepthSensorInterface &device, uint16_t cmd,
                py::array_t<uint16_t> data, unsigned int usDelay) {
+                auto hw =
+                    dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                if (!hw)
+                    return std::make_pair(aditof::Status::UNAVAILABLE,
+                                          (uint16_t *)nullptr);
                 py::buffer_info dataBuffInfo = data.request();
                 uint16_t *dataPtr = static_cast<uint16_t *>(dataBuffInfo.ptr);
                 aditof::Status status =
-                    device.adsd3500_read_cmd(cmd, dataPtr, usDelay);
+                    hw->adsd3500_read_cmd(cmd, dataPtr, usDelay);
                 return std::make_pair(status, dataPtr);
             },
             py::arg("cmd"), py::arg("data"), py::arg("usDelay"))
@@ -762,18 +770,26 @@ PYBIND11_MODULE(aditofpython, m) {
             "adsd3500_write_cmd",
             [](aditof::DepthSensorInterface &device, uint16_t cmd,
                uint16_t data) {
-                aditof::Status status = device.adsd3500_write_cmd(cmd, data);
-                return status;
+                auto hw =
+                    dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                if (!hw)
+                    return aditof::Status::UNAVAILABLE;
+                return hw->adsd3500_write_cmd(cmd, data);
             },
             py::arg("cmd"), py::arg("data"))
         .def(
             "adsd3500_read_payload_cmd",
             [](aditof::DepthSensorInterface &device, uint32_t cmd,
                py::array_t<uint8_t> readback_data, uint16_t payload_len) {
+                auto hw =
+                    dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                if (!hw)
+                    return std::make_pair(aditof::Status::UNAVAILABLE,
+                                          (uint8_t *)nullptr);
                 py::buffer_info readbackBuffInfo = readback_data.request();
                 uint8_t *readback_dataPtr =
                     static_cast<uint8_t *>(readbackBuffInfo.ptr);
-                aditof::Status status = device.adsd3500_read_payload_cmd(
+                aditof::Status status = hw->adsd3500_read_payload_cmd(
                     cmd, readback_dataPtr, payload_len);
                 return std::make_pair(status, readback_dataPtr);
             },
@@ -782,11 +798,16 @@ PYBIND11_MODULE(aditofpython, m) {
             "adsd3500_read_payload",
             [](aditof::DepthSensorInterface &device,
                py::array_t<uint8_t> payload, uint16_t payload_len) {
+                auto hw =
+                    dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                if (!hw)
+                    return std::make_pair(aditof::Status::UNAVAILABLE,
+                                          (uint8_t *)nullptr);
                 py::buffer_info payloadBuffInfo = payload.request();
                 uint8_t *payloadPtr =
                     static_cast<uint8_t *>(payloadBuffInfo.ptr);
                 aditof::Status status =
-                    device.adsd3500_read_payload(payloadPtr, payload_len);
+                    hw->adsd3500_read_payload(payloadPtr, payload_len);
                 return std::make_pair(status, payloadPtr);
             },
             py::arg("payload"), py::arg("payload_len"))
@@ -795,43 +816,59 @@ PYBIND11_MODULE(aditofpython, m) {
             [](aditof::DepthSensorInterface &device,
                py::array_t<uint8_t> payload, uint32_t cmd,
                uint16_t payload_len) {
+                auto hw =
+                    dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                if (!hw)
+                    return aditof::Status::UNAVAILABLE;
                 py::buffer_info payloadBuffInfo = payload.request();
                 uint8_t *payloadPtr =
                     static_cast<uint8_t *>(payloadBuffInfo.ptr);
-                aditof::Status status = device.adsd3500_write_payload_cmd(
-                    cmd, payloadPtr, payload_len);
-                return status;
+                return hw->adsd3500_write_payload_cmd(cmd, payloadPtr,
+                                                      payload_len);
             },
             py::arg("cmd"), py::arg("payload"), py::arg("payload_len"))
         .def(
             "adsd3500_write_payload",
             [](aditof::DepthSensorInterface &device,
                py::array_t<uint8_t> payload, uint16_t payload_len) {
+                auto hw =
+                    dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                if (!hw)
+                    return aditof::Status::UNAVAILABLE;
                 py::buffer_info payloadBuffInfo = payload.request();
                 uint8_t *payloadPtr =
                     static_cast<uint8_t *>(payloadBuffInfo.ptr);
-                aditof::Status status =
-                    device.adsd3500_write_payload(payloadPtr, payload_len);
-                return status;
+                return hw->adsd3500_write_payload(payloadPtr, payload_len);
             },
             py::arg("payload"), py::arg("payload_len"))
         .def("adsd3500_reset",
              [](aditof::DepthSensorInterface &device) {
-                 aditof::Status status = device.adsd3500_reset();
-                 return status;
+                 auto hw =
+                     dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                 if (!hw)
+                     return aditof::Status::UNAVAILABLE;
+                 return hw->adsd3500_reset();
              })
         .def(
             "adsd3500_register_interrupt_callback",
             [](aditof::DepthSensorInterface &device,
                aditof::SensorInterruptCallback &cb) {
-                return device.adsd3500_register_interrupt_callback(cb);
+                auto hw =
+                    dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                if (!hw)
+                    return aditof::Status::UNAVAILABLE;
+                return hw->adsd3500_register_interrupt_callback(cb);
             },
             py::arg("cb"))
         .def(
             "adsd3500_unregister_interrupt_callback",
             [](aditof::DepthSensorInterface &device,
                aditof::SensorInterruptCallback &cb) {
-                return device.adsd3500_unregister_interrupt_callback(cb);
+                auto hw =
+                    dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                if (!hw)
+                    return aditof::Status::UNAVAILABLE;
+                return hw->adsd3500_unregister_interrupt_callback(cb);
             },
             py::arg("cb"))
         .def("setControl", &aditof::DepthSensorInterface::setControl,
@@ -867,12 +904,22 @@ PYBIND11_MODULE(aditofpython, m) {
             py::arg("iniFile"), py::arg("iniFileLength"), py::arg("calData"),
             py::arg("calDataLength"))
         .def("adsd3500_getInterruptandReset",
-             &aditof::DepthSensorInterface::adsd3500_getInterruptandReset)
+             [](aditof::DepthSensorInterface &device) {
+                 auto hw =
+                     dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                 if (!hw)
+                     return aditof::Status::UNAVAILABLE;
+                 return hw->adsd3500_getInterruptandReset();
+             })
         .def("adsd3500_get_status",
              [](aditof::DepthSensorInterface &device) {
+                 auto hw =
+                     dynamic_cast<aditof::Adsd3500HardwareInterface *>(&device);
+                 if (!hw)
+                     return std::make_tuple(aditof::Status::UNAVAILABLE, 0, 0);
                  int chipStatus, imagerStatus;
                  aditof::Status status =
-                     device.adsd3500_get_status(chipStatus, imagerStatus);
+                     hw->adsd3500_get_status(chipStatus, imagerStatus);
                  return std::make_tuple(status, chipStatus, imagerStatus);
              })
         .def("getDepthComputeParams",
@@ -910,30 +957,57 @@ PYBIND11_MODULE(aditofpython, m) {
             "startRecording",
             [](aditof::DepthSensorInterface &device, std::string &fileName,
                py::array_t<uint8_t> parameters) {
+                auto rec = dynamic_cast<aditof::RecordableInterface *>(&device);
+                if (!rec)
+                    return aditof::Status::UNAVAILABLE;
                 py::buffer_info paramBuffInfo = parameters.request();
                 uint8_t *paramPtr = static_cast<uint8_t *>(paramBuffInfo.ptr);
-                aditof::Status status = device.startRecording(
-                    fileName, paramPtr, paramBuffInfo.size);
-                return status;
+                return rec->startRecording(fileName, paramPtr,
+                                           paramBuffInfo.size);
             },
             py::arg("fileName"), py::arg("parameters"))
-        .def("stopRecording", &aditof::DepthSensorInterface::stopRecording)
-        .def("setPlaybackFile", &aditof::DepthSensorInterface::setPlaybackFile,
-             py::arg("filePath"))
-        .def("stopPlayback", &aditof::DepthSensorInterface::stopPlayback)
+        .def("stopRecording",
+             [](aditof::DepthSensorInterface &device) {
+                 auto rec =
+                     dynamic_cast<aditof::RecordableInterface *>(&device);
+                 if (!rec)
+                     return aditof::Status::UNAVAILABLE;
+                 return rec->stopRecording();
+             })
+        .def(
+            "setPlaybackFile",
+            [](aditof::DepthSensorInterface &device, std::string &filePath) {
+                auto play = dynamic_cast<aditof::PlaybackInterface *>(&device);
+                if (!play)
+                    return aditof::Status::UNAVAILABLE;
+                return play->setPlaybackFile(filePath);
+            },
+            py::arg("filePath"))
+        .def("stopPlayback",
+             [](aditof::DepthSensorInterface &device) {
+                 auto play = dynamic_cast<aditof::PlaybackInterface *>(&device);
+                 if (!play)
+                     return aditof::Status::UNAVAILABLE;
+                 return play->stopPlayback();
+             })
         .def(
             "getHeader",
             [](aditof::DepthSensorInterface &device,
                py::array_t<uint8_t> buffer) {
+                auto play = dynamic_cast<aditof::PlaybackInterface *>(&device);
+                if (!play)
+                    return aditof::Status::UNAVAILABLE;
                 py::buffer_info buffInfo = buffer.request();
                 uint8_t *ptr = static_cast<uint8_t *>(buffInfo.ptr);
-                aditof::Status status = device.getHeader(ptr, buffInfo.size);
-                return status;
+                return play->getHeader(ptr, buffInfo.size);
             },
             py::arg("buffer"))
         .def("getFrameCount", [](aditof::DepthSensorInterface &device) {
+            auto play = dynamic_cast<aditof::PlaybackInterface *>(&device);
+            if (!play)
+                return std::make_pair(aditof::Status::UNAVAILABLE, (uint32_t)0);
             uint32_t frameCount;
-            aditof::Status status = device.getFrameCount(frameCount);
+            aditof::Status status = play->getFrameCount(frameCount);
             return std::make_pair(status, frameCount);
         });
 

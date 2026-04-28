@@ -24,6 +24,7 @@
 #include "calibration_manager.h"
 #include "crc.h"
 
+#include <aditof/adsd3500_hardware_interface.h>
 #include <aditof/log.h>
 #include <cstring>
 #include <fstream>
@@ -36,8 +37,17 @@ constexpr int CalibrationManager::NR_READADSD3500CCB;
 
 CalibrationManager::CalibrationManager(
     std::shared_ptr<DepthSensorInterface> depthSensor)
-    : m_depthSensor(depthSensor), m_xyzTable({nullptr, nullptr, nullptr}) {
+    : m_depthSensor(depthSensor), m_adsd3500Hardware(nullptr),
+      m_xyzTable({nullptr, nullptr, nullptr}) {
     memset(&m_xyz_dealias_data, 0, sizeof(m_xyz_dealias_data));
+
+    // Cast to Adsd3500HardwareInterface if sensor supports it
+    m_adsd3500Hardware =
+        std::dynamic_pointer_cast<Adsd3500HardwareInterface>(depthSensor);
+
+    if (!m_adsd3500Hardware) {
+        LOG(WARNING) << "Sensor does not support ADSD3500 hardware interface";
+    }
 }
 
 CalibrationManager::~CalibrationManager() { cleanupXYZtables(); }
@@ -45,12 +55,15 @@ CalibrationManager::~CalibrationManager() { cleanupXYZtables(); }
 Status CalibrationManager::readCCB(std::string &ccb) {
     Status status = Status::OK;
 
+    if (!m_adsd3500Hardware) {
+        LOG(ERROR) << "ADSD3500 hardware interface not available";
+        return Status::UNAVAILABLE;
+    }
+
     uint8_t ccbHeader[16] = {0};
     ccbHeader[0] = 1;
 
-    // For this case adsd3500 will remain in burst mode
-    // A manual switch to standard mode will be required at the end of the function
-    status = m_depthSensor->adsd3500_read_payload_cmd(0x13, ccbHeader, 16);
+    status = m_adsd3500Hardware->adsd3500_read_payload_cmd(0x13, ccbHeader, 16);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to get ccb command header";
         return status;
@@ -75,7 +88,7 @@ Status CalibrationManager::readCCB(std::string &ccb) {
     std::vector<uint8_t> ccbContent(ccbFileSize); // RAII: automatic cleanup
 
     for (int i = 0; i < numOfChunks; i++) {
-        status = m_depthSensor->adsd3500_read_payload(
+        status = m_adsd3500Hardware->adsd3500_read_payload(
             ccbContent.data() + i * chunkSize, chunkSize);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to read chunk number " << i << " out of "
@@ -84,9 +97,8 @@ Status CalibrationManager::readCCB(std::string &ccb) {
         }
     }
 
-    // Read last chunk, smaller size than the rest
     if (ccbFileSize % chunkSize != 0) {
-        status = m_depthSensor->adsd3500_read_payload(
+        status = m_adsd3500Hardware->adsd3500_read_payload(
             ccbContent.data() + numOfChunks * chunkSize,
             ccbFileSize % chunkSize);
         if (status != Status::OK) {
@@ -97,10 +109,9 @@ Status CalibrationManager::readCCB(std::string &ccb) {
         }
     }
 
-    // Commands to switch back to standard mode
     uint8_t switchBuf[] = {0xAD, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
                            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-    status = m_depthSensor->adsd3500_write_payload(
+    status = m_adsd3500Hardware->adsd3500_write_payload(
         switchBuf, sizeof(switchBuf) / sizeof(switchBuf[0]));
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to switch adsd3500 to standard mode!";
@@ -119,7 +130,6 @@ Status CalibrationManager::readCCB(std::string &ccb) {
         return Status::GENERIC_ERROR;
     }
 
-    // Remove the trailing 4 bytes containing the crc
     ccb = std::string(reinterpret_cast<char *>(ccbContent.data()),
                       ccbFileSize - 4);
 

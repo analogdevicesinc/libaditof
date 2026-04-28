@@ -31,7 +31,7 @@
  * Coordinates multiple subsystems via specialized manager classes.
  */
 #include "adsd3500_sensor.h"
-#include "../cameras/itof-camera/adsd3500_registers.h"
+#include "../cameras/itof-camera/hardware/adsd3500_registers.h"
 #include "aditof/frame_operations.h"
 #include "aditof/utils.h"
 #include "adsd3500_interrupt_notifier.h"
@@ -2206,70 +2206,6 @@ aditof::Status Adsd3500Sensor::stopRecording() {
     }
 
     return processor->stopRecording();
-}
-
-/**
- * @brief Sets the playback file for offline replay.
- *
- * Delegates to recorder for playback file handling.
- *
- * @param[in] filePath Path to the playback file
- *
- * @return Status from recorder
- */
-aditof::Status Adsd3500Sensor::setPlaybackFile(const std::string filePath) {
-    if (m_recorder) {
-        return m_recorder->setPlaybackFile(filePath);
-    }
-    return aditof::Status::UNAVAILABLE;
-}
-
-/**
- * @brief Stops playback.
- *
- * Delegates to recorder for playback operations.
- *
- * @return Status from recorder
- */
-aditof::Status Adsd3500Sensor::stopPlayback() {
-    if (m_recorder) {
-        return m_recorder->stopPlayback();
-    }
-    return aditof::Status::UNAVAILABLE;
-}
-
-/**
- * @brief Retrieves the frame count from playback file.
- *
- * Delegates to recorder for frame count information.
- *
- * @param[out] frameCount Variable to receive frame count
- *
- * @return Status from recorder
- */
-aditof::Status Adsd3500Sensor::getFrameCount(uint32_t &frameCount) {
-    if (m_recorder) {
-        return m_recorder->getFrameCount(frameCount);
-    }
-    frameCount = 0;
-    return aditof::Status::UNAVAILABLE;
-}
-
-/**
- * @brief Retrieves the header from playback file.
- *
- * Delegates to recorder for header information.
- *
- * @param[out] buffer Pointer to buffer to receive header data
- * @param[in] bufferSize Size of the buffer in bytes
- *
- * @return Status from recorder
- */
-aditof::Status Adsd3500Sensor::getHeader(uint8_t *buffer, uint32_t bufferSize) {
-    if (m_recorder) {
-        return m_recorder->getHeader(buffer, bufferSize);
-    }
-    return aditof::Status::UNAVAILABLE;
 }
 
 #pragma endregion

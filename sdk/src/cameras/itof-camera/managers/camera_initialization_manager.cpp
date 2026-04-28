@@ -23,13 +23,14 @@
  */
 
 #include "camera_initialization_manager.h"
+#include "../hardware/adsd3500_registers.h"
 #include "adsd3500_controller.h"
-#include "adsd3500_registers.h"
 #include "calibration_manager.h"
 #include "camera_configuration.h"
 #include "platform/platform_impl.h"
 #include "tofi/tofi_camera_intrinsics.h"
 #include "tofi/tofi_util.h"
+#include <aditof/adsd3500_hardware_interface.h>
 #include <aditof/camera_definitions.h>
 #include <aditof/log.h>
 #include <cstring>
@@ -41,8 +42,18 @@ CameraInitializationManager::CameraInitializationManager(
     std::shared_ptr<DepthSensorInterface> depthSensor,
     CalibrationManager *calibrationMgr, Adsd3500Controller *controller,
     CameraConfiguration *config)
-    : m_depthSensor(depthSensor), m_calibrationMgr(calibrationMgr),
-      m_controller(controller), m_config(config) {}
+    : m_depthSensor(depthSensor), m_adsd3500Hardware(nullptr),
+      m_calibrationMgr(calibrationMgr), m_controller(controller),
+      m_config(config) {
+
+    // Cast to Adsd3500HardwareInterface if sensor supports it
+    m_adsd3500Hardware =
+        std::dynamic_pointer_cast<Adsd3500HardwareInterface>(depthSensor);
+
+    if (!m_adsd3500Hardware) {
+        LOG(WARNING) << "Sensor does not support ADSD3500 hardware interface";
+    }
+}
 
 Status CameraInitializationManager::initializeOfflineMode() {
     LOG(INFO) << "Initializing camera: Offline";
@@ -239,14 +250,15 @@ Status CameraInitializationManager::readModeCalibrationData(
 
     // Command 0x01: Read intrinsics (56 bytes)
     Status status =
-        m_depthSensor->adsd3500_read_payload_cmd(0x01, intrinsics, 56);
+        m_adsd3500Hardware->adsd3500_read_payload_cmd(0x01, intrinsics, 56);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to read intrinsics for mode " << (int)modeNumber;
         return status;
     }
 
     // Command 0x02: Read dealias parameters (32 bytes)
-    status = m_depthSensor->adsd3500_read_payload_cmd(0x02, dealiasParams, 32);
+    status =
+        m_adsd3500Hardware->adsd3500_read_payload_cmd(0x02, dealiasParams, 32);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to read dealias parameters for mode "
                    << (int)modeNumber;
@@ -409,7 +421,8 @@ CameraInitializationManager::readSerialNumber(std::string &serialNumber) {
     // the read and let the caller handle UNAVAILABLE status
 
     uint8_t serial[32] = {0};
-    Status status = m_depthSensor->adsd3500_read_payload_cmd(0x19, serial, 32);
+    Status status =
+        m_adsd3500Hardware->adsd3500_read_payload_cmd(0x19, serial, 32);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to read serial number from sensor";
         return status;

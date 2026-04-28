@@ -28,6 +28,11 @@
 #include <aditof/sensor_definitions.h>
 #include <aditof/status_definitions.h>
 
+// New segregated interfaces (ISP - Interface Segregation Principle)
+#include <aditof/adsd3500_hardware_interface.h>
+#include <aditof/playback_interface.h>
+#include <aditof/recordable_interface.h>
+
 #include <cstddef>
 #include <functional>
 #include <map>
@@ -37,14 +42,21 @@
 namespace aditof {
 
 /**
- * @brief Callback for sensor interrupts
- */
-typedef std::function<void(Adsd3500Status)> SensorInterruptCallback;
-
-/**
  * @class DepthSensorInterface
- * @brief Provides access to the low level functionality of the camera sensor. This
- * includes sensor configuration as well as analog front end(AFE) configuration.
+ * @brief Core interface for depth sensors (SOLID ISP refactoring completed).
+ * 
+ * Provides core sensor operations: lifecycle (open/start/stop), mode configuration,
+ * frame acquisition, controls, and depth compute parameters. All depth sensors
+ * implement this interface.
+ * 
+ * **Interface Segregation (ISP):**
+ * Hardware-specific, recording, and playback capabilities are now in separate interfaces:
+ * - @see Adsd3500HardwareInterface for ADSD3500-specific commands
+ * - @see RecordableInterface for recording capabilities
+ * - @see PlaybackInterface for playback capabilities
+ * 
+ * Implementations should inherit only the interfaces they truly support,
+ * eliminating stub methods that return Status::UNAVAILABLE.
  */
 class DepthSensorInterface {
   public:
@@ -112,109 +124,6 @@ class DepthSensorInterface {
      * @return Status
      */
     virtual aditof::Status getFrame(uint16_t *buffer, uint32_t index = 0) = 0;
-
-    /**
-     * @brief Send a read command to adsd3500.
-     * @param cmd - the command to be sent
-     * @param[out] data - the variable where the read data will be stored
-     * @param usDelay - the number of microseconds to wait between the host command
-     * and the actual read
-     * @return Status
-     */
-    virtual aditof::Status adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
-                                             unsigned int usDelay = 0) = 0;
-
-    /**
-     * @brief Send a write command to adsd3500.
-     * @param cmd - the command to be sent
-     * @param data - the data to be written
-     * @param usDelay - the number of microseconds to wait between the host command
-     * and the actual write
-     * @return Status
-     */
-    virtual aditof::Status adsd3500_write_cmd(uint16_t cmd, uint16_t data,
-                                              unsigned int usDelay = 0) = 0;
-
-    /**
-     * @brief Send a read command to adsd3500. This will perform a burst read making it
-     *        useful for reading chunks of data.
-     * @param cmd - the command to be sent
-     * @param[out] readback_data - the location where the read data chunk will be stored
-     * @param payload_len - the number of bytes to read
-     * @return Status
-     */
-    virtual aditof::Status adsd3500_read_payload_cmd(uint32_t cmd,
-                                                     uint8_t *readback_data,
-                                                     uint16_t payload_len) = 0;
-
-    /**
-     * @brief Reads a chunk of data from adsd3500. This will perform a burst read making it
-     *        useful for reading chunks of data.
-     * @param payload - the location from where to take the data chunk and read it
-     * @param payload_len - the number of bytes to read
-     * @return Status
-     */
-    virtual aditof::Status adsd3500_read_payload(uint8_t *payload,
-                                                 uint16_t payload_len) = 0;
-
-    /**
-     * @brief Send a write command to adsd3500. This will perform a burst write making it
-     *        useful for writing chunks of data.
-     * @param cmd - the command to be sent
-     * @param payload - the location from where to take the data chunk and write it
-     * @param payload_len - the number of bytes to write
-     * @return Status
-     */
-    virtual aditof::Status adsd3500_write_payload_cmd(uint32_t cmd,
-                                                      uint8_t *payload,
-                                                      uint16_t payload_len) = 0;
-
-    /**
-     * @brief Send a chunk of data (payload) to adsd3500. This will perform a burst write making it
-     *        useful for writing chunks of data.
-     * @param payload - the location from where to take the data chunk and write it
-     * @param payload_len - the number of bytes to write
-     * @return Status
-     */
-    virtual aditof::Status adsd3500_write_payload(uint8_t *payload,
-                                                  uint16_t payload_len) = 0;
-
-    /**
-     * @brief Reset adsd3500 chip
-     * @return Status
-     */
-    virtual aditof::Status adsd3500_reset() = 0;
-
-    /**
-     * @brief get the interrupt from sensor
-     * @return Status
-     */
-    virtual aditof::Status adsd3500_getInterruptandReset() = 0;
-
-    /**
-     * @brief Register a function to be called when a ADSD3500 interrupt occurs
-     * @param cb - the function to be called whenever the interrupt occurs
-     * @return Status
-     */
-    virtual aditof::Status
-    adsd3500_register_interrupt_callback(SensorInterruptCallback &cb) = 0;
-
-    /**
-     * @brief Unregister a function registered with adsd3500_register_interrupt_callback
-     * @param cb - the function to be unregistred
-     * @return Status
-     */
-    virtual aditof::Status
-    adsd3500_unregister_interrupt_callback(SensorInterruptCallback &cb) = 0;
-
-    /**
-     * @brief Returns the chip status
-     * @param[out] chipStatus - chip status (error) value
-     * @param[out] imagerStatus - imager status (error) value
-     * @return Status
-     */
-    virtual aditof::Status adsd3500_get_status(int &chipStatus,
-                                               int &imagerStatus) = 0;
 
     /**
      * @brief Gets the sensors's list of controls
@@ -304,52 +213,6 @@ class DepthSensorInterface {
     */
     virtual aditof::Status getIniParamsArrayForMode(int mode,
                                                     std::string &iniStr) = 0;
-
-    // Stream record and playback support
-    /**
-     * @brief Start recording frames to a file
-     * @param[in] fileName - Name of the file to record to
-     * @param[in] parameters - Recording parameters buffer
-     * @param[in] paramSize - Size of parameters buffer in bytes
-     * @return Status
-     */
-    virtual aditof::Status startRecording(std::string &fileName,
-                                          uint8_t *parameters,
-                                          uint32_t paramSize) = 0;
-
-    /**
-     * @brief Stop the current recording session
-     * @return Status
-     */
-    virtual aditof::Status stopRecording() = 0;
-
-    /**
-     * @brief Set the file to use for frame playback
-     * @param[in] filePath - Path to the playback file
-     * @return Status
-     */
-    virtual aditof::Status setPlaybackFile(const std::string filePath) = 0;
-
-    /**
-     * @brief Stop the current playback session
-     * @return Status
-     */
-    virtual aditof::Status stopPlayback() = 0;
-
-    /**
-     * @brief Get header information from recorded file
-     * @param[out] buffer - Buffer to store header data
-     * @param[in] bufferSize - Size of the buffer in bytes
-     * @return Status
-     */
-    virtual aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) = 0;
-
-    /**
-     * @brief Get the total number of frames in playback file
-     * @param[out] frameCount - Variable to store the frame count
-     * @return Status
-     */
-    virtual aditof::Status getFrameCount(uint32_t &frameCount) = 0;
 };
 
 } // namespace aditof

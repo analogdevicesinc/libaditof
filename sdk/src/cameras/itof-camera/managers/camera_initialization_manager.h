@@ -233,6 +233,7 @@ class CameraInitializationManager {
 
   private:
     std::shared_ptr<DepthSensorInterface> m_depthSensor;
+    std::shared_ptr<Adsd3500HardwareInterface> m_adsd3500Hardware;
     CalibrationManager *m_calibrationMgr;
     Adsd3500Controller *m_controller;
     CameraConfiguration *m_config;

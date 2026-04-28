@@ -32,7 +32,10 @@
 #include <thread>
 #include <unordered_map>
 
-class NetworkDepthSensor : public aditof::DepthSensorInterface {
+class NetworkDepthSensor : public aditof::DepthSensorInterface,
+                           public aditof::Adsd3500HardwareInterface,
+                           public aditof::RecordableInterface,
+                           public aditof::PlaybackInterface {
   public:
     NetworkDepthSensor(const std::string &name, const std::string &ip);
     ~NetworkDepthSensor();

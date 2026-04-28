@@ -24,14 +24,14 @@
 #ifndef CAMERA_ITOF_H
 #define CAMERA_ITOF_H
 
-#include "adsd3500_controller.h"
-#include "calibration_manager.h"
-#include "camera_configuration.h"
-#include "camera_firmware_manager.h"
-#include "camera_frame_acquisition_manager.h"
-#include "camera_initialization_manager.h"
-#include "recording_manager.h"
-#include "sensor_config_helper.h"
+#include "helpers/sensor_config_helper.h"
+#include "managers/adsd3500_controller.h"
+#include "managers/calibration_manager.h"
+#include "managers/camera_configuration.h"
+#include "managers/camera_firmware_manager.h"
+#include "managers/camera_frame_acquisition_manager.h"
+#include "managers/camera_initialization_manager.h"
+#include "managers/recording_manager.h"
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
 #include "tofi/tofi_util.h"
@@ -163,16 +163,6 @@ class CameraItof : public aditof::Camera {
                          std::map<std::string, std::string> &params) override;
 
   private:
-    // DEPRECATED: Methods now delegated to CalibrationManager
-    /**
-     * @brief Read the CCB from adsd3500 memory and store in output variable ccb
-     * @param[out] ccb - where to store the CCB content
-     * @return Status
-     * @see Status
-     * @deprecated Use m_calibrationMgr->readCCB() instead
-     */
-    aditof::Status readAdsd3500CCB(std::string &ccb);
-
     /**
      * Configure the sensor with various settings that affect the frame type.
      */
@@ -250,6 +240,7 @@ class CameraItof : public aditof::Camera {
 
     aditof::CameraDetails m_details;
     std::shared_ptr<aditof::DepthSensorInterface> m_depthSensor;
+    std::shared_ptr<aditof::Adsd3500HardwareInterface> m_adsd3500Hardware;
     std::unordered_map<std::string, std::string> m_controls;
     std::map<std::string, noArgCallable> m_noArgCallables;
     aditof::ADSDErrors m_adsdErrors;

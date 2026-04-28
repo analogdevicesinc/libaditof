@@ -32,7 +32,8 @@
 #include <thread>
 #include <unordered_map>
 
-class OfflineDepthSensor : public aditof::DepthSensorInterface {
+class OfflineDepthSensor : public aditof::DepthSensorInterface,
+                           public aditof::PlaybackInterface {
   public:
     OfflineDepthSensor();
     ~OfflineDepthSensor();
@@ -61,57 +62,25 @@ class OfflineDepthSensor : public aditof::DepthSensorInterface {
     getDetails(aditof::SensorDetails &details) const override;
     virtual aditof::Status getHandle(void **handle) override;
     virtual aditof::Status getName(std::string &name) const override;
-
-    virtual aditof::Status adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
-                                             unsigned int usDelay = 0) override;
-    virtual aditof::Status
-    adsd3500_write_cmd(uint16_t cmd, uint16_t data,
-                       unsigned int usDelay = 0) override;
-    virtual aditof::Status
-    adsd3500_read_payload_cmd(uint32_t cmd, uint8_t *readback_data,
-                              uint16_t payload_len) override;
-    virtual aditof::Status adsd3500_read_payload(uint8_t *payload,
-                                                 uint16_t payload_len) override;
-    virtual aditof::Status
-    adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
-                               uint16_t payload_len) override;
-    virtual aditof::Status
-    adsd3500_write_payload(uint8_t *payload, uint16_t payload_len) override;
-    virtual aditof::Status adsd3500_register_interrupt_callback(
-        aditof::SensorInterruptCallback &cb) override;
-    virtual aditof::Status adsd3500_unregister_interrupt_callback(
-        aditof::SensorInterruptCallback &cb) override;
-    virtual aditof::Status adsd3500_reset() override;
-    virtual aditof::Status adsd3500_getInterruptandReset() override;
-    virtual aditof::Status adsd3500_get_status(int &chipStatus,
-                                               int &imagerStatus) override;
     virtual aditof::Status
     initTargetDepthCompute(uint8_t *iniFile, uint16_t iniFileLength,
                            uint8_t *calData, uint32_t calDataLength) override;
     virtual aditof::Status
     getDepthComputeParams(std::map<std::string, std::string> &params) override;
-
     virtual aditof::Status setDepthComputeParams(
         const std::map<std::string, std::string> &params) override;
-
     aditof::Status getIniParamsArrayForMode(int mode,
                                             std::string &iniStr) override;
 
-  private:
-    struct ImplData;
-    std::unique_ptr<ImplData> m_implData;
-
-  public:
-    // Stream record and playback support
-    aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
-                                  uint32_t paramSize) override;
-    aditof::Status stopRecording() override;
+  public: // implements PlaybackInterface
     aditof::Status setPlaybackFile(const std::string filePath) override;
     aditof::Status stopPlayback() override;
     aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) override;
     aditof::Status getFrameCount(uint32_t &frameCount) override;
 
-  private:
+  private: // Internal implementation (no recording support)
+    struct ImplData;
+    std::unique_ptr<ImplData> m_implData;
     aditof::Status automaticStop();
     aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize,
                              uint32_t index);

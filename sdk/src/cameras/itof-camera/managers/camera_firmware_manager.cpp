@@ -23,8 +23,9 @@
  */
 
 #include "camera_firmware_manager.h"
-#include "adsd3500_registers.h"
+#include "../hardware/adsd3500_registers.h"
 #include "crc.h"
+#include <aditof/adsd3500_hardware_interface.h>
 #include <aditof/log.h>
 #include <chrono>
 #include <fstream>
@@ -52,7 +53,15 @@ typedef struct {
 
 CameraFirmwareManager::CameraFirmwareManager(
     std::shared_ptr<DepthSensorInterface> depthSensor)
-    : m_depthSensor(depthSensor) {}
+    : m_depthSensor(depthSensor), m_adsd3500Hardware(nullptr) {
+
+    m_adsd3500Hardware =
+        std::dynamic_pointer_cast<Adsd3500HardwareInterface>(depthSensor);
+
+    if (!m_adsd3500Hardware) {
+        LOG(WARNING) << "Sensor does not support ADSD3500 hardware interface";
+    }
+}
 
 Status CameraFirmwareManager::updateFirmware(const std::string &fwFilePath) {
     Status status = Status::OK;
@@ -68,7 +77,7 @@ Status CameraFirmwareManager::updateFirmware(const std::string &fwFilePath) {
         updateComplete = true;
     };
 
-    status = m_depthSensor->adsd3500_register_interrupt_callback(callback);
+    status = m_adsd3500Hardware->adsd3500_register_interrupt_callback(callback);
     bool interruptsAvailable = (status == Status::OK);
 
     // Step 1: Read chip ID to verify connectivity
@@ -123,7 +132,7 @@ Status CameraFirmwareManager::updateFirmware(const std::string &fwFilePath) {
 
     // Cleanup: unregister interrupt callback
     if (interruptsAvailable) {
-        m_depthSensor->adsd3500_unregister_interrupt_callback(callback);
+        m_adsd3500Hardware->adsd3500_unregister_interrupt_callback(callback);
     }
 
     return status;
@@ -131,7 +140,7 @@ Status CameraFirmwareManager::updateFirmware(const std::string &fwFilePath) {
 
 Status CameraFirmwareManager::readChipId(uint16_t &chipId) {
     Status status =
-        m_depthSensor->adsd3500_read_cmd(ADSD3500_REG_CHIP_ID, &chipId);
+        m_adsd3500Hardware->adsd3500_read_cmd(ADSD3500_REG_CHIP_ID, &chipId);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to read ADSD3500 chip ID";
         return status;
@@ -140,8 +149,8 @@ Status CameraFirmwareManager::readChipId(uint16_t &chipId) {
 }
 
 Status CameraFirmwareManager::enterBurstMode() {
-    Status status =
-        m_depthSensor->adsd3500_write_cmd(ADSD3500_REG_BURST_MODE_CMD, 0x0000);
+    Status status = m_adsd3500Hardware->adsd3500_write_cmd(
+        ADSD3500_REG_BURST_MODE_CMD, 0x0000);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to switch to burst mode";
         return status;
@@ -191,7 +200,7 @@ Status CameraFirmwareManager::sendFirmwareHeader(uint32_t firmwareSize,
     }
 
     Status status =
-        m_depthSensor->adsd3500_write_payload(header.cmd_header_byte, 16);
+        m_adsd3500Hardware->adsd3500_write_payload(header.cmd_header_byte, 16);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to send firmware upgrade header";
         return status;
@@ -226,8 +235,8 @@ Status CameraFirmwareManager::sendFirmwarePackets(const uint8_t *firmwareData,
         }
 
         // Send packet
-        Status status = m_depthSensor->adsd3500_write_payload(packetBuffer,
-                                                              FLASH_PAGE_SIZE);
+        Status status = m_adsd3500Hardware->adsd3500_write_payload(
+            packetBuffer, FLASH_PAGE_SIZE);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to send packet " << i << " of "
                        << packetsToSend;
@@ -250,7 +259,7 @@ Status CameraFirmwareManager::exitBurstMode() {
     uint8_t switchCmd[] = {0xAD, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
                            0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
-    Status status = m_depthSensor->adsd3500_write_payload(
+    Status status = m_adsd3500Hardware->adsd3500_write_payload(
         switchCmd, sizeof(switchCmd) / sizeof(switchCmd[0]));
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to switch back to standard mode";

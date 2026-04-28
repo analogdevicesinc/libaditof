@@ -11,6 +11,8 @@
 #include "tofi/algorithms.h"
 #include <aditof/frame_definitions.h>
 #include <aditof/log.h>
+#include <aditof/playback_interface.h>
+#include <aditof/recordable_interface.h>
 
 #include <algorithm>
 #include <cstring>
@@ -170,17 +172,35 @@ Status RecordingManager::startRecording(
     LOG(INFO) << "[RECORDING] Writing header to file: " << filePath;
 
     // Write header to recording file
-    return m_depthSensor->startRecording(filePath,
-                                         (uint8_t *)&m_offline_parameters,
-                                         sizeof(m_offline_parameters));
+    auto recordableInterface =
+        std::dynamic_pointer_cast<RecordableInterface>(m_depthSensor);
+    if (!recordableInterface) {
+        LOG(ERROR) << "Sensor does not support recording";
+        return Status::UNAVAILABLE;
+    }
+
+    return recordableInterface->startRecording(filePath,
+                                               (uint8_t *)&m_offline_parameters,
+                                               sizeof(m_offline_parameters));
 }
 
 Status RecordingManager::stopRecording() {
-    return m_depthSensor->stopRecording();
+    auto recordableInterface =
+        std::dynamic_pointer_cast<RecordableInterface>(m_depthSensor);
+    if (!recordableInterface) {
+        return Status::OK; // Not an error if recording wasn't supported
+    }
+    return recordableInterface->stopRecording();
 }
 
 Status RecordingManager::setPlaybackFile(std::string &filePath) {
-    return m_depthSensor->setPlaybackFile(filePath);
+    auto playbackInterface =
+        std::dynamic_pointer_cast<PlaybackInterface>(m_depthSensor);
+    if (!playbackInterface) {
+        LOG(ERROR) << "Sensor does not support playback";
+        return Status::UNAVAILABLE;
+    }
+    return playbackInterface->setPlaybackFile(filePath);
 }
 
 Status
@@ -190,8 +210,15 @@ RecordingManager::loadPlaybackHeader(DepthSensorModeDetails &modeDetailsCache,
     // Clear and read header from playback file
     memset((void *)&m_offline_parameters, 0, sizeof(m_offline_parameters));
 
-    Status status = m_depthSensor->getHeader((uint8_t *)&m_offline_parameters,
-                                             sizeof(m_offline_parameters));
+    auto playbackInterface =
+        std::dynamic_pointer_cast<PlaybackInterface>(m_depthSensor);
+    if (!playbackInterface) {
+        LOG(ERROR) << "Sensor does not support playback";
+        return Status::UNAVAILABLE;
+    }
+
+    Status status = playbackInterface->getHeader(
+        (uint8_t *)&m_offline_parameters, sizeof(m_offline_parameters));
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get header from device";
         return status;
