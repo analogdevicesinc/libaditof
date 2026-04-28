@@ -118,22 +118,6 @@ struct ConfigurationData {
     uint32_t values;
 };
 
-enum class SensorImagerType {
-    IMAGER_UNKNOWN,
-    IMAGER_ADSD3100,
-    IMAGER_ADSD3030,
-    IMAGER_ADTF3080,
-    IMAGER_ADTF3066
-};
-
-enum class CCBVersion {
-    CCB_UNKNOWN,
-    CCB_VERSION0,
-    CCB_VERSION1,
-    CCB_VERSION2,
-    CCB_VERSION3
-};
-
 struct Adsd3500Sensor::ImplData {
     uint8_t numVideoDevs; /**< Number of V4L2 video devices for this sensor */
     struct VideoDev *videoDevs; /**< Array of V4L2 video device descriptors */
@@ -576,6 +560,20 @@ aditof::Status Adsd3500Sensor::open() {
         }
     }
 
+    // Initialize protocol manager after video devices are opened
+    // Must be created BEFORE queryAdsd3500() is called
+    if (!m_protocolManager) {
+        m_protocolManager = std::make_unique<Adsd3500ProtocolManager>(
+            m_implData->videoDevs, m_implData->ctrlBuf, m_adsd3500_mutex);
+    }
+
+    // Initialize chip config manager after protocol manager
+    if (!m_chipConfigManager) {
+        m_chipConfigManager = std::make_unique<Adsd3500ChipConfigManager>(
+            *m_protocolManager, m_modeSelector, m_implData->imagerType,
+            m_implData->ccbVersion, m_implData->fw_ver, m_controls, m_chipId);
+    }
+
     if (!m_adsd3500Queried) {
         status = queryAdsd3500();
         if (status != Status::OK) {
@@ -595,6 +593,26 @@ aditof::Status Adsd3500Sensor::open() {
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to open output video device!";
         return status;
+    }
+
+    // Buffer manager initialization (protocol manager already created above)
+    if (!m_bufferManager) {
+        m_bufferManager = std::make_unique<V4L2BufferManager>(
+            m_implData->videoDevs, m_implData->numVideoDevs);
+    }
+
+    // Initialize INI configuration manager
+    if (!m_iniConfigManager) {
+        m_iniConfigManager = std::make_unique<IniConfigManager>(
+            m_iniFileStructList, m_ccbmINIContent, m_ccbmEnabled,
+            m_implData->imagerType);
+    }
+
+    // Initialize interrupt manager
+    if (!m_interruptManager) {
+        m_interruptManager = std::make_unique<Adsd3500InterruptManager>(
+            m_protocolManager.get(), m_chipStatus, m_imagerStatus,
+            m_interruptAvailable, m_interruptCallbackMap);
     }
 
     if (status == aditof::Status::OK) {
@@ -1483,59 +1501,7 @@ aditof::Status Adsd3500Sensor::getName(std::string &name) const {
  */
 aditof::Status Adsd3500Sensor::adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
                                                  unsigned int usDelay) {
-    using namespace aditof;
-    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
-    struct VideoDev *dev = &m_implData->videoDevs[0];
-    Status status = Status::OK;
-    struct v4l2_ext_control extCtrl;
-    struct v4l2_ext_controls extCtrls;
-    uint8_t *buf = m_implData->ctrlBuf.data();
-    memset(&extCtrl, 0, sizeof(struct v4l2_ext_control));
-    extCtrl.size = ADSD3500_CTRL_PACKET_SIZE;
-    extCtrl.id = V4L2_CID_AD_DEV_CHIP_CONFIG;
-    memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-    extCtrls.controls = &extCtrl;
-    extCtrls.count = 1;
-
-    buf[0] = 1;
-    buf[1] = 0;
-    buf[2] = 2;
-    buf[3] = uint8_t(cmd >> 8);
-    buf[4] = uint8_t(cmd & 0xFF);
-    extCtrl.p_u8 = buf;
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    buf[0] = 0;
-    buf[1] = 0;
-    buf[2] = 2;
-
-    extCtrl.p_u8 = buf;
-
-    usleep(usDelay);
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (xioctl(dev->sfd, VIDIOC_G_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not get control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    *data = (uint16_t)(extCtrl.p_u8[3] << 8) + (uint16_t)(extCtrl.p_u8[4]);
-
-    return status;
+    return m_protocolManager->adsd3500_read_cmd(cmd, data, usDelay);
 }
 
 /**
@@ -1552,40 +1518,7 @@ aditof::Status Adsd3500Sensor::adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
  */
 aditof::Status Adsd3500Sensor::adsd3500_write_cmd(uint16_t cmd, uint16_t data,
                                                   unsigned int usDelay) {
-    using namespace aditof;
-    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
-    struct VideoDev *dev = &m_implData->videoDevs[0];
-    Status status = Status::OK;
-    struct v4l2_ext_control extCtrl;
-    struct v4l2_ext_controls extCtrls;
-    uint8_t *buf = m_implData->ctrlBuf.data();
-    memset(&extCtrl, 0, sizeof(struct v4l2_ext_control));
-    extCtrl.size = ADSD3500_CTRL_PACKET_SIZE;
-    extCtrl.id = V4L2_CID_AD_DEV_CHIP_CONFIG;
-    memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-    extCtrls.controls = &extCtrl;
-    extCtrls.count = 1;
-
-    buf[0] = 1;
-    buf[1] = 0;
-    buf[2] = 4;
-    buf[3] = uint8_t(cmd >> 8);
-    buf[4] = uint8_t(cmd & 0xFF);
-    buf[5] = uint8_t(data >> 8);
-    buf[6] = uint8_t(data & 0xFF);
-    extCtrl.p_u8 = buf;
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (usDelay)
-        usleep(usDelay);
-
-    return status;
+    return m_protocolManager->adsd3500_write_cmd(cmd, data, usDelay);
 }
 
 /**
@@ -1603,139 +1536,8 @@ aditof::Status Adsd3500Sensor::adsd3500_write_cmd(uint16_t cmd, uint16_t data,
 aditof::Status Adsd3500Sensor::adsd3500_read_payload_cmd(uint32_t cmd,
                                                          uint8_t *readback_data,
                                                          uint16_t payload_len) {
-    using namespace aditof;
-    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
-    struct VideoDev *dev = &m_implData->videoDevs[0];
-    Status status = Status::OK;
-
-    //switch to burst mode
-    uint32_t switchCmd = 0x0019;
-    uint16_t switchPayload = 0x0000;
-
-    status = adsd3500_write_cmd(switchCmd, switchPayload);
-    if (status != Status::OK) {
-        LOG(INFO) << "Failed to switch to burst mode!";
-        return status;
-    }
-    struct v4l2_ext_control extCtrl;
-    struct v4l2_ext_controls extCtrls;
-    uint8_t *buf = m_implData->ctrlBuf.data();
-    memset(buf, 0, ADSD3500_CTRL_PACKET_SIZE);
-    memset(&extCtrl, 0, sizeof(struct v4l2_ext_control));
-    extCtrl.size = ADSD3500_CTRL_PACKET_SIZE;
-    extCtrl.id = V4L2_CID_AD_DEV_CHIP_CONFIG;
-
-    memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-    extCtrls.controls = &extCtrl;
-    extCtrls.count = 1;
-
-    buf[0] = 0x01;
-    buf[1] = 0x00;
-    buf[2] = 0x10;
-
-    buf[3] = 0xAD;
-    buf[6] = uint8_t(cmd & 0xFF);
-
-    uint32_t checksum = 0;
-    for (int i = 0; i < 7; i++) {
-        checksum += buf[i + 4];
-    }
-    memcpy(buf + 11, &checksum, 4);
-
-    // Validate buffer has room for command header + initial readback byte (used as mode/param)
-    // Command packet structure: 15 byte header + payload data
-    if (1 > ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_CMD_HEADER_SIZE) {
-        LOG(ERROR) << "Command buffer too small for burst command header";
-        return Status::INVALID_ARGUMENT;
-    }
-
-    // Validate the actual payload length that will be read back fits in response packet
-    // Response packet structure: 3 byte header + payload data
-    if (payload_len >
-        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
-        LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE -
-                       ADSD3500_BURST_RESPONSE_HEADER_SIZE);
-        return Status::INVALID_ARGUMENT;
-    }
-
-    // Copy initial readback byte (typically contains mode or parameter to read)
-    memcpy(buf + ADSD3500_BURST_CMD_HEADER_SIZE, readback_data, 1);
-    extCtrl.p_u8 = buf;
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (cmd == 0x13)
-        usleep(ADSD3500_BURST_CMD_SHORT_DELAY_US);
-    else if (cmd == 0x19)
-        usleep(ADSD3500_BURST_CMD_LONG_DELAY_US);
-
-    memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-    extCtrls.controls = &extCtrl;
-    extCtrls.count = 1;
-
-    buf[0] = 0x00;
-    buf[1] = uint8_t(payload_len >> 8);
-    buf[2] = uint8_t(payload_len & 0xFF);
-
-    extCtrl.p_u8 = buf;
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (xioctl(dev->sfd, VIDIOC_G_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not get control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (payload_len >
-        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
-        LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE -
-                       ADSD3500_BURST_RESPONSE_HEADER_SIZE);
-        return Status::INVALID_ARGUMENT;
-    }
-
-    // Extract payload from response packet (skip 3-byte header)
-    memcpy(readback_data, extCtrl.p_u8 + ADSD3500_BURST_RESPONSE_HEADER_SIZE,
-           payload_len);
-
-    //If we use the read ccb command we need to keep adsd3500 in burst mode
-    if (cmd == 0x13) {
-        return status;
-    }
-
-    //switch to standard mode
-    memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-    extCtrls.controls = &extCtrl;
-    extCtrls.count = 1;
-
-    uint8_t switchBuf[] = {0x01, 0x00, 0x10, 0xAD, 0x00, 0x00, 0x10,
-                           0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
-                           0x00, 0x00, 0x00, 0x00, 0x00};
-
-    memcpy(extCtrl.p_u8, switchBuf, 19);
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << " (switch to standard mode)"
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    return status;
+    return m_protocolManager->adsd3500_read_payload_cmd(cmd, readback_data,
+                                                        payload_len);
 }
 
 /**
@@ -1751,141 +1553,14 @@ aditof::Status Adsd3500Sensor::adsd3500_read_payload_cmd(uint32_t cmd,
  */
 aditof::Status Adsd3500Sensor::adsd3500_read_payload(uint8_t *payload,
                                                      uint16_t payload_len) {
-    using namespace aditof;
-    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
-    struct VideoDev *dev = &m_implData->videoDevs[0];
-    Status status = Status::OK;
-    struct v4l2_ext_control extCtrl;
-    struct v4l2_ext_controls extCtrls;
-    uint8_t *buf = m_implData->ctrlBuf.data();
-    memset(buf, 0, ADSD3500_CTRL_PACKET_SIZE);
-    memset(&extCtrl, 0, sizeof(struct v4l2_ext_control));
-    extCtrl.size = ADSD3500_CTRL_PACKET_SIZE;
-    extCtrl.id = V4L2_CID_AD_DEV_CHIP_CONFIG;
-
-    memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-    extCtrls.controls = &extCtrl;
-    extCtrls.count = 1;
-
-    buf[0] = 0x00;
-    buf[1] = uint8_t(payload_len >> 8);
-    buf[2] = uint8_t(payload_len & 0xFF);
-
-    extCtrl.p_u8 = buf;
-
-    usleep(ADSD3500_PAYLOAD_READ_DELAY_US);
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " to read payload with length: " << payload_len
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (xioctl(dev->sfd, VIDIOC_G_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not get control: 0x" << std::hex << extCtrl.id
-                     << " to read payload with length: " << payload_len
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    if (payload_len >
-        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
-        LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE -
-                       ADSD3500_BURST_RESPONSE_HEADER_SIZE);
-        return Status::INVALID_ARGUMENT;
-    }
-
-    memcpy(payload, extCtrl.p_u8 + ADSD3500_BURST_RESPONSE_HEADER_SIZE,
-           payload_len);
-
-    return status;
+    return m_protocolManager->adsd3500_read_payload(payload, payload_len);
 }
 
 aditof::Status
 Adsd3500Sensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
                                            uint16_t payload_len) {
-    using namespace aditof;
-    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
-    struct VideoDev *dev = &m_implData->videoDevs[0];
-    Status status = Status::OK;
-
-    //switch to burst mode
-    uint32_t switchCmd = 0x0019;
-    uint16_t switchPayload = 0x0000;
-
-    status = adsd3500_write_cmd(switchCmd, switchPayload);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to switch to burst mode!";
-        return status;
-    }
-    struct v4l2_ext_control extCtrl;
-    struct v4l2_ext_controls extCtrls;
-    uint8_t *buf = m_implData->ctrlBuf.data();
-    memset(&extCtrl, 0, sizeof(struct v4l2_ext_control));
-    extCtrl.size = ADSD3500_CTRL_PACKET_SIZE;
-    extCtrl.id = V4L2_CID_AD_DEV_CHIP_CONFIG;
-    memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-    extCtrls.controls = &extCtrl;
-    extCtrls.count = 1;
-
-    payload_len += 16;
-    buf[0] = 0x01;
-    buf[1] = uint8_t(payload_len >> 8);
-    buf[2] = uint8_t(payload_len & 0xFF);
-
-    payload_len -= 16;
-    buf[3] = 0xAD;
-    buf[4] = uint8_t(payload_len >> 8);
-    buf[5] = uint8_t(payload_len & 0xFF);
-    buf[6] = uint8_t(cmd & 0xFF);
-
-    uint32_t checksum = 0;
-    for (int i = 0; i < 7; i++) {
-        checksum += buf[i + 4];
-    }
-    memcpy(buf + 11, &checksum, 4);
-
-    // Validate payload fits in command packet after header
-    if (payload_len >
-        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_CMD_HEADER_SIZE) {
-        LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE -
-                       ADSD3500_BURST_CMD_HEADER_SIZE);
-        return Status::INVALID_ARGUMENT;
-    }
-
-    memcpy(buf + ADSD3500_BURST_CMD_HEADER_SIZE, payload, payload_len);
-    extCtrl.p_u8 = buf;
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    //switch to standard mode
-    memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-    extCtrls.controls = &extCtrl;
-    extCtrls.count = 1;
-
-    uint8_t switchBuf[] = {0x01, 0x00, 0x10, 0xAD, 0x00, 0x00, 0x10,
-                           0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0x00,
-                           0x00, 0x00, 0x00, 0x00, 0x00};
-
-    memcpy(extCtrl.p_u8, switchBuf, 19);
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " with command: 0x" << std::hex << cmd
-                     << " (switch to standard mode)"
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    return status;
+    return m_protocolManager->adsd3500_write_payload_cmd(cmd, payload,
+                                                         payload_len);
 }
 
 /**
@@ -1901,46 +1576,7 @@ Adsd3500Sensor::adsd3500_write_payload_cmd(uint32_t cmd, uint8_t *payload,
  */
 aditof::Status Adsd3500Sensor::adsd3500_write_payload(uint8_t *payload,
                                                       uint16_t payload_len) {
-    using namespace aditof;
-    std::lock_guard<std::recursive_mutex> lock(m_adsd3500_mutex);
-    struct VideoDev *dev = &m_implData->videoDevs[0];
-    Status status = Status::OK;
-    struct v4l2_ext_control extCtrl;
-    struct v4l2_ext_controls extCtrls;
-    uint8_t *buf = m_implData->ctrlBuf.data();
-    memset(&extCtrl, 0, sizeof(struct v4l2_ext_control));
-    extCtrl.size = ADSD3500_CTRL_PACKET_SIZE;
-    extCtrl.id = V4L2_CID_AD_DEV_CHIP_CONFIG;
-    memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
-    extCtrls.controls = &extCtrl;
-    extCtrls.count = 1;
-
-    buf[0] = 1;
-    buf[1] = uint8_t(payload_len >> 8);
-    buf[2] = uint8_t(payload_len & 0xFF);
-
-    // Validate payload fits after response header
-    if (payload_len >
-        ADSD3500_CTRL_PACKET_SIZE - ADSD3500_BURST_RESPONSE_HEADER_SIZE) {
-        LOG(ERROR) << "Payload length " << payload_len << " exceeds maximum "
-                   << (ADSD3500_CTRL_PACKET_SIZE -
-                       ADSD3500_BURST_RESPONSE_HEADER_SIZE);
-        return Status::INVALID_ARGUMENT;
-    }
-
-    memcpy(buf + ADSD3500_BURST_RESPONSE_HEADER_SIZE, payload, payload_len);
-    extCtrl.p_u8 = buf;
-
-    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
-        LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
-                     << " to write payload with length: " << payload_len
-                     << ". Reason: " << strerror(errno) << "(" << errno << ")";
-        return Status::GENERIC_ERROR;
-    }
-
-    usleep(ADSD3500_PAYLOAD_WRITE_DELAY_US);
-
-    return status;
+    return m_protocolManager->adsd3500_write_payload(payload, payload_len);
 }
 
 /**
@@ -2238,66 +1874,13 @@ aditof::Status Adsd3500Sensor::setDepthComputeParams(
  * @return Status::OK if buffer is ready, Status::GENERIC_ERROR on timeout or error
  */
 aditof::Status Adsd3500Sensor::waitForBufferPrivate(struct VideoDev *dev) {
-    fd_set fds;
-    struct timeval tv;
-    int r;
-
-    if (dev == nullptr)
-        dev = &m_implData->videoDevs[0];
-
-    FD_ZERO(&fds);
-    FD_SET(dev->fd, &fds);
-
-    tv.tv_sec = 20;
-    tv.tv_usec = 0;
-
-    r = select(dev->fd + 1, &fds, NULL, NULL, &tv);
-
-    aditof::Status status = aditof::Status::OK;
-    if (r == -1) {
-        LOG(WARNING) << "select error "
-                     << "errno: " << errno << " error: " << strerror(errno);
-        status = aditof::Status::GENERIC_ERROR;
-    } else if (r == 0) {
-        LOG(WARNING) << "select timeout";
-        status = aditof::Status::GENERIC_ERROR;
-    }
-    return status;
+    return m_bufferManager->waitForBuffer(dev);
 }
 
 aditof::Status
 Adsd3500Sensor::dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
                                              struct VideoDev *dev) {
-    using namespace aditof;
-    Status status = Status::OK;
-
-    if (dev == nullptr)
-        dev = &m_implData->videoDevs[0];
-
-    CLEAR(buf);
-    buf.type = dev->videoBuffersType;
-    buf.memory = V4L2_MEMORY_MMAP;
-    buf.length = 1;
-    buf.m.planes = dev->planes;
-
-    if (xioctl(dev->fd, VIDIOC_DQBUF, &buf) == -1) {
-        LOG(WARNING) << "VIDIOC_DQBUF error "
-                     << "errno: " << errno << " error: " << strerror(errno);
-        switch (errno) {
-        case EAGAIN:
-        case EIO:
-            break;
-        default:
-            return Status::GENERIC_ERROR;
-        }
-    }
-
-    if (buf.index >= dev->nVideoBuffers) {
-        LOG(WARNING) << "Not enough buffers available";
-        return Status::GENERIC_ERROR;
-    }
-
-    return status;
+    return m_bufferManager->dequeueInternalBuffer(buf, dev);
 }
 
 /**
@@ -2316,28 +1899,13 @@ Adsd3500Sensor::dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
 aditof::Status Adsd3500Sensor::getInternalBufferPrivate(
     uint8_t **buffer, uint32_t &buf_data_len, const struct v4l2_buffer &buf,
     struct VideoDev *dev) {
-    if (dev == nullptr)
-        dev = &m_implData->videoDevs[0];
-
-    *buffer = static_cast<uint8_t *>(dev->videoBuffers[buf.index].start);
-    buf_data_len = buf.bytesused;
-
-    return aditof::Status::OK;
+    return m_bufferManager->getInternalBuffer(buffer, buf_data_len, buf, dev);
 }
 
 aditof::Status
 Adsd3500Sensor::enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
                                              struct VideoDev *dev) {
-    if (dev == nullptr)
-        dev = &m_implData->videoDevs[0];
-
-    if (xioctl(dev->fd, VIDIOC_QBUF, &buf) == -1) {
-        LOG(WARNING) << "VIDIOC_QBUF error "
-                     << "errno: " << errno << " error: " << strerror(errno);
-        return aditof::Status::GENERIC_ERROR;
-    }
-
-    return aditof::Status::OK;
+    return m_bufferManager->enqueueInternalBuffer(buf, dev);
 }
 
 /**
@@ -2350,15 +1918,7 @@ Adsd3500Sensor::enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
  * @return Status::OK on success, Status::GENERIC_ERROR if device not initialized
  */
 aditof::Status Adsd3500Sensor::getDeviceFileDescriptor(int &fileDescriptor) {
-    using namespace aditof;
-    struct VideoDev *dev = &m_implData->videoDevs[0];
-
-    if (dev->fd != -1) {
-        fileDescriptor = dev->fd;
-        return Status::OK;
-    }
-
-    return Status::INVALID_ARGUMENT;
+    return m_bufferManager->getDeviceFileDescriptor(fileDescriptor);
 }
 
 /**
@@ -2431,335 +1991,18 @@ aditof::Status Adsd3500Sensor::writeConfigBlock(const uint32_t offset) {
  *
  * @return Status::OK on success, Status::GENERIC_ERROR on read failure
  */
+/**
+ * @brief Queries the ADSD3500 chip to discover configuration.
+ *
+ * Delegates to ChipConfigManager to read firmware version, CCB version,
+ * imager type, available modes, and INI configuration from the chip.
+ *
+ * @return Status::OK on success
+ */
 aditof::Status Adsd3500Sensor::queryAdsd3500() {
-    using namespace aditof;
-    Status status = Status::OK;
-    // Ask ADSD3500 what imager is being used and whether we're using the old or new modes (CCB version)
-    if (m_implData->imagerType == SensorImagerType::IMAGER_UNKNOWN ||
-        m_implData->ccbVersion == CCBVersion::CCB_UNKNOWN) {
-
-        uint8_t fwData[44] = {0};
-        fwData[0] = uint8_t(1);
-        adsd3500_read_payload_cmd(0x05, fwData, 44);
-        if (status != Status::OK) {
-            LOG(ERROR) << "Failed to retrieve fw version and git hash for "
-                          "adsd3500!";
-            return status;
-        }
-        m_implData->fw_ver = std::string((char *)(fwData), 4);
-
-        uint16_t readValue = 0;
-        uint16_t revision_ver = 0;
-        int majorVersion = m_implData->fw_ver.at(0);
-        if (majorVersion ==
-            0) { // 0 means beta version, so version start at position 1
-            majorVersion = m_implData->fw_ver.at(1);
-        }
-        if (majorVersion > 3) {
-            status = adsd3500_read_cmd(0x0032, &readValue);
-            status = adsd3500_read_cmd(0x0115, &revision_ver);
-        } else {
-            status = Status::GENERIC_ERROR;
-        }
-        if (status == aditof::Status::OK) {
-            uint8_t ccb_version = readValue & 0x00FF;
-            switch (ccb_version) {
-            case 1: {
-                m_implData->ccbVersion = CCBVersion::CCB_VERSION0;
-                break;
-            }
-            case 2: {
-                m_implData->ccbVersion = CCBVersion::CCB_VERSION1;
-                break;
-            }
-            case 3: {
-                m_implData->ccbVersion = CCBVersion::CCB_VERSION2;
-                break;
-            }
-            case 4: {
-                m_implData->ccbVersion = CCBVersion::CCB_VERSION3;
-                break;
-            }
-            default: {
-                LOG(WARNING) << "Unknown CCB version read from ADSD3500: "
-                             << ccb_version;
-            }
-            } // switch (ccb_version)
-
-            uint8_t imager_version = (readValue & 0xFF00) >> 8;
-            revision_ver = revision_ver & 0x3;
-            imager_version = (revision_ver == 2)
-                                 ? (imager_version + revision_ver)
-                                 : imager_version;
-            switch (imager_version) {
-            case 1: {
-                m_implData->imagerType = SensorImagerType::IMAGER_ADSD3100;
-                m_modeSelector.setControl("imagerType", "adsd3100");
-                LOG(INFO) << "Detected imager: ADSD3100";
-                break;
-            }
-            case 2: {
-                m_implData->imagerType = SensorImagerType::IMAGER_ADTF3066;
-                m_modeSelector.setControl("imagerType", "adtf3030");
-                LOG(INFO) << "Detected imager: ADSD3030";
-                break;
-            }
-            case 3: {
-                m_implData->imagerType = SensorImagerType::IMAGER_ADTF3080;
-                m_modeSelector.setControl("imagerType", "adtf3080");
-                LOG(INFO) << "Detected imager: ADTF3080";
-                break;
-            }
-            case 4: {
-                m_implData->imagerType = SensorImagerType::IMAGER_ADSD3030;
-                m_modeSelector.setControl("imagerType", "adtf3066");
-                LOG(INFO) << "Detected imager: ADTF3066";
-                break;
-            }
-            default: {
-                LOG(WARNING) << "Unknown imager type read from ADSD3500: 0x"
-                             << std::hex << static_cast<int>(imager_version)
-                             << std::dec << " (register 0x0032 = 0x" << std::hex
-                             << readValue << std::dec << ")";
-            }
-            } // switch (imager_version)
-        } else {
-            LOG(ERROR) << "Failed to read imager type and CCB version (command "
-                          "0x0032). Possibly command is not implemented on the "
-                          "current adsd3500 firmware.";
-            return aditof::Status::UNAVAILABLE;
-        }
-    }
-
-    if (m_implData->ccbVersion != CCBVersion::CCB_UNKNOWN) {
-        if (m_implData->ccbVersion == CCBVersion::CCB_VERSION0) {
-            LOG(ERROR) << "Old modes are no longer supported!";
-            return Status::GENERIC_ERROR;
-        }
-        if (m_implData->ccbVersion == CCBVersion::CCB_VERSION3 ||
-            (m_implData->ccbVersion == CCBVersion::CCB_VERSION2 &&
-             m_controls["disableCCBM"] == "0")) {
-
-            uint16_t data;
-            status = adsd3500_read_cmd(0x39, &data);
-            if (status != Status::OK) {
-                LOG(ERROR)
-                    << "Failed to check if ccb has mode map table support!";
-                return status;
-            }
-
-            LOG(INFO) << "CCB master is supported. Reading mode details "
-                         "from nvm.";
-
-            m_ccbmEnabled = true;
-
-            m_availableModes.clear();
-            m_ccbmINIContent.clear();
-
-            CcbMode modeStruct[NR_OF_MODES_FROM_CCB];
-            status = adsd3500_read_payload_cmd(0x24, (uint8_t *)&modeStruct[0],
-                                               SIZE_OF_MODES_FROM_CCB);
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to read mode map table from ccb!";
-                return status;
-            }
-
-            for (int i = 0; i < NR_OF_MODES_FROM_CCB; i++) {
-                DepthSensorModeDetails modeDetails;
-                memset((void *)&modeDetails, 0, sizeof(DepthSensorModeDetails));
-
-                modeDetails.modeNumber = modeStruct[i].CFG_mode;
-                if (modeDetails.modeNumber == 0xFF) {
-                    continue;
-                }
-
-                modeDetails.baseResolutionHeight = modeStruct[i].heigth;
-                modeDetails.baseResolutionWidth = modeStruct[i].width;
-                modeDetails.numberOfPhases = modeStruct[i].noOfPhases;
-                modeDetails.numberOfFrequencies = modeStruct[i].nFreq;
-                modeDetails.isPCM = modeStruct[i].isPCM;
-
-                if (modeDetails.baseResolutionWidth == 0 ||
-                    modeDetails.baseResolutionHeight == 0) {
-                    continue;
-                }
-
-                //Read ini file content and store it in the sdk
-                IniTableEntry iniTableContent;
-                memset(&iniTableContent, 0, sizeof(IniTableEntry));
-                iniTableContent.INIIndex = modeDetails.modeNumber;
-
-                if (!modeDetails.isPCM) {
-                    status = adsd3500_read_payload_cmd(
-                        0x25, (uint8_t *)(&iniTableContent), 0x26);
-                    if (status != Status::OK) {
-                        LOG(ERROR) << "Failed to read ini content from nvm";
-                        return status;
-                    }
-
-                    if (iniTableContent.INIIndex == 0xFF) {
-                        LOG(INFO) << "No ini content for mode "
-                                  << (int)modeDetails.modeNumber << " in nvm!";
-                        continue;
-                    }
-                }
-
-                iniTableContent.modeNumber = modeDetails.modeNumber;
-
-                m_availableModes.emplace_back(modeDetails);
-                m_ccbmINIContent.emplace_back(iniTableContent);
-            }
-
-        } else {
-            if (m_controls["disableCCBM"] == "1") {
-                LOG(INFO) << "CCB master is disabled via control. Using "
-                             "sdk defined modes.";
-            } else {
-                LOG(INFO)
-                    << "CCB master not supported. Using sdk defined modes.";
-            }
-
-            int modeToTest = 5; // We are looking at width and height for mode 5
-            uint8_t tempDealiasParams[32] = {0};
-            tempDealiasParams[0] = modeToTest;
-
-            TofiXYZDealiasData tempDealiasStruct;
-            uint16_t width1 = 512;
-            uint16_t height1 = 512;
-
-            uint16_t width2 = 320;
-            uint16_t height2 = 256;
-
-            // We read dealias parameters to find out the width and height for mode 5
-            status = adsd3500_read_payload_cmd(0x02, tempDealiasParams, 32);
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to read dealias parameters for adsd3500!";
-                return status;
-            }
-
-            memcpy(&tempDealiasStruct, tempDealiasParams,
-                   sizeof(TofiXYZDealiasData) - sizeof(CameraIntrinsics));
-
-            // If mixed modes don't have accurate dimensions, switch back to simple new modes table
-            if ((tempDealiasStruct.n_rows == width1 &&
-                 tempDealiasStruct.n_cols == height1) ||
-                (tempDealiasStruct.n_rows == width2 &&
-                 tempDealiasStruct.n_cols == height2)) {
-                m_modeSelector.setControl("mixedModes", "1");
-            } else {
-                m_modeSelector.setControl("mixedModes", "0");
-            }
-
-            //ccmb disabled. Populate struct with sdk defined variables.
-            status = m_modeSelector.getAvailableModeDetails(m_availableModes);
-            if (status != aditof::Status::OK) {
-                LOG(ERROR) << "Failed to get available frame types for the "
-                              "current configuration.";
-            }
-        }
-    }
-
-    // Initialize the bits table
-    status = m_modeSelector.init_bitsPerPixelTable();
-
-    if (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3100) {
-        status = DeviceParameters::createIniParams(
-            m_iniFileStructList, m_availableModes, "adsd3100", m_chipId);
-    } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3030) {
-        status = DeviceParameters::createIniParams(
-            m_iniFileStructList, m_availableModes, "adsd3030", m_chipId);
-    } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3080) {
-        status = DeviceParameters::createIniParams(
-            m_iniFileStructList, m_availableModes, "adtf3080", m_chipId);
-    } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3066) {
-        status = DeviceParameters::createIniParams(
-            m_iniFileStructList, m_availableModes, "adtf3066", m_chipId);
-    }
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to populate ini params struct!";
-        return status;
-    }
-
-    // Allocate the size of vector based on available modes
-    m_bitsInAB.resize(m_availableModes.size());
-    m_bitsInConf.resize(m_availableModes.size());
-
-    // Allocate the frames based on bits combination selected to capture frames
-    for (size_t i = 0; i < m_availableModes.size(); ++i) {
-        iniFileStruct iniFile = m_iniFileStructList[i];
-        auto &modeDetails = m_availableModes[i];
-        std::string value;
-        if (!modeDetails.isPCM) {
-            modeDetails.frameContent.clear();
-            modeDetails.frameContent = {"raw", "depth"};
-
-            // check for AB frame
-            auto it = iniFile.iniKeyValPairs.find("bitsInAB");
-            if (it != iniFile.iniKeyValPairs.end()) {
-                value = it->second;
-                m_bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
-                if (m_bitsInAB[modeDetails.modeNumber] != 0) {
-                    modeDetails.frameContent.push_back("ab");
-                }
-            } else {
-                LOG(WARNING) << "bits In AB was not found in parameter list, "
-                                "discarding it";
-            }
-
-            // check for Conf frame
-            it = iniFile.iniKeyValPairs.find("bitsInConf");
-            if (it != iniFile.iniKeyValPairs.end()) {
-                value = it->second;
-                m_bitsInConf[modeDetails.modeNumber] =
-                    (uint8_t)std::stoi(value);
-                if (m_bitsInConf[modeDetails.modeNumber] != 0) {
-                    modeDetails.frameContent.push_back("conf");
-                }
-            } else {
-                LOG(WARNING)
-                    << "bits In Confidence was not found in parameter list, "
-                       "discarding it";
-            }
-
-            // check for xyz frame
-            it = iniFile.iniKeyValPairs.find("xyzEnable");
-            if (it != iniFile.iniKeyValPairs.end()) {
-                value = it->second;
-                if (value != "0") {
-                    modeDetails.frameContent.push_back("xyz");
-                }
-            } else {
-                LOG(WARNING) << "XYZ frame is disabled therefore "
-                                "discarding it";
-            }
-
-            // now push back the remaining frames
-            modeDetails.frameContent.push_back("metadata");
-
-        } else {
-            modeDetails.frameContent.clear();
-
-            // check for AB frame
-            auto it = iniFile.iniKeyValPairs.find("bitsInAB");
-            if (it != iniFile.iniKeyValPairs.end()) {
-                value = it->second;
-                m_bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
-                if (m_bitsInAB[modeDetails.modeNumber] != 0) {
-                    modeDetails.frameContent.push_back("ab");
-                }
-            } else {
-                LOG(WARNING) << "bits In AB was not found in parameter list, "
-                                "discarding it";
-            }
-
-            m_bitsInConf[modeDetails.modeNumber] = 0;
-            modeDetails.frameContent.push_back("metadata");
-        }
-    }
-
-    mergeIniParams(m_iniFileStructList);
-
-    return status;
+    return m_chipConfigManager->queryChipConfiguration(
+        m_availableModes, m_ccbmINIContent, m_iniFileStructList, m_bitsInAB,
+        m_bitsInConf, m_ccbmEnabled);
 }
 
 /**
@@ -2773,13 +2016,7 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
  */
 aditof::Status Adsd3500Sensor::adsd3500_register_interrupt_callback(
     aditof::SensorInterruptCallback &cb) {
-    if (Adsd3500InterruptNotifier::getInstance().interruptsAvailable()) {
-        m_interruptCallbackMap.insert({&cb, cb});
-    } else {
-        return aditof::Status::UNAVAILABLE;
-    }
-
-    return aditof::Status::OK;
+    return m_interruptManager->adsd3500_register_interrupt_callback(cb);
 }
 
 /**
@@ -2793,10 +2030,7 @@ aditof::Status Adsd3500Sensor::adsd3500_register_interrupt_callback(
  */
 aditof::Status Adsd3500Sensor::adsd3500_unregister_interrupt_callback(
     aditof::SensorInterruptCallback &cb) {
-
-    m_interruptCallbackMap.erase(&cb);
-
-    return aditof::Status::OK;
+    return m_interruptManager->adsd3500_unregister_interrupt_callback(cb);
 }
 
 /**
@@ -2810,44 +2044,7 @@ aditof::Status Adsd3500Sensor::adsd3500_unregister_interrupt_callback(
  * @return Status::OK on success
  */
 aditof::Status Adsd3500Sensor::adsd3500InterruptHandler(int signalValue) {
-    uint16_t statusRegister;
-    aditof::Status status = aditof::Status::OK;
-
-    usleep(ADSD3500_STATUS_READ_DELAY_US);
-
-    status = adsd3500_read_cmd(0x0020, &statusRegister);
-    if (status != aditof::Status::OK) {
-        LOG(ERROR) << "Failed to read status register!";
-        return status;
-    }
-
-    aditof::Adsd3500Status adsd3500Status =
-        convertIdToAdsd3500Status(statusRegister);
-    DLOG(INFO) << "statusRegister:" << statusRegister << "(" << adsd3500Status
-               << ")";
-
-    m_chipStatus = statusRegister;
-
-    if (adsd3500Status == aditof::Adsd3500Status::IMAGER_ERROR) {
-        status = adsd3500_read_cmd(0x0038, &statusRegister);
-        if (status != aditof::Status::OK) {
-            LOG(ERROR) << "Failed to read imager status register!";
-            return status;
-        }
-
-        m_imagerStatus = statusRegister;
-        LOG(ERROR) << "Imager error detected. Error code: " << statusRegister;
-    }
-
-    for (auto m_interruptCallback : m_interruptCallbackMap) {
-        m_interruptCallback.second(adsd3500Status);
-    }
-
-    if (status == Status::OK) {
-        m_interruptAvailable = true;
-    }
-
-    return status;
+    return m_interruptManager->adsd3500InterruptHandler(signalValue);
 }
 
 /**
@@ -2887,113 +2084,7 @@ aditof::Status Adsd3500Sensor::adsd3500_get_status(int &chipStatus,
  * @note Unknown status codes log an error and return UNKNOWN_ERROR_ID
  */
 aditof::Adsd3500Status Adsd3500Sensor::convertIdToAdsd3500Status(int status) {
-    using namespace aditof;
-
-    switch (status) {
-    case 0:
-        return Adsd3500Status::OK;
-
-    case 1:
-        return Adsd3500Status::INVALID_MODE;
-
-    case 2:
-        return Adsd3500Status::INVALID_JBLF_FILTER_SIZE;
-
-    case 3:
-        return Adsd3500Status::UNSUPPORTED_COMMAND;
-
-    case 4:
-        return Adsd3500Status::INVALID_MEMORY_REGION;
-
-    case 5:
-        return Adsd3500Status::INVALID_FIRMWARE_CRC;
-
-    case 6:
-        return Adsd3500Status::INVALID_IMAGER;
-
-    case 7:
-        return Adsd3500Status::INVALID_CCB;
-
-    case 8:
-        return Adsd3500Status::FLASH_HEADER_PARSE_ERROR;
-
-    case 9:
-        return Adsd3500Status::FLASH_FILE_PARSE_ERROR;
-
-    case 10:
-        return Adsd3500Status::SPIM_ERROR;
-
-    case 11:
-        return Adsd3500Status::INVALID_CHIPID;
-
-    case 12:
-        return Adsd3500Status::IMAGER_COMMUNICATION_ERROR;
-
-    case 13:
-        return Adsd3500Status::IMAGER_BOOT_FAILURE;
-
-    case 14:
-        return Adsd3500Status::FIRMWARE_UPDATE_COMPLETE;
-
-    case 15:
-        return Adsd3500Status::NVM_WRITE_COMPLETE;
-
-    case 16:
-        return Adsd3500Status::IMAGER_ERROR;
-
-    case 17:
-        return Adsd3500Status::TIMEOUT_ERROR;
-
-    case 19:
-        return Adsd3500Status::DYNAMIC_MODE_SWITCHING_NOT_ENABLED;
-
-    case 20:
-        return Adsd3500Status::INVALID_DYNAMIC_MODE_COMPOSITIONS;
-
-    case 21:
-        return Adsd3500Status::INVALID_PHASE_INVALID_VALUE;
-
-    case 22:
-        return Adsd3500Status::CCB_WRITE_COMPLETE;
-
-    case 23:
-        return Adsd3500Status::INVALID_CCB_WRITE_CRC;
-
-    case 24:
-        return Adsd3500Status::CFG_WRITE_COMPLETE;
-
-    case 25:
-        return Adsd3500Status::INVALID_CFG_WRITE_CRC;
-
-    case 26:
-        return Adsd3500Status::INIT_FW_WRITE_COMPLETE;
-
-    case 27:
-        return Adsd3500Status::INVALID_INIT_FW_WRITE_CRC;
-
-    case 28:
-        return Adsd3500Status::INVALID_BIN_SIZE;
-
-    case 29:
-        return Adsd3500Status::ACK_ERROR;
-
-    case 30:
-        return Adsd3500Status::FLASH_STATUS_CHUNK_ALREADY_FOUND;
-
-    case 34:
-        return Adsd3500Status::INVALID_INI_UPDATE_IN_PCM_MODE;
-
-    case 35:
-        return Adsd3500Status::UNSUPPORTED_MODE_INI_READ;
-
-    case 41:
-        return Adsd3500Status::IMAGER_STREAM_OFF;
-
-    default: {
-        LOG(ERROR) << "Unknown ID: " << status;
-        return Adsd3500Status::UNKNOWN_ERROR_ID;
-    }
-    }
+    return Adsd3500InterruptManager::convertIdToAdsd3500Status(status);
 }
 
 /**
@@ -3009,18 +2100,8 @@ aditof::Adsd3500Status Adsd3500Sensor::convertIdToAdsd3500Status(int status) {
 aditof::Status Adsd3500Sensor::getIniParamsImpl(void *p_config_params,
                                                 int params_group,
                                                 const void *p_tofi_cal_config) {
-    using namespace aditof;
-    Status status = Status::OK;
-    uint32_t ret;
-    ret = TofiGetINIParams(p_config_params, params_group, p_tofi_cal_config);
-    status = static_cast<Status>(ret);
-
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed getting ini parameters";
-        return Status::GENERIC_ERROR;
-    }
-
-    return status;
+    return m_iniConfigManager->getIniParamsImpl(p_config_params, params_group,
+                                                p_tofi_cal_config);
 }
 
 /**
@@ -3036,18 +2117,8 @@ aditof::Status Adsd3500Sensor::getIniParamsImpl(void *p_config_params,
 aditof::Status Adsd3500Sensor::setIniParamsImpl(void *p_config_params,
                                                 int params_group,
                                                 const void *p_tofi_cal_config) {
-    using namespace aditof;
-    Status status = Status::OK;
-    uint32_t ret;
-    ret = TofiSetINIParams(p_config_params, params_group, p_tofi_cal_config);
-    status = static_cast<Status>(ret);
-
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed setting ini parameters";
-        return Status::GENERIC_ERROR;
-    }
-
-    return status;
+    return m_iniConfigManager->setIniParamsImpl(p_config_params, params_group,
+                                                p_tofi_cal_config);
 }
 
 /**
@@ -3064,69 +2135,12 @@ aditof::Status Adsd3500Sensor::setIniParamsImpl(void *p_config_params,
 aditof::Status Adsd3500Sensor::getDefaultIniParamsForMode(
     const std::string &imager, const std::string &mode,
     std::map<std::string, std::string> &params) {
-
-    auto it = std::find_if(
-        m_iniFileStructList.begin(), m_iniFileStructList.end(),
-        [&imager, &mode](const iniFileStruct &iniF) {
-            return (iniF.imagerName == imager && iniF.modeName == mode);
-        });
-
-    if (it == m_iniFileStructList.end()) {
-        LOG(WARNING) << "Cannot find default parameters for imager: " << imager
-                     << " and mode: " << mode;
-        return aditof::Status::INVALID_ARGUMENT;
-    }
-
-    params = it->iniKeyValPairs;
-
-    return aditof::Status::OK;
+    return m_iniConfigManager->getDefaultIniParamsForMode(imager, mode, params);
 }
 
 aditof::Status
 Adsd3500Sensor::mergeIniParams(std::vector<iniFileStruct> &iniFileStructList) {
-
-    using namespace std;
-    using namespace aditof;
-
-    if (m_ccbmEnabled) {
-
-        for (auto &ccbmParams : m_ccbmINIContent) {
-
-            for (auto &iniList : iniFileStructList) {
-
-                if (iniList.modeName != "") {
-                    if (ccbmParams.modeNumber ==
-                        std::stoi(iniList.modeName.c_str())) {
-
-                        iniList.iniKeyValPairs["abThreshMin"] =
-                            std::to_string(ccbmParams.abThreshMin);
-                        iniList.iniKeyValPairs["confThresh"] =
-                            std::to_string(ccbmParams.confThresh);
-                        iniList.iniKeyValPairs["radialThreshMin"] =
-                            std::to_string(ccbmParams.radialThreshMin);
-                        iniList.iniKeyValPairs["radialThreshMax"] =
-                            std::to_string(ccbmParams.radialThreshMax);
-                        iniList.iniKeyValPairs["jblfApplyFlag"] =
-                            std::to_string(ccbmParams.jblfApplyFlag);
-                        iniList.iniKeyValPairs["jblfWindowSize"] =
-                            std::to_string(ccbmParams.jblfWindowSize);
-                        iniList.iniKeyValPairs["jblfGaussianSigma"] =
-                            std::to_string(ccbmParams.jblfGaussianSigma);
-                        iniList.iniKeyValPairs["jblfExponentialTerm"] =
-                            std::to_string(ccbmParams.jblfExponentialTerm);
-                        iniList.iniKeyValPairs["jblfMaxEdge"] =
-                            std::to_string(ccbmParams.jblfMaxEdge);
-                        iniList.iniKeyValPairs["jblfABThreshold"] =
-                            std::to_string(ccbmParams.jblfABThreshold);
-
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    return Status::OK;
+    return m_iniConfigManager->mergeIniParams(iniFileStructList);
 }
 
 /**
@@ -3141,13 +2155,7 @@ Adsd3500Sensor::mergeIniParams(std::vector<iniFileStruct> &iniFileStructList) {
  */
 aditof::Status Adsd3500Sensor::convertIniParams(iniFileStruct &iniStruct,
                                                 std::string &inistr) {
-
-    inistr = "";
-    for (auto iniPairs : iniStruct.iniKeyValPairs) {
-        inistr += iniPairs.first + "=" + iniPairs.second + "\n";
-    }
-
-    return Status::OK;
+    return m_iniConfigManager->convertIniParams(iniStruct, inistr);
 }
 
 /**
@@ -3162,31 +2170,7 @@ aditof::Status Adsd3500Sensor::convertIniParams(iniFileStruct &iniStruct,
  */
 aditof::Status Adsd3500Sensor::getIniParamsArrayForMode(int mode,
                                                         std::string &iniStr) {
-    std::string modestr = std::to_string(mode);
-    std::string imager = "adsd3030";
-    if (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3100) {
-        imager = "adsd3100";
-    } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3080) {
-        imager = "adtf3080";
-    } else if (m_implData->imagerType == SensorImagerType::IMAGER_ADTF3066) {
-        imager = "adtf3066";
-    }
-
-    auto it = std::find_if(
-        m_iniFileStructList.begin(), m_iniFileStructList.end(),
-        [&imager, &modestr](const iniFileStruct &iniF) {
-            return (iniF.imagerName == imager && iniF.modeName == modestr);
-        });
-
-    if (it == m_iniFileStructList.end()) {
-        LOG(WARNING) << "Cannot find default parameters for imager: " << imager
-                     << " and mode: " << mode;
-        return aditof::Status::INVALID_ARGUMENT;
-    }
-
-    convertIniParams(*it, iniStr);
-
-    return Status::OK;
+    return m_iniConfigManager->getIniParamsArrayForMode(mode, iniStr);
 }
 #pragma region Stream_Recording_and_Playback
 

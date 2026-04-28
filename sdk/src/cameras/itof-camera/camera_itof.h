@@ -24,6 +24,11 @@
 #ifndef CAMERA_ITOF_H
 #define CAMERA_ITOF_H
 
+#include "adsd3500_controller.h"
+#include "calibration_manager.h"
+#include "camera_configuration.h"
+#include "recording_manager.h"
+#include "sensor_config_helper.h"
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
 #include "tofi/tofi_util.h"
@@ -31,9 +36,19 @@
 #include <aditof/camera.h>
 #include <aditof/depth_sensor_interface.h>
 #include <map>
+#include <memory>
 #include <unordered_map>
 
 #define NR_READADSD3500CCB 3
+
+namespace aditof {
+class Adsd3500Controller;
+class CalibrationManager;
+class CameraConfiguration;
+class DepthParameterMapper; // Forward declaration to break circular dependency
+class RecordingManager;
+class SensorConfigHelper;
+} // namespace aditof
 
 class CameraItof : public aditof::Camera {
   public:
@@ -142,13 +157,13 @@ class CameraItof : public aditof::Camera {
                          std::map<std::string, std::string> &params) override;
 
   private:
-    // Methods available only when Adsd3500 is detected as part of the entire setup
-
+    // DEPRECATED: Methods now delegated to CalibrationManager
     /**
      * @brief Read the CCB from adsd3500 memory and store in output variable ccb
      * @param[out] ccb - where to store the CCB content
      * @return Status
      * @see Status
+     * @deprecated Use m_calibrationMgr->readCCB() instead
      */
     aditof::Status readAdsd3500CCB(std::string &ccb);
 
@@ -182,11 +197,13 @@ class CameraItof : public aditof::Camera {
 
     /**
      * @brief Delete allocated tables for X, Y, Z
+     * @deprecated Use m_calibrationMgr->cleanupXYZtables() instead
      */
     void cleanupXYZtables();
 
     /**
      * @brief Check if string can convert to double
+     * @deprecated Use m_config->isConvertibleToDouble() instead
      */
     bool isConvertibleToDouble(const std::string &str);
 
@@ -200,11 +217,24 @@ class CameraItof : public aditof::Camera {
     /**
      * @brief Auto-discovers JSON configuration file from binary path or environment variable
      * @return Path to discovered JSON file, empty string if not found
+     * @deprecated Use m_config->autoDiscoverConfigFile() instead
      */
     std::string autoDiscoverConfigFile();
 
   private:
     using noArgCallable = std::function<aditof::Status()>;
+
+    // Configuration and calibration managers (Phase 1 refactoring)
+    std::unique_ptr<aditof::CameraConfiguration> m_config;
+    std::unique_ptr<aditof::CalibrationManager> m_calibrationMgr;
+    // ADSD3500 hardware controller (Phase 2A refactoring)
+    std::unique_ptr<aditof::Adsd3500Controller> m_adsd3500Ctrl;
+    // Recording and playback manager (Phase 2B refactoring)
+    std::unique_ptr<aditof::RecordingManager> m_recordingMgr;
+    // Sensor configuration helper (Phase 2C refactoring)
+    std::unique_ptr<aditof::SensorConfigHelper> m_sensorConfigHelper;
+    // Depth parameter mapper (Phase 2D refactoring)
+    std::unique_ptr<aditof::DepthParameterMapper> m_depthParamMapper;
 
     aditof::CameraDetails m_details;
     std::shared_ptr<aditof::DepthSensorInterface> m_depthSensor;
@@ -218,12 +248,6 @@ class CameraItof : public aditof::Camera {
     bool m_adsd3500_master;
     bool m_isOffline;
     std::string m_netLinkTest;
-
-    std::map<int, std::map<std::string, std::string>> m_depth_params_map;
-    std::map<int, std::map<std::string, std::string>> m_depth_params_map_reset;
-
-    TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
-    std::string m_rawCCBData; // Raw Camera Calibration Block for non-ISP modes
 
     uint8_t m_depthBitsPerPixel;
     uint8_t m_abBitsPerPixel;
@@ -239,67 +263,23 @@ class CameraItof : public aditof::Camera {
     aditof::DepthSensorModeDetails m_modeDetailsCache;
     std::vector<std::pair<std::string, int32_t>> m_sensor_settings;
     int16_t m_cameraFps;
-    int16_t m_fsyncMode;
-    int16_t m_mipiOutputSpeed;
-    int16_t m_isdeskewEnabled;
-    int16_t m_enableTempCompenstation;
-    int16_t m_enableMetaDatainAB;
-    int16_t m_enableEdgeConfidence;
-    std::map<std::string, std::string> m_iniKeyValPairs;
-    //pair between firmware version and git hash
+    // NOTE: Configuration settings now managed by m_config:
+    // - m_fsyncMode, m_mipiOutputSpeed, m_isdeskewEnabled
+    // - m_enableTempCompenstation, m_enableMetaDatainAB, m_enableEdgeConfidence
+    // - m_dropFirstFrame, m_configDmsSequence, m_iniKeyValPairs
+    // - m_depth_params_map, m_depth_params_map_reset
+    // NOTE: Calibration data now managed by m_calibrationMgr:
+    // - m_rawCCBData, m_xyz_dealias_data, m_xyzTable
     std::pair<std::string, std::string> m_adsd3500FwGitHash;
     int m_adsd3500FwVersionInt;
     int m_modesVersion;
     bool m_fwUpdated;
     aditof::Adsd3500Status m_adsd3500Status;
-    XYZTable m_xyzTable;
     bool m_enableDepthCompute;
     std::string m_initConfigFilePath;
     bool m_userJsonLoaded = false;
     aditof::ImagerType m_imagerType;
-    bool m_dropFirstFrame;
-    bool m_dropFrameOnce;
-    std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
-
-    struct offlineparameter_struct {
-        static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;
-        static const uint32_t MAX_FRAME_CONTENT = 6;
-        uint32_t numberOfFrames;
-        const uint32_t formatVersion = 0x00000001;
-        uint16_t frameRate;
-        uint16_t enableMetaDatainAB;
-        TofiXYZDealiasData dealias;
-        struct {
-            uint32_t mode;
-            uint32_t width;
-            uint32_t height;
-            uint32_t totalCaptures;
-        } details;
-        //aditof::DepthSensorModeDetails modeDetailsCache;
-        struct {
-            uint8_t modeNumber;
-            char frameContent[MAX_FRAME_CONTENT][16];
-            uint8_t numberOfFrequencies;
-            uint8_t numberOfPhases;
-            int pixelFormatIndex;
-            int frameWidthInBytes;
-            int frameHeightInBytes;
-            int baseResolutionWidth;
-            int baseResolutionHeight;
-            int metadataSize;
-            int isPCM;
-        } modeDetailsCache;
-        uint32_t fdatadetailsCount;
-        //aditof::FrameDataDetails fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
-        struct {
-            char type[32];
-            uint32_t width;
-            uint32_t height;
-            uint32_t subelementSize;
-            uint32_t subelementsPerElement;
-            uint32_t bytesCount;
-        } fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
-    } m_offline_parameters;
+    bool m_dropFrameOnce; // Per-frame state; m_dropFirstFrame moved to m_config
 };
 
 #endif // CAMERA_ITOF_H
