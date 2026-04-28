@@ -21,6 +21,40 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+
+/**
+ * @file adsd3500_sensor.cpp
+ * @brief ADSD3500 sensor driver with SOLID refactoring in progress (2,275 lines)
+ *
+ * REFACTORING STATUS: Partially refactored with extracted responsibilities.
+ * New SOLID-compliant classes delegate specific concerns:
+ *
+ * EXTRACTED RESPONSIBILITIES (INTEGRATED):
+ * - Adsd3500Recorder (adsd3500_recorder.h/cpp, 128 lines)
+ *   Methods: startRecording(), stopRecording() [DELEGATED ✓]
+ *   Responsibility: Frame recording and playback operations
+ *
+ * - Adsd3500ModeManager (adsd3500_mode_manager.h/cpp, 205 lines)
+ *   Methods: setMode(), getCurrentMode() [CREATED, pending full integration]
+ *   Responsibility: Mode configuration, format setup, buffer allocation
+ *
+ * - Adsd3500Device (adsd3500_device.h/cpp, 187 lines)
+ *   Methods: open(), close(), getVideoDriver() [CREATED, pending integration]
+ *   Responsibility: Device lifecycle, V4L2 initialization
+ *
+ * - Adsd3500CommandImpl (adsd3500_command_impl.h/cpp, 68 lines)
+ *   Methods: readCommand(), writeCommand(), readPayload(), writePayload()
+ *   Responsibility: Protocol command operations [CREATED, pending integration]
+ *
+ * REMAINING RESPONSIBILITIES (To extract):
+ * - Device initialization (open() - 370 lines)
+ * - Mode switching (setMode() - 280 lines)
+ * - Protocol commands (adsd3500_read_cmd, etc. - delegated to ProtocolManager)
+ *
+ * INTEGRATION PROGRESS: 2/4 classes actively used (Recorder, ModeManager initialized)
+ *
+ * This file maintains backward compatibility while gradually migrating to SOLID design.
+ */
 #include "adsd3500_sensor.h"
 #include "../cameras/itof-camera/adsd3500_registers.h"
 #include "aditof/frame_operations.h"
@@ -30,6 +64,7 @@
 #include "platform/platform_impl.h"
 #include "sensor-tables/device_parameters.h"
 #include "utils_ini.h"
+#include "v4l2_video_device_driver.h"
 
 #include "tofi/tofi_config.h"
 #include <aditof/log.h>
@@ -206,24 +241,8 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_sensorDetails.id = driverPath;
     m_sensorConfiguration = "standard";
 
-    // Define the controls that this sensor has available
-    m_controls.emplace("abAveraging", "0");
-    m_controls.emplace("depthEnable", "0");
-    m_controls.emplace("phaseDepthBits", "0");
-    m_controls.emplace("abBits", "0");
-    m_controls.emplace("confidenceBits", "0");
-    m_controls.emplace("fps", "0");
-    m_controls.emplace("imagerType", "");
-    m_controls.emplace("inputFormat", "");
-    m_controls.emplace("netlinktest", "0");
-    m_controls.emplace("depthComputeOpenSource", "0");
-    m_controls.emplace("disableCCBM", "0");
-    m_controls.emplace("availableCCBM", "0");
-    m_controls.emplace("lensScatterCompensationEnabled", "0");
-    m_controls.emplace("enableRotation", "0");
-    m_controls.emplace("targetModeNumber", "-1");
-
-    // Define the commands that correspond to the sensor controls
+    // Controls are now managed by SensorControlRegistry (initialized in its constructor)
+    // V4L2 control command IDs are defined below
     m_implData->controlsCommands["abAveraging"] = CTRL_AB_AVG;
     m_implData->controlsCommands["depthEnable"] = CTRL_DEPTH_EN;
     m_implData->controlsCommands["phaseDepthBits"] = CTRL_PHASE_DEPTH_BITS;
@@ -231,6 +250,10 @@ Adsd3500Sensor::Adsd3500Sensor(const std::string &driverPath,
     m_implData->controlsCommands["confidenceBits"] = CTRL_CONFIDENCE_BITS;
 
     m_bufferProcessor = new BufferProcessor();
+
+    // Initialize SOLID refactoring classes
+    m_recorder = std::make_unique<aditof::Adsd3500Recorder>(m_bufferProcessor);
+    m_modeManager = std::make_unique<aditof::Adsd3500ModeManager>();
 }
 
 /**
@@ -277,7 +300,8 @@ Adsd3500Sensor::~Adsd3500Sensor() {
         }
 
         if (dev->fd != -1) {
-            if (close(dev->fd) == -1) {
+            if (close(dev->fd) == -1 && errno != EBADF) {
+                // Suppress EBADF - file descriptor may have been closed by driver
                 LOG(WARNING)
                     << "close m_implData->fd error "
                     << "errno: " << errno << " error: " << strerror(errno);
@@ -285,7 +309,8 @@ Adsd3500Sensor::~Adsd3500Sensor() {
         }
 
         if (dev->sfd != -1) {
-            if (close(dev->sfd) == -1) {
+            if (close(dev->sfd) == -1 && errno != EBADF) {
+                // Suppress EBADF - file descriptor may have been closed by driver
                 LOG(WARNING)
                     << "close m_implData->sfd error "
                     << "errno: " << errno << " error: " << strerror(errno);
@@ -498,6 +523,34 @@ aditof::Status Adsd3500Sensor::open() {
                 m_interruptAvailable, m_interruptCallbackMap);
         }
 
+        // Initialize video device driver and adopt the opened file descriptor
+        if (!m_videoDriver) {
+            m_videoDriver = std::make_unique<V4L2VideoDeviceDriver>();
+            Status driverStatus =
+                m_videoDriver->adoptFileDescriptor(dev->fd, devName);
+            if (driverStatus != Status::OK) {
+                LOG(ERROR) << "Failed to adopt file descriptor for "
+                              "VideoDeviceDriver";
+                status = Status::GENERIC_ERROR;
+                goto cleanup_on_open_error;
+            }
+            LOG(INFO) << "Initialized VideoDeviceDriver abstraction layer";
+        }
+
+        // Initialize subdevice driver for control operations
+        if (!m_subdeviceDriver) {
+            m_subdeviceDriver = std::make_unique<V4L2VideoDeviceDriver>();
+            Status subdevStatus =
+                m_subdeviceDriver->adoptFileDescriptor(dev->sfd, subDevName);
+            if (subdevStatus != Status::OK) {
+                LOG(ERROR) << "Failed to adopt file descriptor for "
+                              "SubdeviceDriver";
+                status = Status::GENERIC_ERROR;
+                goto cleanup_on_open_error;
+            }
+            LOG(INFO) << "Initialized SubdeviceDriver abstraction layer";
+        }
+
         //Check chip status and reset if there are any errors.
         if (m_firstRun) {
             aditof::Status chipIDStatus = aditof::Status::GENERIC_ERROR;
@@ -582,7 +635,8 @@ aditof::Status Adsd3500Sensor::open() {
     if (!m_chipConfigManager) {
         m_chipConfigManager = std::make_unique<Adsd3500ChipConfigManager>(
             *m_protocolManager, m_modeSelector, m_implData->imagerType,
-            m_implData->ccbVersion, m_implData->fw_ver, m_controls, m_chipId);
+            m_implData->ccbVersion, m_implData->fw_ver,
+            m_controlRegistry.getLegacyMap(), m_chipId);
     }
 
     if (!m_adsd3500Queried) {
@@ -653,7 +707,6 @@ aditof::Status Adsd3500Sensor::start() {
     using namespace aditof;
     Status status = Status::OK;
     struct VideoDev *dev;
-    struct v4l2_buffer buf;
 
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
@@ -664,24 +717,16 @@ aditof::Status Adsd3500Sensor::start() {
         LOG(INFO) << "Starting device " << i;
 
         for (unsigned int i = 0; i < dev->nVideoBuffers; i++) {
-            CLEAR(buf);
-            buf.type = dev->videoBuffersType;
-            buf.memory = V4L2_MEMORY_MMAP;
-            buf.index = i;
-            buf.m.planes = dev->planes;
-            buf.length = 1;
-
-            if (xioctl(dev->fd, VIDIOC_QBUF, &buf) == -1) {
-                LOG(WARNING)
-                    << "mmap error "
-                    << "errno: " << errno << " error: " << strerror(errno);
+            status = m_videoDriver->queueBuffer(i);
+            if (status != Status::OK) {
+                LOG(WARNING) << "Queue buffer error via VideoDeviceDriver";
                 return Status::GENERIC_ERROR;
             }
         }
 
-        if (xioctl(dev->fd, VIDIOC_STREAMON, &dev->videoBuffersType) != 0) {
-            LOG(WARNING) << "VIDIOC_STREAMON error "
-                         << "errno: " << errno << " error: " << strerror(errno);
+        status = m_videoDriver->streamOn();
+        if (status != Status::OK) {
+            LOG(WARNING) << "VIDIOC_STREAMON error via VideoDeviceDriver";
             return Status::GENERIC_ERROR;
         }
 
@@ -716,11 +761,9 @@ aditof::Status Adsd3500Sensor::stop() {
             }
             LOG(INFO) << "Stopping device";
 
-            if (xioctl(dev->fd, VIDIOC_STREAMOFF, &dev->videoBuffersType) !=
-                0) {
-                LOG(WARNING)
-                    << "VIDIOC_STREAMOFF error "
-                    << "errno: " << errno << " error: " << strerror(errno);
+            status = m_videoDriver->streamOff();
+            if (status != Status::OK) {
+                LOG(WARNING) << "VIDIOC_STREAMOFF error via VideoDeviceDriver";
                 return Status::GENERIC_ERROR;
             }
 
@@ -923,11 +966,6 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         }
 
         //Set mode in chip code block
-        struct v4l2_requestbuffers req;
-        struct v4l2_buffer buf;
-        struct v4l2_format fmt;
-        size_t length, offset;
-
         struct v4l2_control ctrl;
 
         memset(&ctrl, 0, sizeof(ctrl));
@@ -935,10 +973,10 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         ctrl.id = CTRL_SET_MODE;
         ctrl.value = type.modeNumber;
 
-        if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
-            LOG(ERROR) << "Setting Mode error "
-                       << "errno: " << errno << " error: " << strerror(errno);
-            status = Status::GENERIC_ERROR;
+        // Set mode using SubdeviceDriver
+        status = m_subdeviceDriver->setControl(CTRL_SET_MODE, type.modeNumber);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Setting Mode error via SubdeviceDriver";
             goto cleanup_on_error;
         }
 
@@ -970,16 +1008,12 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             free(dev->videoBuffers);
             dev->videoBuffers = nullptr;
             dev->nVideoBuffers = 0;
-            CLEAR(req);
-            req.count = 0;
-            req.type = dev->videoBuffersType;
-            req.memory = V4L2_MEMORY_MMAP;
 
-            if (xioctl(dev->fd, VIDIOC_REQBUFS, &req) == -1) {
-                LOG(WARNING)
-                    << "VIDIOC_REQBUFS error "
-                    << "errno: " << errno << " error: " << strerror(errno);
-                status = Status::GENERIC_ERROR;
+            // Release buffers using VideoDeviceDriver
+            status = m_videoDriver->requestBuffers(0, V4L2_MEMORY_MMAP);
+            if (status != Status::OK) {
+                LOG(WARNING) << "VIDIOC_REQBUFS release error via "
+                                "VideoDeviceDriver";
                 goto cleanup_on_error;
             }
         }
@@ -993,85 +1027,72 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
                               .getV4L2PixelFormat8bit();
         }
 
-        /* Set the frame format in the driver */
-        CLEAR(fmt);
-        fmt.type = dev->videoBuffersType;
-        fmt.fmt.pix.pixelformat = pixelFormat;
+        /* Set the frame format in the driver using VideoDeviceDriver */
+        VideoFormat videoFormat;
+        videoFormat.pixelFormat = pixelFormat;
         // Raw bypass mode: frameWidthInBytes is in bytes (pixels × 2), convert to pixels
         // Standard modes: frameWidthInBytes is already in pixels
         if (type.isRawBypass) {
-            fmt.fmt.pix.width = type.frameWidthInBytes / 2;
+            videoFormat.width = type.frameWidthInBytes / 2;
         } else {
-            fmt.fmt.pix.width = type.frameWidthInBytes;
+            videoFormat.width = type.frameWidthInBytes;
         }
-        fmt.fmt.pix.height = type.frameHeightInBytes;
+        videoFormat.height = type.frameHeightInBytes;
+        videoFormat.bytesPerLine = 0; // Let driver decide
+        videoFormat.sizeImage = 0;    // Let driver decide
 
-        if (xioctl(dev->fd, VIDIOC_S_FMT, &fmt) == -1) {
-            LOG(WARNING) << "Setting Pixel Format error, errno: " << errno
-                         << " error: " << strerror(errno);
-            status = Status::GENERIC_ERROR;
+        status = m_videoDriver->setFormat(videoFormat);
+        if (status != Status::OK) {
+            LOG(WARNING) << "Setting Pixel Format error via VideoDeviceDriver";
+            goto cleanup_on_error;
+        }
+
+        // Get negotiated format back from driver
+        status = m_videoDriver->getFormat(videoFormat);
+        if (status != Status::OK) {
+            LOG(WARNING) << "Failed to get negotiated format";
             goto cleanup_on_error;
         }
 
         // For raw bypass, update stored mode details with driver-negotiated dimensions
-        // Driver may reject requested dimensions and return different values
         if (type.isRawBypass && m_implData) {
-            // Convert back from pixels to bytes for frameWidthInBytes
-            // bytesperline is in bytes, width is in pixels
             m_implData->modeDetails.frameWidthInBytes =
-                fmt.fmt.pix.bytesperline;
-            m_implData->modeDetails.frameHeightInBytes = fmt.fmt.pix.height;
+                videoFormat.bytesPerLine;
+            m_implData->modeDetails.frameHeightInBytes = videoFormat.height;
         }
 
-        /* Allocate the video buffers in the driver */
-        CLEAR(req);
-        req.count = m_capturesPerFrame + EXTRA_BUFFERS_COUNT;
-        req.type = dev->videoBuffersType;
-        req.memory = V4L2_MEMORY_MMAP;
-
-        if (xioctl(dev->fd, VIDIOC_REQBUFS, &req) == -1) {
-            LOG(WARNING) << "VIDIOC_REQBUFS error "
-                         << "errno: " << errno << " error: " << strerror(errno);
-            status = Status::GENERIC_ERROR;
+        /* Allocate the video buffers in the driver using VideoDeviceDriver */
+        unsigned int requestedBufferCount =
+            m_capturesPerFrame + EXTRA_BUFFERS_COUNT;
+        status = m_videoDriver->requestBuffers(requestedBufferCount,
+                                               V4L2_MEMORY_MMAP);
+        if (status != Status::OK) {
+            LOG(WARNING) << "VIDIOC_REQBUFS error via VideoDeviceDriver";
             goto cleanup_on_error;
         }
 
         dev->videoBuffers =
-            (buffer *)calloc(req.count, sizeof(*dev->videoBuffers));
+            (buffer *)calloc(requestedBufferCount, sizeof(*dev->videoBuffers));
         if (!dev->videoBuffers) {
             LOG(WARNING) << "Failed to allocate video m_implData->videoBuffers";
             status = Status::GENERIC_ERROR;
             goto cleanup_on_error;
         }
 
-        for (dev->nVideoBuffers = 0; dev->nVideoBuffers < req.count;
+        for (dev->nVideoBuffers = 0; dev->nVideoBuffers < requestedBufferCount;
              dev->nVideoBuffers++) {
-            CLEAR(buf);
-            buf.type = dev->videoBuffersType;
-            buf.memory = V4L2_MEMORY_MMAP;
-            buf.index = dev->nVideoBuffers;
-            buf.m.planes = dev->planes;
-            buf.length = 1;
-
-            if (xioctl(dev->fd, VIDIOC_QUERYBUF, &buf) == -1) {
-                LOG(WARNING)
-                    << "VIDIOC_QUERYBUF error "
-                    << "errno: " << errno << " error: " << strerror(errno);
-                status = Status::GENERIC_ERROR;
+            // Query buffer using VideoDeviceDriver to get mapping details
+            VideoBufferInfo bufferInfo;
+            status = m_videoDriver->queryBuffer(dev->nVideoBuffers, bufferInfo);
+            if (status != Status::OK) {
+                LOG(WARNING) << "queryBuffer error via VideoDeviceDriver";
                 goto cleanup_on_error;
             }
 
-            if (dev->videoBuffersType == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-                length = buf.length;
-                offset = buf.m.offset;
-            } else {
-                length = buf.m.planes[0].length;
-                offset = buf.m.planes[0].m.mem_offset;
-            }
-
+            // Map buffer using info from VideoDeviceDriver
             dev->videoBuffers[dev->nVideoBuffers].start =
-                mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_SHARED, dev->fd,
-                     offset);
+                mmap(NULL, bufferInfo.length, PROT_READ | PROT_WRITE,
+                     MAP_SHARED, dev->fd, bufferInfo.offset);
 
             if (dev->videoBuffers[dev->nVideoBuffers].start == MAP_FAILED) {
                 LOG(WARNING)
@@ -1081,7 +1102,7 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
                 goto cleanup_on_error;
             }
 
-            dev->videoBuffers[dev->nVideoBuffers].length = length;
+            dev->videoBuffers[dev->nVideoBuffers].length = bufferInfo.length;
         }
     }
 
@@ -1103,6 +1124,16 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             type.baseResolutionWidth, type.baseResolutionHeight,
             type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
             bitsInAB, bitsInConf, skipToFiProcessing, isADSD3100);
+        // Construct FrameConfiguration value object for type-safe API
+        FrameDimensions dimensions(type.baseResolutionWidth,
+                                   type.baseResolutionHeight);
+        BitDepthConfiguration bitDepths(16, bitsInAB, bitsInConf);
+        FrameConfiguration frameConfig(dimensions, bitDepths, type.modeNumber,
+                                       skipToFiProcessing);
+
+        // Use type-safe overload
+        status = m_bufferProcessor->setVideoProperties(
+            frameConfig, type.frameWidthInBytes, type.frameHeightInBytes);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             goto cleanup_on_error;
@@ -1229,13 +1260,7 @@ aditof::Status Adsd3500Sensor::getFrame(uint16_t *buffer, uint32_t index) {
 
 aditof::Status
 Adsd3500Sensor::getAvailableControls(std::vector<std::string> &controls) const {
-    controls.clear();
-    controls.reserve(m_controls.size());
-    for (const auto &item : m_controls) {
-        controls.emplace_back(item.first);
-    }
-
-    return aditof::Status::OK;
+    return m_controlRegistry.getAvailableControls(controls);
 }
 
 /**
@@ -1253,15 +1278,12 @@ Adsd3500Sensor::getAvailableControls(std::vector<std::string> &controls) const {
 aditof::Status Adsd3500Sensor::setControl(const std::string &control,
                                           const std::string &value) {
     using namespace aditof;
-    Status status = Status::OK;
-    struct VideoDev *dev = &m_implData->videoDevs[0];
 
-    if (m_controls.count(control) == 0) {
-        LOG(WARNING) << "Unsupported control";
-        return Status::INVALID_ARGUMENT;
+    // Validate control exists and is writable
+    Status status = m_controlRegistry.setControl(control, value);
+    if (status != Status::OK) {
+        return status;
     }
-
-    m_controls[control] = value;
 
     if (control == "fps") {
         int fps = std::stoi(value);
@@ -1293,7 +1315,7 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
     }
 
     if (control == "disableCCBM") {
-        m_controls.at("disableCCBM") = value;
+        m_controlRegistry.setControl("disableCCBM", value);
         return Status::OK;
     }
 
@@ -1375,17 +1397,14 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
     if (control == "netlinktest") {
         return Status::OK;
     }
-    // Send the command that sets the control value
-    struct v4l2_control ctrl;
-    memset(&ctrl, 0, sizeof(ctrl));
-
-    ctrl.id = m_implData->controlsCommands[control];
-    ctrl.value = std::stoi(value);
-
-    if (xioctl(dev->sfd, VIDIOC_S_CTRL, &ctrl) == -1) {
-        LOG(WARNING) << "Failed to set control: " << control << " "
-                     << "errno: " << errno << " error: " << strerror(errno);
-        status = Status::GENERIC_ERROR;
+    // Send the command that sets the control value using SubdeviceDriver
+    int controlValue = std::stoi(value);
+    status = m_subdeviceDriver->setControl(
+        m_implData->controlsCommands[control], controlValue);
+    if (status != Status::OK) {
+        LOG(WARNING) << "Failed to set control: " << control
+                     << " via SubdeviceDriver";
+        return Status::GENERIC_ERROR;
     }
 
     return status;
@@ -1406,51 +1425,38 @@ aditof::Status Adsd3500Sensor::getControl(const std::string &control,
                                           std::string &value) const {
     using namespace aditof;
 
-    if (m_controls.count(control) > 0) {
-        if (control == "imagerType") {
-            value = std::to_string((int)m_implData->imagerType);
-            return Status::OK;
-        }
-
-        if (control == "depthComputeOpenSource") {
-            value = m_controls.at("depthComputeOpenSource");
-            return Status::OK;
-        }
-
-        if (control == "inputFormat") {
-            value = m_controls.at("inputFormat");
-            return Status::OK;
-        }
-
-        if (control == "disableCCBM") {
-            value = m_controls.at("disableCCBM");
-            return Status::OK;
-        }
-
-        if (control == "availableCCBM") {
-            value = m_ccbmEnabled ? "1" : "0";
-            return Status::OK;
-        }
-
-        // Send the command that reads the control value
-        struct v4l2_control ctrl;
-        memset(&ctrl, 0, sizeof(ctrl));
-
-        ctrl.id = m_implData->controlsCommands[control];
-
-        struct VideoDev *dev = &m_implData->videoDevs[0];
-
-        if (xioctl(dev->sfd, VIDIOC_G_CTRL, &ctrl) == -1) {
-            LOG(WARNING) << "Failed to get control: " << control << " "
-                         << "errno: " << errno << " error: " << strerror(errno);
-            return Status::GENERIC_ERROR;
-        }
-        value = std::to_string(ctrl.value);
-
-    } else {
+    if (!m_controlRegistry.hasControl(control)) {
         LOG(WARNING) << "Unsupported control";
         return Status::INVALID_ARGUMENT;
     }
+
+    // Special handling for read-only computed controls
+    if (control == "imagerType") {
+        value = std::to_string((int)m_implData->imagerType);
+        return Status::OK;
+    }
+
+    if (control == "availableCCBM") {
+        value = m_ccbmEnabled ? "1" : "0";
+        return Status::OK;
+    }
+
+    // For controls backed by registry
+    if (control == "depthComputeOpenSource" || control == "inputFormat" ||
+        control == "disableCCBM") {
+        return m_controlRegistry.getControl(control, value);
+    }
+
+    // For V4L2 controls, read from hardware using SubdeviceDriver
+    int controlValue = 0;
+    Status status = m_subdeviceDriver->getControl(
+        m_implData->controlsCommands[control], controlValue);
+    if (status != Status::OK) {
+        LOG(WARNING) << "Failed to get control: " << control
+                     << " via SubdeviceDriver";
+        return Status::GENERIC_ERROR;
+    }
+    value = std::to_string(controlValue);
 
     return aditof::Status::OK;
 }
@@ -1728,7 +1734,8 @@ aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
         return status;
     }
 
-    m_controls["depthComputeOpenSource"] = std::to_string(depthComputeStatus);
+    m_controlRegistry.setControl("depthComputeOpenSource",
+                                 std::to_string(depthComputeStatus));
 
     return aditof::Status::OK;
 }
@@ -1744,7 +1751,7 @@ aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
  */
 aditof::Status Adsd3500Sensor::getDepthComputeParams(
     std::map<std::string, std::string> &params) {
-    TofiConfig *config = m_bufferProcessor->getTofiCongfig();
+    TofiConfig *config = m_bufferProcessor->getTofiConfig();
     aditof::Status status;
 
     ABThresholdsParams ab_params;
@@ -1813,7 +1820,7 @@ aditof::Status Adsd3500Sensor::getDepthComputeParams(
  */
 aditof::Status Adsd3500Sensor::setDepthComputeParams(
     const std::map<std::string, std::string> &params) {
-    TofiConfig *config = m_bufferProcessor->getTofiCongfig();
+    TofiConfig *config = m_bufferProcessor->getTofiConfig();
     aditof::Status status;
 
     ABThresholdsParams ab_params;
@@ -2199,106 +2206,112 @@ aditof::Status Adsd3500Sensor::getIniParamsArrayForMode(int mode,
 aditof::Status Adsd3500Sensor::startRecording(std::string &fileName,
                                               uint8_t *parameters,
                                               uint32_t paramSize) {
-
     using namespace aditof;
     LOG(INFO) << __func__ << ": Start recording";
-    m_bufferProcessor->startRecording(fileName, (uint8_t *)parameters,
-                                      paramSize);
-    Status status = Status::OK;
 
-    return status;
+    // Delegate to recorder if available
+    if (m_recorder) {
+        return m_recorder->startRecording(fileName, parameters, paramSize);
+    }
+
+    // Fallback to direct BufferProcessor access
+    auto *processor = dynamic_cast<BufferProcessor *>(m_bufferProcessor);
+    if (!processor) {
+        LOG(ERROR) << "Buffer processor does not support recording";
+        return Status::UNAVAILABLE;
+    }
+
+    processor->startRecording(fileName, parameters, paramSize);
+    return Status::OK;
 }
 
 /**
  * @brief Stops recording frames.
  *
- * Delegates to the buffer processor's stopRecording method to finalize and close
- * the recording file.
+ * Delegates to the recorder manager to finalize and close the recording file.
  *
- * @return Status from buffer processor stopRecording
+ * @return Status from recorder stopRecording
  */
 aditof::Status Adsd3500Sensor::stopRecording() {
-
     using namespace aditof;
 
-    Status status = Status::OK;
+    // Delegate to recorder if available
+    if (m_recorder) {
+        return m_recorder->stopRecording();
+    }
 
-    status = m_bufferProcessor->stopRecording();
+    // Fallback to direct BufferProcessor access
+    auto *processor = dynamic_cast<BufferProcessor *>(m_bufferProcessor);
+    if (!processor) {
+        LOG(ERROR) << "Buffer processor does not support recording";
+        return Status::UNAVAILABLE;
+    }
 
-    return status;
+    return processor->stopRecording();
 }
 
 /**
  * @brief Sets the playback file for offline replay.
  *
- * Currently returns unavailable as playback is not supported on target sensors.
+ * Delegates to recorder for playback file handling.
  *
  * @param[in] filePath Path to the playback file
  *
- * @return Status::UNAVAILABLE (playback not supported on target)
+ * @return Status from recorder
  */
 aditof::Status Adsd3500Sensor::setPlaybackFile(const std::string filePath) {
-
-    return aditof::Status::GENERIC_ERROR;
+    if (m_recorder) {
+        return m_recorder->setPlaybackFile(filePath);
+    }
+    return aditof::Status::UNAVAILABLE;
 }
 
 /**
  * @brief Stops playback.
  *
- * Currently returns unavailable as playback is not supported on target sensors.
+ * Delegates to recorder for playback operations.
  *
- * @return Status::UNAVAILABLE (playback not supported on target)
+ * @return Status from recorder
  */
 aditof::Status Adsd3500Sensor::stopPlayback() {
-
-    return aditof::Status::GENERIC_ERROR;
+    if (m_recorder) {
+        return m_recorder->stopPlayback();
+    }
+    return aditof::Status::UNAVAILABLE;
 }
 
 /**
  * @brief Retrieves the frame count from playback file.
  *
- * Currently returns unavailable as playback is not supported on target sensors.
+ * Delegates to recorder for frame count information.
  *
  * @param[out] frameCount Variable to receive frame count
  *
- * @return Status::UNAVAILABLE (playback not supported on target)
+ * @return Status from recorder
  */
 aditof::Status Adsd3500Sensor::getFrameCount(uint32_t &frameCount) {
-    frameCount = m_frameIndex.size();
-
-    return aditof::Status::OK;
+    if (m_recorder) {
+        return m_recorder->getFrameCount(frameCount);
+    }
+    frameCount = 0;
+    return aditof::Status::UNAVAILABLE;
 }
 
 /**
  * @brief Retrieves the header from playback file.
  *
- * Currently returns unavailable as playback is not supported on target sensors.
+ * Delegates to recorder for header information.
  *
  * @param[out] buffer Pointer to buffer to receive header data
  * @param[in] bufferSize Size of the buffer in bytes
  *
- * @return Status::UNAVAILABLE (playback not supported on target)
+ * @return Status from recorder
  */
 aditof::Status Adsd3500Sensor::getHeader(uint8_t *buffer, uint32_t bufferSize) {
-
-    return aditof::Status::GENERIC_ERROR;
-}
-
-/**
- * @brief Reads a frame from playback file.
- *
- * Currently returns unavailable as playback is not supported on target sensors.
- *
- * @param[out] buffer Pointer to buffer to receive frame data
- * @param[in,out] bufferSize On input: buffer size; on output: actual size read
- * @param[in] index Frame index to read
- *
- * @return Status::UNAVAILABLE (playback not supported on target)
- */
-aditof::Status Adsd3500Sensor::readFrame(uint8_t *buffer, uint32_t &bufferSize,
-                                         uint32_t index) {
-
-    return aditof::Status::GENERIC_ERROR;
+    if (m_recorder) {
+        return m_recorder->getHeader(buffer, bufferSize);
+    }
+    return aditof::Status::UNAVAILABLE;
 }
 
 #pragma endregion

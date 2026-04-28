@@ -32,6 +32,9 @@
 
 namespace aditof {
 
+// Define static constexpr member for ODR-use in C++14
+constexpr int CameraFirmwareManager::UPDATE_TIMEOUT_SEC;
+
 // Firmware upgrade header structure (16 bytes)
 typedef struct {
     union {

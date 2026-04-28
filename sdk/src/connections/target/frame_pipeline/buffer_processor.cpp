@@ -21,8 +21,21 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-// TO DO: This exists in linux_utils.h which is not included on Dragoboard.
-// Should not have duplicated code if possible.
+
+/**
+ * @file buffer_processor.cpp
+ * @brief Multi-threaded buffer processor for Time-of-Flight frame capture and processing.
+ *
+ * Implements a two-thread pipeline architecture:
+ * - Capture thread: Dequeues frames from V4L2 device (DQBUF), copies to processing queue
+ * - Process thread: Runs ToFi depth computation, handles ISP-computed and raw bypass modes
+ *
+ * Frame Modes:
+ * - MP (modes 0-1, 1024×1024): ISP hardware-computed depth, just copy data
+ * - QMP (modes 2-6, 512×512): Various ISP configurations, calls TofiCompute() for deinterleaving
+ *
+ * Thread-safe queue management ensures proper buffer lifecycle and prevents memory leaks.
+ */
 
 #include "platform/platform_impl.h"
 #include <aditof/log.h>
@@ -50,8 +63,6 @@
 // Increased from 3 to 8 to handle slow first-frame TofiCompute in lens scatter mode
 // (can take 3+ seconds for initialization; 8 buffers provides ~800ms cushion at 10 FPS)
 const size_t MAX_QUEUE_SIZE = 8;
-
-uint8_t depthComputeOpenSourceEnabled = 0;
 
 // Named constants for configuration
 namespace {
@@ -148,54 +159,19 @@ BufferProcessor::~BufferProcessor() {
         m_tofiConfig = NULL;
     }
 
-    // STEP 3: Close video device
-    if (m_outputVideoDev != nullptr) {
-        if (m_outputVideoDev->fd != -1) {
-            if (::close(m_outputVideoDev->fd) == -1) {
-                LOG(ERROR) << "Failed to close " << m_videoDeviceName
-                           << " error: " << strerror(errno);
-            }
-        }
-        delete m_outputVideoDev;
-        m_outputVideoDev = nullptr;
-    }
+    // STEP 3: Input device cleanup handled by caller (adsd3500_sensor)
+    // Output device not used (UVC not supported)
 }
 
 /**
- * @brief Opens the output video device.
+ * @brief Opens the output video device (no-op).
  *
- * Currently returns OK immediately (UVC temporarily disabled). When enabled, opens the
- * video device, queries capabilities with VIDIOC_QUERYCAP, and retrieves format info.
+ * UVC output functionality is not supported on this platform.
+ * This method exists for interface compatibility and always succeeds.
  *
- * @return Status::OK on success, Status::GENERIC_ERROR on ioctl or open failure
+ * @return Status::OK
  */
-aditof::Status BufferProcessor::open() {
-    using namespace aditof;
-    Status status = Status::OK;
-
-    //TO DO: remove when we re-enable uvc
-    return aditof::Status::OK;
-
-    m_outputVideoDev->fd = ::open(m_videoDeviceName, O_RDWR);
-    if (m_outputVideoDev->fd == -1) {
-        LOG(ERROR) << "Cannot open " << OUTPUT_DEVICE << "errno: " << errno
-                   << "error: " << strerror(errno);
-        return Status::GENERIC_ERROR;
-    }
-
-    if (xioctl(m_outputVideoDev->fd, VIDIOC_QUERYCAP, &m_videoCap) == -1) {
-        LOG(ERROR) << m_videoDeviceName << " VIDIOC_QUERYCAP error";
-        return Status::GENERIC_ERROR;
-    }
-
-    memset(&m_videoFormat, 0, sizeof(m_videoFormat));
-    if (xioctl(m_outputVideoDev->fd, VIDIOC_G_FMT, &m_videoFormat) == -1) {
-        LOG(ERROR) << m_videoDeviceName << " VIDIOC_G_FMT error";
-        return Status::GENERIC_ERROR;
-    }
-
-    return status;
-}
+aditof::Status BufferProcessor::open() { return aditof::Status::OK; }
 
 /**
  * @brief Sets the input video device for frame capture.
@@ -317,6 +293,35 @@ aditof::Status BufferProcessor::setVideoProperties(
     }
 
     return status;
+}
+
+/**
+ * @function BufferProcessor::setVideoProperties (FrameConfiguration overload)
+ *
+ * Type-safe version using FrameConfiguration value object.
+ * Provides compile-time validation and cleaner API for frame configuration.
+ * Delegates to the legacy parameter-based method for implementation.
+ *
+ * @param config         FrameConfiguration with dimensions and bit depths
+ * @param WidthInBytes   Raw frame width in bytes (stride)
+ * @param HeightInBytes  Raw frame height in bytes
+ *
+ * @return aditof::Status    Returns OK on success, INVALID_ARGUMENT if config invalid
+ */
+aditof::Status
+BufferProcessor::setVideoProperties(const aditof::FrameConfiguration &config,
+                                    int WidthInBytes, int HeightInBytes) {
+    // Validate configuration before delegation
+    if (!config.isValid()) {
+        LOG(ERROR) << "Invalid FrameConfiguration provided";
+        return aditof::Status::INVALID_ARGUMENT;
+    }
+
+    // Delegate to legacy method for backward compatibility
+    return setVideoProperties(
+        config.dimensions.width, config.dimensions.height, WidthInBytes,
+        HeightInBytes, config.modeNumber, config.bitDepths.abBits,
+        config.bitDepths.confidenceBits, config.isRawBypass);
 }
 
 /**
@@ -1286,15 +1291,14 @@ BufferProcessor::enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
 /**
  * @brief Retrieves the output video device file descriptor.
  *
- * Returns the file descriptor for the output video device, which can be used
- * for direct ioctl calls or monitoring.
+ * UVC output is not supported; returns -1 indicating no valid file descriptor.
  *
- * @param[out] fileDescriptor Variable to receive the file descriptor
+ * @param[out] fileDescriptor Variable to receive the file descriptor (-1)
  *
- * @return Status::OK on success
+ * @return Status::OK
  */
 aditof::Status BufferProcessor::getDeviceFileDescriptor(int &fileDescriptor) {
-    fileDescriptor = m_outputVideoDev->fd;
+    fileDescriptor = -1; // UVC output not supported
     return aditof::Status::OK;
 }
 
@@ -1364,7 +1368,7 @@ aditof::Status BufferProcessor::enqueueInternalBuffer(struct v4l2_buffer &buf) {
  *
  * @return Pointer to TofiConfig structure, or nullptr if not initialized
  */
-TofiConfig *BufferProcessor::getTofiCongfig() const { return m_tofiConfig; }
+TofiConfig *BufferProcessor::getTofiConfig() const { return m_tofiConfig; }
 
 /**
  * @brief Retrieves the depth compute library version/type.
@@ -1376,7 +1380,7 @@ TofiConfig *BufferProcessor::getTofiCongfig() const { return m_tofiConfig; }
  * @return Status::OK on success
  */
 aditof::Status BufferProcessor::getDepthComputeVersion(uint8_t &enabled) const {
-    enabled = depthComputeOpenSourceEnabled;
+    enabled = m_depthComputeConfig.getStatus();
     return aditof::Status::OK;
 }
 

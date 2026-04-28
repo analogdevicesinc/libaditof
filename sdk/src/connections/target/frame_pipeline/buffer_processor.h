@@ -33,6 +33,8 @@
 #include <vector>
 
 #include "aditof/depth_sensor_interface.h"
+#include "buffer_processor_interface.h"
+#include "depth_compute_config.h"
 #include "v4l_buffer_access_interface.h"
 
 #include "tofi/tofi_compute.h"
@@ -121,41 +123,53 @@ class ThreadSafeQueue {
     }
 };
 
-class BufferProcessor : public aditof::V4lBufferAccessInterface {
+class BufferProcessor : public aditof::V4lBufferAccessInterface,
+                        public aditof::BufferProcessorInterface {
   public:
     BufferProcessor();
     ~BufferProcessor();
 
   public:
-    aditof::Status open();
-    aditof::Status setInputDevice(VideoDev *inputVideoDev);
+    // BufferProcessorInterface implementation
+    aditof::Status open() override;
+    aditof::Status setInputDevice(VideoDev *inputVideoDev) override;
     aditof::Status setVideoProperties(int frameWidth, int frameHeight,
                                       int WidthInBytes, int HeightInBytes,
                                       int modeNumber, uint8_t bitsInAB,
                                       uint8_t bitsInConf,
+<<<<<<< HEAD:sdk/src/connections/target/buffer_processor.h
                                       bool isRawBypass = false,
                                       bool isADSD3100 = false);
+=======
+                                      bool isRawBypass = false) override;
+    aditof::Status setVideoProperties(const aditof::FrameConfiguration &config,
+                                      int WidthInBytes,
+                                      int HeightInBytes) override;
+>>>>>>> c5e45d26 (refactor(sdk): apply SOLID principles and fix resource cleanup warnings):sdk/src/connections/target/frame_pipeline/buffer_processor.h
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
                                           uint32_t calDataLength, uint16_t mode,
-                                          bool ispEnabled);
-    aditof::Status processBuffer(uint16_t *buffer);
-    TofiConfig *getTofiCongfig() const;
-    aditof::Status getDepthComputeVersion(uint8_t &enabled) const;
-    void setLensScatterCompensationEnabled(bool enabled) {
+                                          bool ispEnabled) override;
+    aditof::Status processBuffer(uint16_t *buffer) override;
+    TofiConfig *getTofiConfig() const override;
+    aditof::Status getDepthComputeVersion(uint8_t &enabled) const override;
+    void setLensScatterCompensationEnabled(bool enabled) override {
         m_lensScatterCompensationEnabled = enabled;
     }
-    bool getLensScatterCompensationEnabled() const {
+    bool getLensScatterCompensationEnabled() const override {
         return m_lensScatterCompensationEnabled;
     }
-    void setNeedsRotation(bool needsRotation) {
+    void setNeedsRotation(bool needsRotation) override {
         m_needsRotation = needsRotation;
     }
-    bool getNeedsRotation() const { return m_needsRotation; }
+    bool getNeedsRotation() const override { return m_needsRotation; }
 
-    void startThreads();
-    void stopThreads();
+    void startThreads() override;
+    void stopThreads() override;
+
+    // Legacy method (keeping for backward compatibility)
+    TofiConfig *getTofiCongfig() const { return getTofiConfig(); }
     static int getTimeoutDelay() { return TIME_OUT_DELAY; }
 
   public:
@@ -201,12 +215,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     TofiComputeContext *m_tofiComputeContext;
     TofiXYZDealiasData m_xyzDealiasData[11];
 
-    struct v4l2_capability m_videoCap;
-    struct v4l2_format m_videoFormat;
-    const char *m_videoDeviceName = OUTPUT_DEVICE;
-
     struct VideoDev *m_inputVideoDev;
-    struct VideoDev *m_outputVideoDev;
+    struct VideoDev *m_outputVideoDev; // Allocated but not used (UVC disabled)
 
     struct Tofi_v4l2_buffer {
         std::shared_ptr<uint8_t> data;
@@ -251,6 +261,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface {
     bool
         m_needsRotation; // When true, rotate frames 90 degrees clockwise (for ADTF3080)
     bool m_isADSD3100; // True for ADSD3100 imager
+
+    aditof::DepthComputeConfig m_depthComputeConfig;
 
   public:
     // Stream record and playback support
