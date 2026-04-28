@@ -22,8 +22,8 @@
  * SOFTWARE.
  */
 #include "sensor_enumerator.h"
-#include "connections/target/adsd3500_interrupt_notifier.h"
-#include "connections/target/adsd3500_sensor.h"
+#include "connections/target/adsd3500/adsd3500_interrupt_notifier.h"
+#include "connections/target/adsd3500/adsd3500_sensor.h"
 #include <aditof/log.h>
 
 #include <dirent.h>

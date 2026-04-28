@@ -23,14 +23,21 @@
  */
 #include "aditof/depth_sensor_interface.h"
 #include "adsd3500_chip_config_manager.h"
+#include "adsd3500_command_interface.h"
+#include "adsd3500_device.h"
 #include "adsd3500_interrupt_manager.h"
+#include "adsd3500_mode_manager.h"
 #include "adsd3500_mode_selector.h"
 #include "adsd3500_protocol_manager.h"
+#include "adsd3500_recorder.h"
 #include "buffer_processor.h"
-#include "connections/target/v4l_buffer_access_interface.h"
+#include "buffer_processor_interface.h"
 #include "ini_config_manager.h"
 #include "sensor-tables/ini_file_definitions.h"
+#include "sensor_control_registry.h"
 #include "v4l2_buffer_manager.h"
+#include "v4l_buffer_access_interface.h"
+#include "video_device_driver.h"
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -218,7 +225,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::string m_driverPath;
     std::string m_driverSubPath;
     std::string m_captureDev;
-    std::unordered_map<std::string, std::string> m_controls;
+    aditof::SensorControlRegistry m_controlRegistry;
     std::unique_ptr<ImplData> m_implData;
     uint8_t m_capturesPerFrame;
     bool m_firstRun;
@@ -228,7 +235,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
         m_interruptCallbackMap;
     std::vector<aditof::DepthSensorModeDetails> m_availableModes;
     std::vector<IniTableEntry> m_ccbmINIContent;
-    BufferProcessor *m_bufferProcessor;
+    aditof::BufferProcessorInterface *m_bufferProcessor;
     bool m_depthComputeOnTarget;
     int m_chipStatus;
     int m_imagerStatus;
@@ -247,7 +254,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     int8_t m_targetModeNumber = -1;
 
   public:
-    // Stream record and playback support
+    // Stream record and playback support (delegated to Adsd3500Recorder)
     aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
                                   uint32_t paramSize) override;
     aditof::Status stopRecording() override;
@@ -257,16 +264,6 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     aditof::Status getFrameCount(uint32_t &frameCount) override;
 
   private:
-    aditof::Status automaticStop();
-    aditof::Status readFrame(uint8_t *buffer, uint32_t &bufferSize,
-                             uint32_t index);
-    enum StreamType { ST_STOP, ST_RECORD, ST_PLAYBACK } m_state;
-    const std::string m_folder_path = "./recordings";
-    std::ofstream m_stream_file_out;
-    std::ifstream m_stream_file_in;
-    std::string m_stream_file_name;
-    uint32_t m_frame_count;
-    std::vector<std::streampos> m_frameIndex;
     std::recursive_mutex
         m_adsd3500_mutex; // Protects ADSD3500 command/payload operations (recursive for nested calls)
     std::unique_ptr<Adsd3500ProtocolManager>
@@ -279,4 +276,18 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
         m_iniConfigManager; // Manages INI configuration parameters
     std::unique_ptr<Adsd3500InterruptManager>
         m_interruptManager; // Manages hardware interrupt callbacks
+    std::unique_ptr<aditof::VideoDeviceDriver>
+        m_videoDriver; // Abstracts V4L2 operations for testability
+    std::unique_ptr<aditof::VideoDeviceDriver>
+        m_subdeviceDriver; // Abstracts V4L2 subdevice operations
+
+    // SOLID refactoring: Extracted responsibilities
+    std::unique_ptr<aditof::Adsd3500Device>
+        m_device; // Device lifecycle management (open/close/init)
+    std::unique_ptr<aditof::Adsd3500Recorder>
+        m_recorder; // Recording and playback operations
+    std::unique_ptr<aditof::Adsd3500ModeManager>
+        m_modeManager; // Mode configuration and switching
+    std::unique_ptr<aditof::Adsd3500CommandInterface>
+        m_commandInterface; // Protocol command operations
 };

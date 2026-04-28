@@ -26,6 +26,8 @@
 #include "adsd3500_protocol_manager.h"
 #include "adsd3500_sensor.h"
 #include "sensor-tables/device_parameters.h"
+#include "tofi/tofi_compute.h"
+#include "tofi/tofi_config.h"
 #include <aditof/log.h>
 
 #include <cstring>

@@ -110,7 +110,11 @@ file(GLOB PLATFORM_UTIL_HEADERS
 # Platform specific sources and headers
 file(GLOB PLATFORM_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/sensor-tables/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/adsd3500/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/frame_pipeline/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/v4l2/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/config/*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/config/sensor-tables/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/*.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/*.c
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/adsd3500/crc/src/*.c
@@ -120,7 +124,11 @@ file(GLOB PLATFORM_SOURCES
 )
 file(GLOB PLATFORM_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/*.h
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/sensor-tables/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/adsd3500/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/frame_pipeline/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/v4l2/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/config/*.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/config/sensor-tables/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${CAMERA_DIR}/adsd3500/crc/include/*.h
     ${CMAKE_CURRENT_SOURCE_DIR}/src/${FRAME_DIR}/*.h
@@ -225,6 +233,12 @@ target_include_directories(${PROJECT_NAME}
         src/
         src/platform/
         src/${CAMERA_DIR}/
+        src/${OS_SPECIFIC_DIR}/
+        src/${OS_SPECIFIC_DIR}/adsd3500/
+        src/${OS_SPECIFIC_DIR}/frame_pipeline/
+        src/${OS_SPECIFIC_DIR}/v4l2/
+        src/${OS_SPECIFIC_DIR}/config/
+        src/${OS_SPECIFIC_DIR}/config/sensor-tables/
         ${COMMON_DIR}/
         ${Protobuf_INCLUDE_DIRS}
         ${GENERATED_NET_PROTO_FILES_DIR}
