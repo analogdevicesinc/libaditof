@@ -296,35 +296,6 @@ aditof::Status BufferProcessor::setVideoProperties(
 }
 
 /**
- * @function BufferProcessor::setVideoProperties (FrameConfiguration overload)
- *
- * Type-safe version using FrameConfiguration value object.
- * Provides compile-time validation and cleaner API for frame configuration.
- * Delegates to the legacy parameter-based method for implementation.
- *
- * @param config         FrameConfiguration with dimensions and bit depths
- * @param WidthInBytes   Raw frame width in bytes (stride)
- * @param HeightInBytes  Raw frame height in bytes
- *
- * @return aditof::Status    Returns OK on success, INVALID_ARGUMENT if config invalid
- */
-aditof::Status
-BufferProcessor::setVideoProperties(const aditof::FrameConfiguration &config,
-                                    int WidthInBytes, int HeightInBytes) {
-    // Validate configuration before delegation
-    if (!config.isValid()) {
-        LOG(ERROR) << "Invalid FrameConfiguration provided";
-        return aditof::Status::INVALID_ARGUMENT;
-    }
-
-    // Delegate to legacy method for backward compatibility
-    return setVideoProperties(
-        config.dimensions.width, config.dimensions.height, WidthInBytes,
-        HeightInBytes, config.modeNumber, config.bitDepths.abBits,
-        config.bitDepths.confidenceBits, config.isRawBypass);
-}
-
-/**
  * @function BufferProcessor::calculateFrameSize
  *
  * Calculate the frame size for given bit combination of

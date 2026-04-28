@@ -191,18 +191,6 @@ class CameraItof : public aditof::Camera {
     setDepthIniParams(const std::map<std::string, std::string> &iniKeyValPairs,
                       bool updateDepthMap = true);
 
-    /**
-     * @brief Delete allocated tables for X, Y, Z
-     * @deprecated Use m_calibrationMgr->cleanupXYZtables() instead
-     */
-    void cleanupXYZtables();
-
-    /**
-     * @brief Check if string can convert to double
-     * @deprecated Use m_config->isConvertibleToDouble() instead
-     */
-    bool isConvertibleToDouble(const std::string &str);
-
     aditof::Status startRecording(std::string &filePath) override;
     aditof::Status stopRecording() override;
 

@@ -384,26 +384,16 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             m_depthSensor->setControl("lensScatterCompensationEnabled", "0");
         }
 
-        // Apply VGA rotation setting from JSON config
-        auto rotationIt = iniKeyValPairs.find("enableRotation");
-        if (rotationIt != iniKeyValPairs.end()) {
-            m_depthSensor->setControl("enableRotation", rotationIt->second);
-        }
-
-        status = m_depthSensor->setMode(mode);
-        if (status != Status::OK) {
-            LOG(WARNING) << "Failed to set frame type";
-            return status;
-        }
-
-        // Apply VGA rotation setting
-        // ADTF3066: rotation enabled by default; only override if user explicitly loaded a JSON
-        // Other imagers: rotation disabled by default; respect JSON if present
+        // Declare rotationValue here for use in both rotation logic and frame details
         std::string rotationValue;
-        auto rotationIt = m_iniKeyValPairs.find("enableRotation");
 
+        // Apply VGA rotation setting from JSON config if present
+        auto rotationIt = iniKeyValPairs.find("enableRotation");
+
+        // ADTF3066: rotation enabled by default; override only if user loaded JSON
+        // Other imagers: rotation disabled by default; respect JSON if present
         if (m_imagerType == aditof::ImagerType::ADTF3066) {
-            if (m_userJsonLoaded && rotationIt != m_iniKeyValPairs.end()) {
+            if (m_userJsonLoaded && rotationIt != iniKeyValPairs.end()) {
                 // User explicitly loaded JSON - respect their setting
                 rotationValue = rotationIt->second;
                 LOG(INFO) << "ADTF3066 rotation overridden by user JSON: "
@@ -411,24 +401,26 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             } else {
                 // Default: enabled for ADTF3066
                 rotationValue = "1";
-                m_iniKeyValPairs["enableRotation"] = rotationValue;
-                m_depth_params_map[mode] = m_iniKeyValPairs;
                 LOG(INFO) << "ADTF3066 rotation enabled by default";
             }
         } else {
-            if (rotationIt != m_iniKeyValPairs.end()) {
+            if (rotationIt != iniKeyValPairs.end()) {
                 rotationValue = rotationIt->second;
                 LOG(INFO) << "Rotation from JSON config: " << rotationValue;
             } else {
                 rotationValue = "0";
-                m_iniKeyValPairs["enableRotation"] = rotationValue;
-                m_depth_params_map[mode] = m_iniKeyValPairs;
                 LOG(INFO) << "Rotation using default: disabled";
             }
         }
 
-        // Always apply the rotation control after setMode
+        // Apply the rotation control before setMode
         m_depthSensor->setControl("enableRotation", rotationValue);
+
+        status = m_depthSensor->setMode(mode);
+        if (status != Status::OK) {
+            LOG(WARNING) << "Failed to set frame type";
+            return status;
+        }
 
         status = m_depthSensor->getModeDetails(mode, m_modeDetailsCache);
         if (status != Status::OK) {
@@ -1375,25 +1367,6 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
                                         const int16_t mode_in_use) {
     assert(!m_isOffline);
     return m_config->loadDepthParamsFromJsonFile(pathFile, mode_in_use);
-}
-
-/**
- * @brief Checks if a string can be converted to a floating-point number.
- *
- * @param[in] str String to test for numeric convertibility.
- *
- * @return True if std::stod() can successfully parse the string; false otherwise.
- *
- * @deprecated This is a utility now in CameraConfiguration, kept for backwards compat
- */
-bool CameraItof::isConvertibleToDouble(const std::string &str) {
-    bool result = false;
-    try {
-        std::stod(str);
-        result = true;
-    } catch (...) {
-    }
-    return result;
 }
 
 /**
@@ -2354,15 +2327,6 @@ aditof::Status CameraItof::setDepthIniParams(
             UpdateDepthParamsMap(update, key, value);
         });
 }
-
-/**
- * @brief Cleans up allocated XYZ tables (DEPRECATED - delegates to CalibrationManager).
- *
- * Frees memory for X, Y, Z lookup tables used for point cloud generation.
- *
- * @deprecated Cleanup is now automatic via CalibrationManager destructor
- */
-void CameraItof::cleanupXYZtables() { m_calibrationMgr->cleanupXYZtables(); }
 
 /**
  * @brief Retrieves the imager type (sensor model) in use with ADSD3500.

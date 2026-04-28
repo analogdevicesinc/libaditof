@@ -1084,16 +1084,6 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
             type.baseResolutionWidth, type.baseResolutionHeight,
             type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
             bitsInAB, bitsInConf, skipToFiProcessing, isADSD3100);
-        // Construct FrameConfiguration value object for type-safe API
-        FrameDimensions dimensions(type.baseResolutionWidth,
-                                   type.baseResolutionHeight);
-        BitDepthConfiguration bitDepths(16, bitsInAB, bitsInConf);
-        FrameConfiguration frameConfig(dimensions, bitDepths, type.modeNumber,
-                                       skipToFiProcessing);
-
-        // Use type-safe overload
-        status = m_bufferProcessor->setVideoProperties(
-            frameConfig, type.frameWidthInBytes, type.frameHeightInBytes);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             goto cleanup_on_error;
