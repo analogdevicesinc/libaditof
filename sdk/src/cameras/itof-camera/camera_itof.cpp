@@ -107,7 +107,8 @@ CameraItof::CameraItof(
             depthSensor);
 
     if (!m_adsd3500Hardware) {
-        LOG(WARNING) << "Sensor does not support ADSD3500 hardware interface";
+        LOG(WARNING) << "ADSD3500 hardware interface not available (playback "
+                        "mode or unsupported sensor)";
     }
 
     // Initialize DepthParameterMapper after camera is constructed (avoids circular dependency)

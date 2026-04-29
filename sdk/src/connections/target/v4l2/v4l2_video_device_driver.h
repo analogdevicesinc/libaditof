@@ -64,6 +64,10 @@ class V4L2VideoDeviceDriver : public VideoDeviceDriver {
     int getFileDescriptor() const override;
     Status ioctl(unsigned long request, void *arg) override;
 
+    Status validateDeviceCapabilities(const std::string &devicePath,
+                                      const std::string &expectedCardName,
+                                      unsigned int &bufferType) override;
+
   private:
     /**
      * @brief Internal ioctl wrapper with retry on EINTR.

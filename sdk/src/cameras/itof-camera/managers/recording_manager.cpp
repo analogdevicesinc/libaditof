@@ -175,7 +175,8 @@ Status RecordingManager::startRecording(
     auto recordableInterface =
         std::dynamic_pointer_cast<RecordableInterface>(m_depthSensor);
     if (!recordableInterface) {
-        LOG(ERROR) << "Sensor does not support recording";
+        LOG(ERROR) << "Recording interface not available (sensor does not "
+                      "support recording)";
         return Status::UNAVAILABLE;
     }
 
@@ -197,7 +198,8 @@ Status RecordingManager::setPlaybackFile(std::string &filePath) {
     auto playbackInterface =
         std::dynamic_pointer_cast<PlaybackInterface>(m_depthSensor);
     if (!playbackInterface) {
-        LOG(ERROR) << "Sensor does not support playback";
+        LOG(ERROR) << "Playback interface not available (sensor does not "
+                      "support playback)";
         return Status::UNAVAILABLE;
     }
     return playbackInterface->setPlaybackFile(filePath);
@@ -213,7 +215,8 @@ RecordingManager::loadPlaybackHeader(DepthSensorModeDetails &modeDetailsCache,
     auto playbackInterface =
         std::dynamic_pointer_cast<PlaybackInterface>(m_depthSensor);
     if (!playbackInterface) {
-        LOG(ERROR) << "Sensor does not support playback";
+        LOG(ERROR) << "Playback interface not available (sensor does not "
+                      "support playback)";
         return Status::UNAVAILABLE;
     }
 

@@ -28,6 +28,7 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <sys/select.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace aditof {
@@ -408,6 +409,82 @@ void V4L2VideoDeviceDriver::fromV4L2Format(const struct v4l2_format &v4l2fmt,
     format.height = v4l2fmt.fmt.pix.height;
     format.bytesPerLine = v4l2fmt.fmt.pix.bytesperline;
     format.sizeImage = v4l2fmt.fmt.pix.sizeimage;
+}
+
+Status V4L2VideoDeviceDriver::validateDeviceCapabilities(
+    const std::string &devicePath, const std::string &expectedCardName,
+    unsigned int &bufferType) {
+    struct stat st;
+    struct v4l2_capability cap;
+
+    // Check if device file exists and is a character device
+    if (stat(devicePath.c_str(), &st) == -1) {
+        LOG(ERROR) << "Cannot identify " << devicePath << ": "
+                   << strerror(errno);
+        return Status::GENERIC_ERROR;
+    }
+
+    if (!S_ISCHR(st.st_mode)) {
+        LOG(ERROR) << devicePath << " is not a character device";
+        return Status::GENERIC_ERROR;
+    }
+
+    // Temporarily open device to query capabilities
+    int tempFd = ::open(devicePath.c_str(), O_RDWR | O_NONBLOCK, 0);
+    if (tempFd == -1) {
+        LOG(ERROR) << "Cannot open " << devicePath
+                   << " for validation: " << strerror(errno);
+        return Status::GENERIC_ERROR;
+    }
+
+    // Query V4L2 capabilities
+    if (::ioctl(tempFd, VIDIOC_QUERYCAP, &cap) == -1) {
+        LOG(ERROR) << devicePath
+                   << " VIDIOC_QUERYCAP failed: " << strerror(errno);
+        ::close(tempFd);
+        return Status::GENERIC_ERROR;
+    }
+
+    // Validate card name if provided
+    if (!expectedCardName.empty()) {
+        if (strncmp(reinterpret_cast<const char *>(cap.card),
+                    expectedCardName.c_str(), expectedCardName.length()) != 0) {
+            LOG(ERROR) << "Card name mismatch. Expected: " << expectedCardName
+                       << ", Got: " << cap.card;
+            ::close(tempFd);
+            return Status::GENERIC_ERROR;
+        }
+    }
+
+    // Check for video capture capability
+    if (!(cap.capabilities &
+          (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE))) {
+        LOG(ERROR) << devicePath << " is not a video capture device";
+        ::close(tempFd);
+        return Status::GENERIC_ERROR;
+    }
+
+    // Determine buffer type
+    if (cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE) {
+        bufferType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    } else {
+        bufferType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    }
+
+    // Check for streaming support
+    if (!(cap.capabilities & V4L2_CAP_STREAMING)) {
+        LOG(WARNING) << devicePath << " does not support streaming I/O";
+        ::close(tempFd);
+        return Status::GENERIC_ERROR;
+    }
+
+    ::close(tempFd);
+    LOG(INFO) << "Device " << devicePath
+              << " validated successfully. Card: " << cap.card
+              << ", Buffer type: "
+              << (bufferType == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE ? "MPLANE"
+                                                                   : "CAPTURE");
+    return Status::OK;
 }
 
 } // namespace aditof

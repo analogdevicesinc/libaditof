@@ -110,6 +110,16 @@ class V4L2BufferManager {
      */
     aditof::Status getDeviceFileDescriptor(int &fileDescriptor);
 
+    /**
+     * @brief Cleans up video buffers for a device.
+     *
+     * Unmaps all mapped buffers and frees the buffer array.
+     *
+     * @param dev Pointer to VideoDev to clean up (uses first device if nullptr)
+     * @return Status::OK on success
+     */
+    aditof::Status cleanupBuffers(struct VideoDev *dev = nullptr);
+
   private:
     struct VideoDev *m_videoDevs; ///< Pointer to V4L2 video device array
     uint8_t m_numVideoDevs;       ///< Number of video devices
