@@ -42,6 +42,11 @@ SensorControlRegistry::SensorControlRegistry() {
     registerControl("availableCCBM", "0", true); // Read-only
     registerControl("lensScatterCompensationEnabled", "0", false);
     registerControl("enableRotation", "0", false);
+    // Target mode for runtime bit configuration: Specifies which mode's bit arrays
+    // to update when abBits/confidenceBits are set before setMode().
+    // -1 = use current mode, >= 0 = specific mode index.
+    // Must be set before configureSensorModeDetails() to take effect.
+    registerControl("targetModeNumber", "-1", false);
 }
 
 Status SensorControlRegistry::registerControl(const std::string &name,

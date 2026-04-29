@@ -35,6 +35,7 @@
 #include "v4l2_buffer_manager.h"
 #include "v4l_buffer_access_interface.h"
 #include "video_device_driver.h"
+#include <atomic>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -193,7 +194,6 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     aditof::Status adsd3500InterruptHandler(int signalValue);
 
   private: // Private helper methods
-    aditof::Status writeConfigBlock(const uint32_t offset);
     aditof::Status waitForBufferPrivate(struct VideoDev *dev = nullptr);
     aditof::Status dequeueInternalBufferPrivate(struct v4l2_buffer &buf,
                                                 struct VideoDev *dev = nullptr);
@@ -217,8 +217,6 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     mergeIniParams(std::vector<iniFileStruct> &iniFileStructList);
     aditof::Status convertIniParams(iniFileStruct &iniStruct,
                                     std::string &inistr);
-    aditof::Status
-    createIniParams(std::vector<iniFileStruct> &iniFileStructList);
 
   private: // Internal implementation details
     struct ImplData;
@@ -254,7 +252,23 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     uint16_t m_chipId;
     bool m_lensScatterEnabled = false;
     bool m_rotationEnabled = false;
-    int8_t m_targetModeNumber = -1;
+    /**
+     * @brief Target mode number for runtime bit configuration updates.
+     * 
+     * Thread-safe atomic variable that specifies which mode's bit depth arrays
+     * (m_bitsInAB, m_bitsInConf) should be updated when abBits or confidenceBits
+     * controls are set from JSON configuration before setMode() is called.
+     * 
+     * - Value -1: Use current mode (m_implData->modeDetails.modeNumber)
+     * - Value >= 0: Update arrays for the specified mode index
+     * 
+     * Set via "targetModeNumber" control. Reset to -1 after setMode() completes.
+     * 
+     * @see setControl("targetModeNumber", value)
+     * @see setControl("abBits", value)
+     * @see setControl("confidenceBits", value)
+     */
+    std::atomic<int8_t> m_targetModeNumber{-1};
 
   private: // Manager instances (SOLID refactoring)
     std::recursive_mutex

@@ -151,47 +151,6 @@ struct Adsd3500Sensor::ImplData {
 };
 
 /**
- * @brief Wrapper for ioctl that retries on EINTR with validation.
- *
- * Repeatedly calls ioctl until it succeeds or fails with an error other than EINTR.
- * Validates the file descriptor before attempting ioctl calls and retries up to 3 times.
- *
- * @param[in] fh File descriptor
- * @param[in] request ioctl request code
- * @param[in,out] arg Pointer to ioctl argument structure
- *
- * @return ioctl result: 0 on success, -1 on error (with errno set)
- */
-static int xioctl(int fh, unsigned int request, void *arg) {
-    int r;
-    int tries = 3;
-
-    // Validate file handle before calling ioctl
-    if (fh < 0) {
-        LOG(ERROR) << "xioctl called with invalid file descriptor: " << fh;
-        errno = EBADF;
-        return -1;
-    }
-
-    // Note: Argument validation removed - the kernel's ioctl properly validates
-    // arguments and returns appropriate error codes (EFAULT, EINVAL, etc.)
-    // Some V4L2 ioctls legitimately accept NULL pointers for certain operations
-
-    do {
-        r = ioctl(fh, request, arg);
-    } while (--tries > 0 && r == -1 && EINTR == errno);
-
-    if (r == -1) {
-        LOG(WARNING) << "xioctl failed: fd=" << fh << " request=0x" << std::hex
-                     << request << " errno=" << std::dec << errno << " ("
-                     << strerror(errno) << ")"
-                     << " after " << (4 - tries) << " attempts";
-    }
-
-    return r;
-}
-
-/**
  * @brief Constructs an Adsd3500Sensor object.
  *
  * Initializes the ADSD3500 depth sensor with driver paths, creates implementation data,
@@ -253,21 +212,16 @@ Adsd3500Sensor::~Adsd3500Sensor() {
         }
     }
 
+    // Use buffer manager to clean up buffers if available
+    if (m_bufferManager) {
+        for (unsigned int i = 0; i < numVideoDevs; i++) {
+            dev = &m_implData->videoDevs[i];
+            m_bufferManager->cleanupBuffers(dev);
+        }
+    }
+
     for (unsigned int i = 0; i < numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
-
-        if (dev->videoBuffers) {
-            for (unsigned int j = 0; j < dev->nVideoBuffers; j++) {
-                if (munmap(dev->videoBuffers[j].start,
-                           dev->videoBuffers[j].length) == -1) {
-                    LOG(WARNING)
-                        << "munmap error "
-                        << "errno: " << errno << " error: " << strerror(errno);
-                }
-            }
-            free(dev->videoBuffers);
-            dev->videoBuffers = nullptr;
-        }
 
         if (dev->fd != -1) {
             if (close(dev->fd) == -1 && errno != EBADF) {
@@ -319,8 +273,6 @@ aditof::Status Adsd3500Sensor::open() {
 
     LOG(INFO) << "Opening device";
 
-    struct stat st;
-    struct v4l2_capability cap;
     struct VideoDev *dev;
 
     const char *devName, *subDevName, *cardName;
@@ -355,6 +307,14 @@ aditof::Status Adsd3500Sensor::open() {
 
     // Close file descriptors and delete any existing videoDevs to prevent leaks on repeated open() calls
     if (m_implData->videoDevs) {
+        // Use buffer manager to clean up buffers if available
+        if (m_bufferManager) {
+            for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
+                struct VideoDev *oldDev = &m_implData->videoDevs[i];
+                m_bufferManager->cleanupBuffers(oldDev);
+            }
+        }
+
         for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
             struct VideoDev *oldDev = &m_implData->videoDevs[i];
 
@@ -366,19 +326,6 @@ aditof::Status Adsd3500Sensor::open() {
             if (oldDev->sfd != -1) {
                 close(oldDev->sfd);
                 oldDev->sfd = -1;
-            }
-
-            // Free video buffers if still allocated
-            if (oldDev->videoBuffers) {
-                for (unsigned int j = 0; j < oldDev->nVideoBuffers; j++) {
-                    if (oldDev->videoBuffers[j].start &&
-                        oldDev->videoBuffers[j].start != MAP_FAILED) {
-                        munmap(oldDev->videoBuffers[j].start,
-                               oldDev->videoBuffers[j].length);
-                    }
-                }
-                free(oldDev->videoBuffers);
-                oldDev->videoBuffers = nullptr;
             }
         }
         delete[] m_implData->videoDevs;
@@ -401,84 +348,40 @@ aditof::Status Adsd3500Sensor::open() {
 
         LOG(INFO) << "device: " << devName << "\tsubdevice: " << subDevName;
 
-        /* Open V4L2 device */
-        if (stat(devName, &st) == -1) {
-            LOG(WARNING) << "Cannot identify " << devName << "errno: " << errno
-                         << "error: " << strerror(errno);
-            goto cleanup_on_open_error;
+        // Initialize video device driver first to use for validation
+        if (!m_videoDriver) {
+            m_videoDriver = std::make_unique<V4L2VideoDeviceDriver>();
         }
 
-        if (!S_ISCHR(st.st_mode)) {
-            LOG(WARNING) << devName << " is not a valid device";
+        // Use VideoDeviceDriver to validate and open main device
+        unsigned int bufferType;
+        status = m_videoDriver->validateDeviceCapabilities(devName, cardName,
+                                                           bufferType);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Device validation failed for " << devName;
             goto cleanup_on_open_error;
         }
+        dev->videoBuffersType = static_cast<v4l2_buf_type>(bufferType);
 
-        dev->fd = ::open(devName, O_RDWR | O_NONBLOCK, 0);
-        if (dev->fd == -1) {
-            LOG(WARNING) << "Cannot open " << devName << "errno: " << errno
-                         << "error: " << strerror(errno);
+        status = m_videoDriver->open(devName, O_RDWR | O_NONBLOCK);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Failed to open device " << devName;
             goto cleanup_on_open_error;
         }
+        dev->fd = m_videoDriver->getFileDescriptor();
 
-        // Validate file descriptor is valid before using
-        if (dev->fd < 0) {
-            LOG(ERROR) << "Invalid file descriptor for " << devName;
+        // Initialize subdevice driver
+        if (!m_subdeviceDriver) {
+            m_subdeviceDriver = std::make_unique<V4L2VideoDeviceDriver>();
+        }
+
+        // Open subdevice directly (subdevices don't support VIDIOC_QUERYCAP)
+        status = m_subdeviceDriver->open(subDevName, O_RDWR | O_NONBLOCK);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Failed to open subdevice " << subDevName;
             goto cleanup_on_open_error;
         }
-
-        if (xioctl(dev->fd, VIDIOC_QUERYCAP, &cap) == -1) {
-            LOG(WARNING) << devName << " VIDIOC_QUERYCAP error";
-            goto cleanup_on_open_error;
-        }
-
-        if (strncmp((char *)cap.card, cardName, strlen(cardName))) {
-            LOG(WARNING) << "CAPTURE Device " << cap.card;
-            LOG(WARNING) << "Read " << cardName;
-            goto cleanup_on_open_error;
-        }
-
-        if (!(cap.capabilities &
-              (V4L2_CAP_VIDEO_CAPTURE | V4L2_CAP_VIDEO_CAPTURE_MPLANE))) {
-            LOG(WARNING) << devName << " is not a video capture device";
-            goto cleanup_on_open_error;
-        }
-
-        if (cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE) {
-            dev->videoBuffersType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-        } else {
-            dev->videoBuffersType = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        }
-
-        if (!(cap.capabilities & V4L2_CAP_STREAMING)) {
-            LOG(WARNING) << devName << " does not support streaming i/o";
-            goto cleanup_on_open_error;
-        }
-
-        /* Open V4L2 subdevice */
-        if (stat(subDevName, &st) == -1) {
-            LOG(WARNING) << "Cannot identify " << subDevName
-                         << " errno: " << errno
-                         << " error: " << strerror(errno);
-            goto cleanup_on_open_error;
-        }
-
-        if (!S_ISCHR(st.st_mode)) {
-            LOG(WARNING) << subDevName << " is not a valid device";
-            goto cleanup_on_open_error;
-        }
-
-        dev->sfd = ::open(subDevName, O_RDWR | O_NONBLOCK);
-        if (dev->sfd == -1) {
-            LOG(WARNING) << "Cannot open " << subDevName << " errno: " << errno
-                         << " error: " << strerror(errno);
-            goto cleanup_on_open_error;
-        }
-
-        // Validate file descriptor is valid before using
-        if (dev->sfd < 0) {
-            LOG(ERROR) << "Invalid file descriptor for " << subDevName;
-            goto cleanup_on_open_error;
-        }
+        dev->sfd = m_subdeviceDriver->getFileDescriptor();
 
         // Initialize protocol manager after video devices are opened (required for reset)
         if (!m_protocolManager) {
@@ -493,30 +396,7 @@ aditof::Status Adsd3500Sensor::open() {
                 m_interruptAvailable, m_interruptCallbackMap);
         }
 
-        // Initialize video device driver and adopt the opened file descriptor
-        if (!m_videoDriver) {
-            m_videoDriver = std::make_unique<V4L2VideoDeviceDriver>();
-            Status driverStatus =
-                m_videoDriver->adoptFileDescriptor(dev->fd, devName);
-            if (driverStatus != Status::OK) {
-                LOG(ERROR) << "Failed to adopt file descriptor for "
-                              "VideoDeviceDriver";
-                status = Status::GENERIC_ERROR;
-                goto cleanup_on_open_error;
-            }
-        }
-
-        if (!m_subdeviceDriver) {
-            m_subdeviceDriver = std::make_unique<V4L2VideoDeviceDriver>();
-            Status subdevStatus =
-                m_subdeviceDriver->adoptFileDescriptor(dev->sfd, subDevName);
-            if (subdevStatus != Status::OK) {
-                LOG(ERROR) << "Failed to adopt file descriptor for "
-                              "SubdeviceDriver";
-                status = Status::GENERIC_ERROR;
-                goto cleanup_on_open_error;
-            }
-        }
+        // VideoDeviceDriver and SubdeviceDriver already initialized and opened above
 
         //Check chip status and reset if there are any errors.
         if (m_firstRun) {
@@ -647,17 +527,19 @@ aditof::Status Adsd3500Sensor::open() {
     return status;
 
 cleanup_on_open_error:
-    // Close all file descriptors that were successfully opened in the loop
+    // Close video device drivers
+    if (m_videoDriver && m_videoDriver->isOpen()) {
+        m_videoDriver->close();
+    }
+    if (m_subdeviceDriver && m_subdeviceDriver->isOpen()) {
+        m_subdeviceDriver->close();
+    }
+
+    // Reset file descriptors in VideoDev structures
     for (unsigned int j = 0; j < m_implData->numVideoDevs; j++) {
         struct VideoDev *errorDev = &m_implData->videoDevs[j];
-        if (errorDev->fd != -1) {
-            close(errorDev->fd);
-            errorDev->fd = -1;
-        }
-        if (errorDev->sfd != -1) {
-            close(errorDev->sfd);
-            errorDev->sfd = -1;
-        }
+        errorDev->fd = -1;
+        errorDev->sfd = -1;
     }
     return Status::GENERIC_ERROR;
 }
@@ -845,7 +727,7 @@ aditof::Status Adsd3500Sensor::setMode(const uint8_t &mode) {
 
     m_implData->modeDetails = modeTable;
     // Reset target mode now that setMode has used the updated bit arrays
-    m_targetModeNumber = -1;
+    m_targetModeNumber.store(-1, std::memory_order_release);
     return aditof::Status::OK;
 }
 
@@ -869,34 +751,27 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         }
     }
 
+    // Use buffer manager to clean up buffers
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
-
-        for (unsigned int i = 0; i < dev->nVideoBuffers; i++) {
-            if (munmap(dev->videoBuffers[i].start,
-                       dev->videoBuffers[i].length) == -1) {
-                LOG(WARNING)
-                    << "munmap error "
-                    << "errno: " << errno << " error: " << strerror(errno);
-            }
+        if (m_bufferManager) {
+            m_bufferManager->cleanupBuffers(dev);
         }
-        free(dev->videoBuffers);
+    }
 
-        if (dev->fd != -1) {
-            if (close(dev->fd) == -1) {
-                LOG(WARNING)
-                    << "close m_implData->fd error "
-                    << "errno: " << errno << " error: " << strerror(errno);
-            }
-        }
+    // Close devices using drivers to maintain consistent state
+    if (m_videoDriver && m_videoDriver->isOpen()) {
+        m_videoDriver->close();
+    }
+    if (m_subdeviceDriver && m_subdeviceDriver->isOpen()) {
+        m_subdeviceDriver->close();
+    }
 
-        if (dev->sfd != -1) {
-            if (close(dev->sfd) == -1) {
-                LOG(WARNING)
-                    << "close m_implData->sfd error "
-                    << "errno: " << errno << " error: " << strerror(errno);
-            }
-        }
+    // Reset file descriptors
+    for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
+        dev = &m_implData->videoDevs[i];
+        dev->fd = -1;
+        dev->sfd = -1;
     }
 
     if (m_isOpen) { // open the device if it's been closed
@@ -1099,18 +974,9 @@ cleanup_on_error:
         for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
             dev = &m_implData->videoDevs[i];
 
-            // Unmap and free video buffers
-            if (dev->videoBuffers) {
-                for (unsigned int j = 0; j < dev->nVideoBuffers; j++) {
-                    if (dev->videoBuffers[j].start &&
-                        dev->videoBuffers[j].start != MAP_FAILED) {
-                        munmap(dev->videoBuffers[j].start,
-                               dev->videoBuffers[j].length);
-                    }
-                }
-                free(dev->videoBuffers);
-                dev->videoBuffers = nullptr;
-                dev->nVideoBuffers = 0;
+            // Use buffer manager to clean up buffers
+            if (m_bufferManager) {
+                m_bufferManager->cleanupBuffers(dev);
             }
 
             // Close file descriptors
@@ -1273,10 +1139,40 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
     // Must be called before configureSensorModeDetails() so that abBits/
     // confidenceBits controls update the correct mode's arrays.
     if (control == "targetModeNumber") {
-        m_targetModeNumber = (int8_t)std::stoi(value);
-        LOG(INFO) << "Target mode for runtime bit config set to "
-                  << (int)m_targetModeNumber;
-        return Status::OK;
+        try {
+            int modeValue = std::stoi(value);
+
+            // Validate mode number is in valid range (-1 for unset, or valid mode index)
+            if (modeValue < -1) {
+                LOG(ERROR) << "Invalid targetModeNumber: " << modeValue
+                           << " (must be >= -1)";
+                return Status::INVALID_ARGUMENT;
+            }
+
+            // Check bounds against available bit depth arrays (populated during queryAdsd3500)
+            if (modeValue >= 0 && !m_bitsInAB.empty() &&
+                static_cast<size_t>(modeValue) >= m_bitsInAB.size()) {
+                LOG(ERROR) << "targetModeNumber " << modeValue
+                           << " exceeds maximum mode index "
+                           << (m_bitsInAB.size() - 1);
+                return Status::INVALID_ARGUMENT;
+            }
+
+            m_targetModeNumber.store((int8_t)modeValue,
+                                     std::memory_order_release);
+            LOG(INFO) << "Target mode for runtime bit config set to "
+                      << (int)modeValue;
+            return Status::OK;
+
+        } catch (const std::invalid_argument &e) {
+            LOG(ERROR) << "Invalid targetModeNumber value '" << value
+                       << "': not a valid integer";
+            return Status::INVALID_ARGUMENT;
+        } catch (const std::out_of_range &e) {
+            LOG(ERROR) << "targetModeNumber value '" << value
+                       << "' is out of range for int8_t";
+            return Status::INVALID_ARGUMENT;
+        }
     }
 
     std::vector<std::string> convertor = {"0",  "4",  "8", "10",
@@ -1303,8 +1199,9 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
         // Determine which mode's bit arrays to update:
         // Use m_targetModeNumber if set (runtime config before setMode),
         // otherwise fall back to current mode
-        uint8_t modeNum = (m_targetModeNumber >= 0)
-                              ? static_cast<uint8_t>(m_targetModeNumber)
+        int8_t targetMode = m_targetModeNumber.load(std::memory_order_acquire);
+        uint8_t modeNum = (targetMode >= 0)
+                              ? static_cast<uint8_t>(targetMode)
                               : m_implData->modeDetails.modeNumber;
         uint8_t actualBits = (uint8_t)std::stoi(convertor[bitIndex]);
 
@@ -1925,20 +1822,6 @@ Adsd3500Sensor::getInternalBuffer(uint8_t **buffer, uint32_t &buf_data_len,
 aditof::Status Adsd3500Sensor::enqueueInternalBuffer(struct v4l2_buffer &buf) {
 
     return enqueueInternalBufferPrivate(buf);
-}
-
-/**
- * @brief Writes configuration block to ADSD3500 at specified offset.
- *
- * Currently a stub implementation that returns OK without action.
- *
- * @param[in] offset Offset address for configuration block
- *
- * @return Status::OK on success
- */
-aditof::Status Adsd3500Sensor::writeConfigBlock(const uint32_t offset) {
-
-    return aditof::Status::OK;
 }
 
 /**

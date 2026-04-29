@@ -28,6 +28,7 @@
 #include <cstring>
 #include <linux/videodev2.h>
 #include <sys/ioctl.h>
+#include <sys/mman.h>
 #include <sys/select.h>
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
@@ -176,4 +177,36 @@ aditof::Status V4L2BufferManager::getDeviceFileDescriptor(int &fileDescriptor) {
     }
 
     return Status::INVALID_ARGUMENT;
+}
+
+aditof::Status V4L2BufferManager::cleanupBuffers(struct VideoDev *dev) {
+    using namespace aditof;
+
+    if (dev == nullptr)
+        dev = &m_videoDevs[0];
+
+    if (!dev->videoBuffers) {
+        return Status::OK; // Nothing to clean up
+    }
+
+    // Unmap all buffers
+    for (unsigned int i = 0; i < dev->nVideoBuffers; i++) {
+        if (dev->videoBuffers[i].start &&
+            dev->videoBuffers[i].start != MAP_FAILED) {
+            if (munmap(dev->videoBuffers[i].start,
+                       dev->videoBuffers[i].length) == -1) {
+                LOG(WARNING) << "munmap error for buffer " << i << ": "
+                             << strerror(errno);
+                // Continue cleanup despite error
+            }
+        }
+    }
+
+    // Free the buffer array
+    free(dev->videoBuffers);
+    dev->videoBuffers = nullptr;
+    dev->nVideoBuffers = 0;
+
+    LOG(INFO) << "Cleaned up video buffers for device";
+    return Status::OK;
 }

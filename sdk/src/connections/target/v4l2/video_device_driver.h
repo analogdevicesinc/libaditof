@@ -218,6 +218,24 @@ class VideoDeviceDriver {
      * @return Status::OK on success
      */
     virtual Status ioctl(unsigned long request, void *arg) = 0;
+
+    /**
+     * @brief Validates device capabilities match expected requirements.
+     *
+     * Checks:
+     * - Device is a character device
+     * - V4L2 capabilities (capture, streaming, mplane support)
+     * - Card name matches expected value
+     *
+     * @param devicePath Path to device file
+     * @param expectedCardName Expected V4L2 card name (can be empty to skip check)
+     * @param bufferType Output: detected buffer type (VIDEO_CAPTURE or VIDEO_CAPTURE_MPLANE)
+     * @return Status::OK if valid, Status::GENERIC_ERROR otherwise
+     */
+    virtual Status
+    validateDeviceCapabilities(const std::string &devicePath,
+                               const std::string &expectedCardName,
+                               unsigned int &bufferType) = 0;
 };
 
 } // namespace aditof
