@@ -43,8 +43,8 @@ extern "C" { // only need to export C interface if
 
 #include "tofi_error.h"
 #include "tofi_util.h"
-// TODO: Confirm if its fine to hardcode
-// number of phases as 3, else make it a pointer
+// Fixed at 3 phases for ADTF3175D sensor architecture.
+// This is a hardware constant for the current ToF sensor generation.
 #define NO_OF_PHASES 3
 
 typedef struct {

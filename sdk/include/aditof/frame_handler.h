@@ -82,27 +82,6 @@ class FrameHandler {
     SDK_API aditof::Status setInputFileName(const std::string &fullFileName);
 
     /**
-     * @brief Store frame to file
-     * @param[in] frame - frame object to be stored in file
-     * @param[in] fileName - the name of the file. If none provided
-     * it will automatically generate one depending on time and frame number.
-     * @return Status
-     */
-    SDK_API aditof::Status saveFrameToFile(aditof::Frame &frame,
-                                           const std::string &fileName = "");
-
-    /**
-     * @brief Store frame to file using a separate thread.
-     * @param[in] frame - frame object to be stored in file
-     * @param[in] fileName - the name of the file. If none provided
-     * it will automatically generate one depending on time and frame number.
-     * @return Status
-     */
-    SDK_API aditof::Status
-    saveFrameToFileMultithread(aditof::Frame &frame,
-                               const std::string &fileName = "");
-
-    /**
      * @brief Reads frame from a file. If same file is provided it will 
      * continue to read from the last position
      * @param[out] frame - Frame object in which the frame will be stored

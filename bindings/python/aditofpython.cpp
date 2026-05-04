@@ -197,9 +197,6 @@ PYBIND11_MODULE(aditofpython, m) {
         .def_readwrite("frameType", &aditof::CameraDetails::frameType)
         .def_readwrite("connection", &aditof::CameraDetails::connection)
         .def_readwrite("intrinsics", &aditof::CameraDetails::intrinsics)
-        .def_readwrite("minDepth", &aditof::CameraDetails::minDepth)
-        .def_readwrite("maxDepth", &aditof::CameraDetails::maxDepth)
-        .def_readwrite("bitCount", &aditof::CameraDetails::bitCount)
         .def_readwrite("uBootVersion", &aditof::CameraDetails::uBootVersion)
         .def_readwrite("kernelVersion", &aditof::CameraDetails::kernelVersion)
         .def_readwrite("sdCardImageVersion",
@@ -1012,17 +1009,15 @@ PYBIND11_MODULE(aditofpython, m) {
         });
 
     // FrameHandler
+    // FrameHandler
+    // Note: saveFrameToFile and saveFrameToFileMultithread removed (deprecated).
+    // Python users should use Camera.startRecording() and stopRecording() instead.
     py::class_<aditof::FrameHandler>(m, "FrameHandler")
         .def(py::init<>())
         .def("setOutputFilePath", &aditof::FrameHandler::setOutputFilePath,
              py::arg("filePath"))
         .def("setInputFileName", &aditof::FrameHandler::setInputFileName,
              py::arg("fullFileName"))
-        .def("saveFrameToFile", &aditof::FrameHandler::saveFrameToFile,
-             py::arg("frame"), py::arg("fileName") = "")
-        .def("saveFrameToFileMultithread",
-             &aditof::FrameHandler::saveFrameToFileMultithread,
-             py::arg("frame"), py::arg("fileName") = "")
         .def("readNextFrame", &aditof::FrameHandler::readNextFrame,
              py::arg("frame"), py::arg("fullFileName"),
              py::return_value_policy::reference_internal)

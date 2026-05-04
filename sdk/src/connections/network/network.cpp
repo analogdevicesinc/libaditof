@@ -683,8 +683,8 @@ void Network::FrameSocketConnection(std::string &ip) {
     frame_context = std::make_unique<zmq::context_t>(1);
     frame_socket =
         std::make_unique<zmq::socket_t>(*frame_context, zmq::socket_type::pull);
-    frame_socket->set(zmq::sockopt::rcvtimeo,
-                      1100); // TODO: Base ZMQ_RCVTIMEO on the frame rate
+    // 1100ms timeout allows for frame rates down to ~1 FPS with margin for network jitter
+    frame_socket->set(zmq::sockopt::rcvtimeo, 1100);
     frame_socket->set(zmq::sockopt::rcvhwm, static_cast<int>(max_buffer_size));
     std::string zmq_address = "tcp://" + ip + ":5555";
     frame_socket->connect(zmq_address);

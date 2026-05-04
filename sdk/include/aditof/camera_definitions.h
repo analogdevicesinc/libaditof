@@ -148,23 +148,6 @@ struct CameraDetails {
     IntrinsicParameters intrinsics;
 
     /**
-     * @brief The maximum distance (in millimeters) the camera can measure in
-     * the current operating mode. This is currently unused!
-     */
-    int maxDepth;
-
-    /**
-     * @brief The minimum distance (in millimeters) the camera can measure in
-     * the current operating mode. This is currently unused!
-     */
-    int minDepth;
-
-    /**
-     * @brief The number of bits used for representing one pixel data. This is currently unused!
-     */
-    int bitCount;
-
-    /**
      * @brief The U-Boot version that is installed on the embedded system that the camera is attached to.
      */
     std::string uBootVersion;

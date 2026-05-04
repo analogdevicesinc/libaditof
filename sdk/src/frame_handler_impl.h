@@ -52,12 +52,6 @@ class FrameHandlerImpl {
     //the api should only use frame objects when saving/reading data from file
     //the conversion between formats should happen inside the functions
 
-    aditof::Status saveFrameToFile(aditof::Frame &frame,
-                                   const std::string &fileName = "");
-
-    aditof::Status saveFrameToFileMultithread(aditof::Frame &frame,
-                                              const std::string &filename = "");
-
     aditof::Status readNextFrame(aditof::Frame &frame,
                                  const std::string &fullFileName = "");
 

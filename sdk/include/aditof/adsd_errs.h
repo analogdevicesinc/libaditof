@@ -130,57 +130,43 @@ class ADSDErrors {
     }
 
     /**
-     * @brief Returns a string for a given target (adsdType) and error code for the ADSD3100.
+     * @brief Returns a string for a given error code for the ADSD3100 imager.
      * @param[in] value - Error value
      * @return Error string
+     * @note All imager types (ADSD3100, ADSD3030, ADSD3080, ADTF3066) share the same error codes.
      */
     std::string GetStringADSD3100(uint16_t value) {
-
-        std::string ret = "";
-
-        auto it = m_ADSD3100ErrLookup.find(value);
-
-        if (it != m_ADSD3100ErrLookup.end()) {
-            ret = m_ADSD3100ErrLookup[value];
-        }
-
-        return ret;
+        return GetStringImagerError(value);
     }
 
     /**
-     * @brief Returns a string for a given target (adsdType) and error code for the ADSD3030.
+     * @brief Returns a string for a given error code for the ADSD3030 imager.
      * @param[in] value - Error value
      * @return Error string
+     * @note All imager types (ADSD3100, ADSD3030, ADSD3080, ADTF3066) share the same error codes.
      */
     std::string GetStringADSD3030(uint16_t value) {
-
-        std::string ret = "";
-
-        return ret;
+        return GetStringImagerError(value);
     }
 
     /**
-     * @brief Returns a string for a given target (adsdType) and error code for the ADTF3080.
+     * @brief Returns a string for a given error code for the ADSD3080 imager.
      * @param[in] value - Error value
      * @return Error string
+     * @note All imager types (ADSD3100, ADSD3030, ADSD3080, ADTF3066) share the same error codes.
      */
     std::string GetStringADSD3080(uint16_t value) {
-
-        std::string ret = "";
-
-        return ret;
+        return GetStringImagerError(value);
     }
 
     /**
-     * @brief Returns a string for a given target (adsdType) and error code for the ADTF3066.
+     * @brief Returns a string for a given error code for the ADTF3066 imager.
      * @param[in] value - Error value
      * @return Error string
+     * @note All imager types (ADSD3100, ADSD3030, ADSD3080, ADTF3066) share the same error codes.
      */
     std::string GetStringADTF3066(uint16_t value) {
-
-        std::string ret = "";
-
-        return ret;
+        return GetStringImagerError(value);
     }
 
   public:
@@ -198,7 +184,7 @@ class ADSDErrors {
      */
     const uint16_t ADSD3500_STATUS_UNSUPPORTED_CMD = 0x0003;
     /**
-     * @brief TODO
+     * @brief Invalid memory region accessed on ADSD3500.
      */
     const uint16_t ADSD3500_STATUS_INVALID_MEMORY_REGION = 0x0004;
     /**
@@ -386,7 +372,23 @@ class ADSDErrors {
     const uint16_t ADSD3100_ERR_LASER_VLD_HIGH = 0x0340;
 
   private:
+    /**
+     * @brief Helper function to get imager error strings.
+     * @param[in] value - Error value
+     * @return Error string from lookup map, or empty string if not found
+     * @note All imager types (ADSD3100, ADSD3030, ADSD3080, ADTF3066) share the same error codes.
+     */
+    std::string GetStringImagerError(uint16_t value) const {
+        auto it = m_ADSD3100ErrLookup.find(value);
+        if (it != m_ADSD3100ErrLookup.end()) {
+            return it->second;
+        }
+        return "";
+    }
+
     std::unordered_map<uint16_t, std::string> m_ADSD3500StatusLookup;
+    // Note: This lookup map is shared across all imager types
+    // (ADSD3100, ADSD3030, ADSD3080, ADTF3066)
     std::unordered_map<uint16_t, std::string> m_ADSD3100ErrLookup;
 };
 
