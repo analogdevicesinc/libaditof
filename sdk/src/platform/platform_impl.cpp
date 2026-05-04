@@ -41,6 +41,81 @@ namespace aditof {
 namespace platform {
 
 /**
+ * @brief Validates that a device path contains no shell metacharacters
+ * @param path Device path to validate
+ * @return true if path is safe, false if it contains dangerous characters
+ */
+static bool isValidDevicePath(const std::string &path) {
+    if (path.empty() || path.length() > 256) {
+        return false;
+    }
+    // Must start with /dev/
+    if (path.find("/dev/") != 0) {
+        return false;
+    }
+    // Allow only alphanumeric, forward slash, dash, underscore, and dot
+    const std::string allowedChars = "abcdefghijklmnopqrstuvwxyz"
+                                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                     "0123456789/-_.";
+    return path.find_first_not_of(allowedChars) == std::string::npos;
+}
+
+/**
+ * @brief Validates GPIO name contains only safe characters
+ * @param gpio_name GPIO name or number
+ * @return true if safe, false otherwise
+ */
+static bool isValidGpioName(const char *gpio_name) {
+    if (!gpio_name || strlen(gpio_name) == 0 || strlen(gpio_name) > 32) {
+        return false;
+    }
+    // Allow only alphanumeric, dot, and underscore (no shell metacharacters)
+    for (size_t i = 0; i < strlen(gpio_name); i++) {
+        char c = gpio_name[i];
+        if (!isalnum(c) && c != '.' && c != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Safely write value to GPIO sysfs without using system()
+ * @param gpio_name GPIO name (e.g., "PAC.00" or "gpio123")
+ * @param value Value to write ("0" or "1")
+ * @param useNumeric Whether to use numeric GPIO format
+ * @return Status::OK on success
+ */
+static Status writeGpioValue(const char *gpio_name, const char *value,
+                             bool useNumeric) {
+    if (!isValidGpioName(gpio_name)) {
+        LOG(ERROR) << "Invalid GPIO name contains dangerous characters: "
+                   << gpio_name;
+        return Status::INVALID_ARGUMENT;
+    }
+
+    char path[256];
+    snprintf(path, sizeof(path), "/sys/class/gpio/%s%s/value",
+             useNumeric ? "gpio" : "", gpio_name);
+
+    // Direct file write - no shell invocation, eliminates command injection
+    FILE *fp = fopen(path, "w");
+    if (!fp) {
+        LOG(ERROR) << "Failed to open GPIO path: " << path;
+        return Status::GENERIC_ERROR;
+    }
+
+    if (fputs(value, fp) == EOF) {
+        LOG(ERROR) << "Failed to write to GPIO";
+        fclose(fp);
+        return Status::GENERIC_ERROR;
+    }
+
+    fclose(fp);
+    return Status::OK;
+}
+
+/**
  * @brief Constructor for Platform.
  *
  * Initializes the platform abstraction layer and logs the platform name.
@@ -425,6 +500,14 @@ Status Platform::parseMediaPipeline(const std::string &mediaDevice,
                                     std::string &subdevPath,
                                     std::string &deviceName) {
 
+    // SECURITY: Validate device path before passing to shell command
+    if (!isValidDevicePath(mediaDevice)) {
+        LOG(ERROR)
+            << "Invalid media device path (contains shell metacharacters): "
+            << mediaDevice;
+        return Status::INVALID_ARGUMENT;
+    }
+
     char cmd[512];
     snprintf(cmd, sizeof(cmd), "media-ctl -d %s -p 2>/dev/null",
              mediaDevice.c_str());
@@ -581,20 +664,17 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
         useNumeric = true;
     }
 
-    // Toggle GPIO via sysfs
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "echo 0 > /sys/class/gpio/%s%s/value",
-             useNumeric ? "gpio" : "", gpio_name);
-    if (system(cmd) != 0) {
-        LOG(ERROR) << "Failed to set GPIO" << gpio_name << " to 0";
+    // Toggle GPIO via sysfs (using safe file I/O instead of system())
+    Status status = writeGpioValue(gpio_name, "0", useNumeric);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to set GPIO " << gpio_name << " to 0";
         return Status::GENERIC_ERROR;
     }
     usleep(PLATFORM_RESET_PULSE_US);
 
-    snprintf(cmd, sizeof(cmd), "echo 1 > /sys/class/gpio/%s%s/value",
-             useNumeric ? "gpio" : "", gpio_name);
-    if (system(cmd) != 0) {
-        LOG(ERROR) << "Failed to set GPIO" << gpio_name << " to 1";
+    status = writeGpioValue(gpio_name, "1", useNumeric);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to set GPIO " << gpio_name << " to 1";
         return Status::GENERIC_ERROR;
     }
 
@@ -622,19 +702,17 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
 
     if (stat(gpio_sysfs_path, &st) == 0) {
         // Use sysfs named GPIO
-        char cmd[256];
-        snprintf(cmd, sizeof(cmd), "echo 0 > /sys/class/gpio/%s/value",
-                 PLATFORM_RESET_GPIO);
-        if (system(cmd) != 0) {
+        // SECURITY: Use safe file I/O instead of system()
+        Status status = writeGpioValue(PLATFORM_RESET_GPIO, "0", false);
+        if (status != Status::OK) {
             LOG(ERROR) << "Failed to set GPIO " << PLATFORM_RESET_GPIO
                        << " to 0";
             return Status::GENERIC_ERROR;
         }
         usleep(PLATFORM_RESET_PULSE_US);
 
-        snprintf(cmd, sizeof(cmd), "echo 1 > /sys/class/gpio/%s/value",
-                 PLATFORM_RESET_GPIO);
-        if (system(cmd) != 0) {
+        status = writeGpioValue(PLATFORM_RESET_GPIO, "1", false);
+        if (status != Status::OK) {
             LOG(ERROR) << "Failed to set GPIO " << PLATFORM_RESET_GPIO
                        << " to 1";
             return Status::GENERIC_ERROR;
@@ -675,19 +753,17 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
         return Status::GENERIC_ERROR;
     }
 
-    char cmd[256];
-    snprintf(cmd, sizeof(cmd), "echo 0 > /sys/class/gpio/%s%s/value",
-             useNumeric ? "gpio" : "", gpio_name);
-    if (system(cmd) != 0) {
-        LOG(ERROR) << "Failed to set GPIO" << gpio_name << " to 0";
+    // SECURITY: Use safe file I/O instead of system()
+    Status status = writeGpioValue(gpio_name, "0", useNumeric);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to set GPIO " << gpio_name << " to 0";
         return Status::GENERIC_ERROR;
     }
     usleep(PLATFORM_RESET_PULSE_US);
 
-    snprintf(cmd, sizeof(cmd), "echo 1 > /sys/class/gpio/%s%s/value",
-             useNumeric ? "gpio" : "", gpio_name);
-    if (system(cmd) != 0) {
-        LOG(ERROR) << "Failed to set GPIO" << gpio_name << " to 1";
+    status = writeGpioValue(gpio_name, "1", useNumeric);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Failed to set GPIO " << gpio_name << " to 1";
         return Status::GENERIC_ERROR;
     }
 

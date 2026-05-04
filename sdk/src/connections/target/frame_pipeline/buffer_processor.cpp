@@ -686,6 +686,17 @@ void BufferProcessor::captureFrameThread() {
             continue;
         }
 
+        // SECURITY: Validate buffer size before memcpy to prevent overflow
+        if (buf_data_len > m_rawFrameBufferSize) {
+            LOG(ERROR) << __func__
+                       << ": Buffer overflow risk detected! buf_data_len="
+                       << buf_data_len
+                       << " exceeds allocated size=" << m_rawFrameBufferSize;
+            enqueueInternalBufferPrivate(buf, dev);
+            m_v4l2_input_buffer_Q.push(v4l2_frame_holder);
+            continue;
+        }
+
         if (v4l2_frame_holder != nullptr) {
             memcpy(v4l2_frame_holder.get(), pdata, buf_data_len);
         } else {
@@ -784,6 +795,17 @@ void BufferProcessor::processThread() {
                 uint8_t *src = process_frame.data.get();
                 uint8_t *dst =
                     reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get());
+
+                // SECURITY: Validate destination buffer capacity
+                size_t dst_capacity = m_tofiBufferSize * sizeof(uint16_t);
+                if (bufferSizeBytes > dst_capacity) {
+                    LOG(ERROR)
+                        << "Raw bypass buffer overflow risk: source="
+                        << bufferSizeBytes << " exceeds dest=" << dst_capacity;
+                    // Restore buffers and skip frame
+                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+                    continue;
+                }
 
                 // Copy full V4L2 buffer (data + padding)
                 memcpy(dst, src, bufferSizeBytes);
