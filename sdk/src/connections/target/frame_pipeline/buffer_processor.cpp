@@ -108,7 +108,6 @@ BufferProcessor::BufferProcessor()
       m_capture_to_process_Q(MAX_QUEUE_SIZE),
       m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE) {
 
-    m_outputVideoDev = new VideoDev();
     m_outputFrameWidth = 0;
     m_outputFrameHeight = 0;
     m_processorPropSet = false;
@@ -132,9 +131,9 @@ BufferProcessor::BufferProcessor()
 /**
  * @brief Destructor for BufferProcessor.
  *
- * Stops worker threads, frees ToFi compute resources (context and config), and closes
- * the output video device. Thread shutdown drains all queues and ensures ToFi context
- * pointers are restored before cleanup, preventing use-after-free errors.
+ * Stops worker threads and frees ToFi compute resources (context and config).
+ * Thread shutdown drains all queues and ensures ToFi context pointers are restored
+ * before cleanup, preventing use-after-free errors.
  */
 BufferProcessor::~BufferProcessor() {
     // STEP 1: Stop threads first (this also drains all queues)
@@ -160,14 +159,12 @@ BufferProcessor::~BufferProcessor() {
     }
 
     // STEP 3: Input device cleanup handled by caller (adsd3500_sensor)
-    // Output device not used (UVC not supported)
 }
 
 /**
- * @brief Opens the output video device (no-op).
+ * @brief Initializes the buffer processor (no-op).
  *
- * UVC output functionality is not supported on this platform.
- * This method exists for interface compatibility and always succeeds.
+ * Reserved for future initialization requirements.
  *
  * @return Status::OK
  */
@@ -1260,16 +1257,16 @@ BufferProcessor::enqueueInternalBufferPrivate(struct v4l2_buffer &buf,
 }
 
 /**
- * @brief Retrieves the output video device file descriptor.
+ * @brief Retrieves the device file descriptor (not applicable for this processor).
  *
- * UVC output is not supported; returns -1 indicating no valid file descriptor.
+ * Returns -1 as this processor does not expose a direct device file descriptor.
  *
  * @param[out] fileDescriptor Variable to receive the file descriptor (-1)
  *
  * @return Status::OK
  */
 aditof::Status BufferProcessor::getDeviceFileDescriptor(int &fileDescriptor) {
-    fileDescriptor = -1; // UVC output not supported
+    fileDescriptor = -1;
     return aditof::Status::OK;
 }
 

@@ -248,6 +248,13 @@ Adsd3500Sensor::~Adsd3500Sensor() {
         m_implData->videoDevs = nullptr;
     }
     delete m_bufferProcessor;
+
+    // Unsubscribe from interrupt notifier to prevent memory leak
+    // Note: weak_ptr is expired here (destructor), but owner_before still works for comparison
+    if (Adsd3500InterruptNotifier::getInstance().interruptsAvailable()) {
+        Adsd3500InterruptNotifier::getInstance().unsubscribeSensor(
+            m_selfWeakPtr);
+    }
 }
 
 /**
@@ -266,8 +273,9 @@ aditof::Status Adsd3500Sensor::open() {
     // Subscribe to ADSD3500 interrupts
     if (m_firstRun) {
         if (Adsd3500InterruptNotifier::getInstance().interruptsAvailable()) {
-            std::weak_ptr<Adsd3500Sensor> wptr = shared_from_this();
-            Adsd3500InterruptNotifier::getInstance().subscribeSensor(wptr);
+            m_selfWeakPtr = shared_from_this();
+            Adsd3500InterruptNotifier::getInstance().subscribeSensor(
+                m_selfWeakPtr);
         }
     }
 
@@ -503,7 +511,7 @@ aditof::Status Adsd3500Sensor::open() {
 
     status = m_bufferProcessor->open();
     if (status != Status::OK) {
-        LOG(ERROR) << "Failed to open output video device!";
+        LOG(ERROR) << "Failed to initialize buffer processor!";
         return status;
     }
 

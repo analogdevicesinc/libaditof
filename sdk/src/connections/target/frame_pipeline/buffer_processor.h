@@ -209,7 +209,6 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     TofiXYZDealiasData m_xyzDealiasData[11];
 
     struct VideoDev *m_inputVideoDev;
-    struct VideoDev *m_outputVideoDev; // Allocated but not used (UVC disabled)
 
     struct Tofi_v4l2_buffer {
         std::shared_ptr<uint8_t> data;

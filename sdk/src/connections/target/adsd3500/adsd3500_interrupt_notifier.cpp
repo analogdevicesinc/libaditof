@@ -24,6 +24,7 @@
 #include "adsd3500_interrupt_notifier.h"
 #include "adsd3500_sensor.h"
 #include <aditof/log.h>
+#include <algorithm>
 #include <cstring>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -32,7 +33,7 @@
 #define SIGETX 44
 #define USER_TASK _IOW('A', 1, int32_t *)
 
-std::vector<std::weak_ptr<Adsd3500Sensor>> Adsd3500InterruptNotifier::m_sensors;
+std::list<std::weak_ptr<Adsd3500Sensor>> Adsd3500InterruptNotifier::m_sensors;
 
 /**
  * @brief Returns the singleton instance of Adsd3500InterruptNotifier.
@@ -64,11 +65,14 @@ void Adsd3500InterruptNotifier::signalEventHandler(int n, siginfo_t *info,
         int signal_value = info->si_int;
         DLOG(INFO) << "Received signal " << info->si_int << " from kernel";
 
-        for (auto sensor : m_sensors) {
-            if (std::shared_ptr<Adsd3500Sensor> sptr = sensor.lock()) {
+        // Clean up expired weak_ptrs while iterating
+        m_sensors.remove_if([&signal_value](std::weak_ptr<Adsd3500Sensor> &wp) {
+            if (auto sptr = wp.lock()) {
                 sptr->adsd3500InterruptHandler(signal_value);
+                return false; // Keep valid sensors
             }
-        }
+            return true; // Remove expired sensors
+        });
     }
 }
 
@@ -153,10 +157,39 @@ void Adsd3500InterruptNotifier::subscribeSensor(
 /**
  * @brief Unsubscribes a sensor from interrupt notifications.
  *
- * This is a stub implementation that currently performs no action. Sensors are
- * automatically removed when their weak_ptr expires.
+ * Removes expired weak_ptrs from the sensor list to prevent memory accumulation.
+ * If a specific sensor is provided, attempts to match and remove it using owner_before.
+ * Always cleans up expired entries to maintain list hygiene.
+ * Uses std::list to avoid vector capacity overhead that could accumulate in
+ * long-running applications with multiple camera open/close cycles.
  *
- * @param[in] sensor Weak pointer to the Adsd3500Sensor to unsubscribe
+ * Note: owner_before() works correctly even with expired weak_ptrs, so we don't
+ * check expiration status before comparison.
+ *
+ * @param[in] sensor Weak pointer to the Adsd3500Sensor to unsubscribe (optional)
  */
 void Adsd3500InterruptNotifier::unsubscribeSensor(
-    std::weak_ptr<Adsd3500Sensor> sensor) {}
+    std::weak_ptr<Adsd3500Sensor> sensor) {
+    size_t initial_size = m_sensors.size();
+    // Remove expired weak_ptrs and optionally the specified sensor
+    m_sensors.remove_if([&sensor](const std::weak_ptr<Adsd3500Sensor> &wp) {
+        // Remove if expired
+        if (wp.expired()) {
+            return true;
+        }
+        // Remove if matches the provided sensor (using owner_before for comparison)
+        // Note: owner_before works even if sensor is expired (e.g., called from destructor)
+        if (!sensor.owner_before(wp) && !wp.owner_before(sensor)) {
+            return true;
+        }
+        return false;
+    });
+
+    size_t removed_count = initial_size - m_sensors.size();
+    if (removed_count > 0) {
+        LOG(INFO) << "Removed " << removed_count
+                  << " sensor(s) from interrupt notifier. Remaining: "
+                  << m_sensors.size();
+    }
+    // Note: std::list deallocates nodes immediately, no shrink_to_fit() needed
+}

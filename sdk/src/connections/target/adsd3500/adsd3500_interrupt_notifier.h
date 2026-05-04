@@ -22,9 +22,9 @@
  * SOFTWARE.
  */
 #include <aditof/status_definitions.h>
+#include <list>
 #include <memory>
 #include <signal.h>
-#include <vector>
 
 class Adsd3500Sensor;
 
@@ -52,6 +52,6 @@ class Adsd3500InterruptNotifier final {
     static void signalEventHandler(int n, siginfo_t *info, void *unused);
 
   private:
-    static std::vector<std::weak_ptr<Adsd3500Sensor>> m_sensors;
+    static std::list<std::weak_ptr<Adsd3500Sensor>> m_sensors;
     bool m_interruptsAvailable;
 };

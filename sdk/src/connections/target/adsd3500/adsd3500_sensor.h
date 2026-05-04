@@ -270,6 +270,14 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
      */
     std::atomic<int8_t> m_targetModeNumber{-1};
 
+    /**
+     * @brief Weak pointer to self for interrupt notifier cleanup.
+     * 
+     * Stored during subscribeSensor() to enable proper unsubscription in destructor.
+     * Prevents 16-byte memory leak from weak_ptr accumulation in singleton notifier.
+     */
+    std::weak_ptr<Adsd3500Sensor> m_selfWeakPtr;
+
   private: // Manager instances (SOLID refactoring)
     std::recursive_mutex
         m_adsd3500_mutex; // Protects ADSD3500 command/payload operations (recursive for nested calls)

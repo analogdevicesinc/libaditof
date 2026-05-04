@@ -89,42 +89,6 @@ Status FrameHandler::setInputFileName(const std::string &fullFileName) {
 }
 
 /**
- * @brief Saves a single frame to a file (single-threaded).
- *
- * Writes the frame data to disk using a single-threaded approach. This is
- * suitable for occasional saves or when thread safety is a concern.
- *
- * @param frame The Frame object containing the data to save.
- * @param fileName The name of the file to create (relative to the output path
- *                 if set, or absolute path).
- * @return Status::OK on success, or an error status if the write fails.
- */
-Status FrameHandler::saveFrameToFile(aditof::Frame &frame,
-                                     const std::string &fileName) {
-    return m_impl->saveFrameToFile(frame, fileName);
-}
-
-/**
- * @brief Saves a frame to a file using multithreading.
- *
- * Writes the frame data to disk using a background worker thread. This allows
- * the caller to continue processing while the frame is being saved. Useful for
- * high-throughput frame capture scenarios where disk I/O should not block
- * frame acquisition.
- *
- * @param frame The Frame object containing the data to save.
- * @param fileName The name of the file to create (relative to the output path
- *                 if set, or absolute path).
- * @return Status::OK on success, or an error status if the write operation
- *         cannot be queued.
- */
-Status FrameHandler::saveFrameToFileMultithread(aditof::Frame &frame,
-                                                const std::string &fileName) {
-
-    return m_impl->saveFrameToFileMultithread(frame, fileName);
-}
-
-/**
  * @brief Reads the next frame from an input file.
  *
  * Loads frame data from disk into the provided Frame object. If reading from
