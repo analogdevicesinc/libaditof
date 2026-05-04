@@ -449,8 +449,14 @@ void Network::call_zmq_service(const std::string &ip) {
         }
 
         if (running[m_connectionId]) {
-            memcpy(&event, msg.data(), sizeof(event));
-            callback_function(command_socket.at(m_connectionId), event);
+            // SECURITY: Validate message size before memcpy to prevent buffer over-read
+            if (msg.size() >= sizeof(event)) {
+                memcpy(&event, msg.data(), sizeof(event));
+                callback_function(command_socket.at(m_connectionId), event);
+            } else {
+                LOG(WARNING) << "ZMQ event message too small: " << msg.size()
+                             << " bytes (expected " << sizeof(event) << ")";
+            }
         }
     }
     zmq_thread_done.store(true, std::memory_order_release);
