@@ -31,6 +31,9 @@
 
 #include <sstream>
 
+// Define the global variable declared as extern in tofi_config.h
+uint8_t depthComputeOpenSourceEnabled = 0;
+
 /**
  * @brief Initializes a TofiConfig structure for open-source depth computation.
  *
