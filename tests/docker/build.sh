@@ -119,12 +119,14 @@ mkdir -p ./local_code
 rsync -a -vv --exclude='build' \
             --exclude='libaditof/build' \
             --exclude='tests/docker' \
+            --exclude='test-results' \
+            --exclude='test-logs' \
             --exclude='.git' \
             --exclude='.github' \
             "$WORKSPACE_ROOT/" ./local_code/
 
 echo "  Source: $WORKSPACE_ROOT"
-echo "  Excluded: build/, libaditof/build/, scripts/, .git/"
+echo "  Excluded: build/, libaditof/build/, test-results/, test-logs/, .git/"
 
 DOCKERFILE="Dockerfile.local"
 
