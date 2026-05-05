@@ -2,17 +2,20 @@
 #
 # Usage:
 #   include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/AditofTest.cmake)
-#   add_aditof_test(test-name source.cpp [source2.cpp ...])
+#   add_aditof_test(test-name source.cpp [source2.cpp ...] [LABELS label1 label2 ...])
 
 # Helper function to add a test with common configuration
 # Creates a GTest executable linked against gtest, gtest_main, and aditof
 #
 # Parameters:
 #   TEST_NAME - Name of the test executable target
-#   ARGN      - List of source files for the test
+#   ARGN      - List of source files and optional LABELS argument
 function(add_aditof_test TEST_NAME)
-    # Create executable from all source files passed after TEST_NAME
-    add_executable(${TEST_NAME} ${ARGN})
+    # Parse arguments to separate sources from labels
+    cmake_parse_arguments(TEST "" "" "LABELS" ${ARGN})
+    
+    # Create executable from source files
+    add_executable(${TEST_NAME} ${TEST_UNPARSED_ARGUMENTS})
     
     # Link common dependencies
     target_link_libraries(${TEST_NAME}
@@ -32,5 +35,13 @@ function(add_aditof_test TEST_NAME)
     )
     
     # Register with CTest for test discovery
-    gtest_discover_tests(${TEST_NAME})
+    if(TEST_LABELS)
+        # Pass LABELS as a property to all discovered tests
+        gtest_discover_tests(${TEST_NAME}
+            PROPERTIES
+                LABELS "${TEST_LABELS}"
+        )
+    else()
+        gtest_discover_tests(${TEST_NAME})
+    endif()
 endfunction()
