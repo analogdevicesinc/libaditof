@@ -122,21 +122,132 @@ TEST_F(FrameOperationsTest, SetDetailsAllocatesMemory) {
 }
 
 TEST_F(FrameOperationsTest, GetDataReturnsValidPointers) {
-    Frame frame;
-    frame.setDetails(qmpDetails, 8, 8);
+    // Test MP frame (modes 0-1): depth + AB at 1024x1024
+    // Valid AB bit depths: 0, 8, 16 (device_parameters.h uses 0 or 16; 8 supported in code for half-size buffers)
+    {
+        // Combination 1: 16-bit AB (bitsInConf=0, bitsInAB=16) - default in device_parameters.h
+        Frame mpFrame16;
+        mpFrame16.setDetails(mpDetails, 0, 16);
 
-    uint16_t *depthPtr = nullptr;
-    Status status = frame.getData("depth", &depthPtr);
-    EXPECT_EQ(status, Status::OK);
-    EXPECT_NE(depthPtr, nullptr);
+        uint16_t *depthPtr = nullptr;
+        Status status = mpFrame16.getData("depth", &depthPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(depthPtr, nullptr);
 
-    uint16_t *abPtr = nullptr;
-    status = frame.getData("ab", &abPtr);
-    EXPECT_EQ(status, Status::OK);
-    EXPECT_NE(abPtr, nullptr);
+        uint16_t *abPtr = nullptr;
+        status = mpFrame16.getData("ab", &abPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(abPtr, nullptr);
 
-    // Verify pointers are different
-    EXPECT_NE(depthPtr, abPtr);
+        EXPECT_NE(depthPtr, abPtr);
+    }
+
+    {
+        // Combination 2: 8-bit AB (bitsInConf=0, bitsInAB=8) - half-size buffer
+        Frame mpFrame8;
+        mpFrame8.setDetails(mpDetails, 0, 8);
+
+        uint16_t *depthPtr = nullptr;
+        Status status = mpFrame8.getData("depth", &depthPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(depthPtr, nullptr);
+
+        uint16_t *abPtr = nullptr;
+        status = mpFrame8.getData("ab", &abPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(abPtr, nullptr);
+
+        EXPECT_NE(depthPtr, abPtr);
+
+        // MP frames should NOT have confidence data (bitsInConf=0)
+        float *confPtr = nullptr;
+        status = mpFrame8.getData("conf", (uint16_t **)&confPtr);
+        EXPECT_NE(status, Status::OK);
+    }
+
+    // Test QMP frame (modes 2-6): depth + AB + conf at 512x512
+    // Valid QMP bit combinations from device_parameters.h
+    {
+        // Combination 3: 16-bit AB + 8-bit conf (bitsInConf=8, bitsInAB=16) - default QMP config
+        Frame qmpFrame;
+        qmpFrame.setDetails(qmpDetails, 8, 16);
+
+        uint16_t *depthPtr = nullptr;
+        Status status = qmpFrame.getData("depth", &depthPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(depthPtr, nullptr);
+
+        uint16_t *abPtr = nullptr;
+        status = qmpFrame.getData("ab", &abPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(abPtr, nullptr);
+
+        float *confPtr = nullptr;
+        status = qmpFrame.getData("conf", (uint16_t **)&confPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(confPtr, nullptr);
+
+        // Verify all pointers are different
+        EXPECT_NE(depthPtr, abPtr);
+        EXPECT_NE((void *)depthPtr, (void *)confPtr);
+        EXPECT_NE((void *)abPtr, (void *)confPtr);
+    }
+
+    {
+        // Combination 4: 8-bit AB + 8-bit conf (bitsInConf=8, bitsInAB=8) - half-size AB buffer
+        Frame qmpFrame8;
+        qmpFrame8.setDetails(qmpDetails, 8, 8);
+
+        uint16_t *depthPtr = nullptr;
+        Status status = qmpFrame8.getData("depth", &depthPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(depthPtr, nullptr);
+
+        uint16_t *abPtr = nullptr;
+        status = qmpFrame8.getData("ab", &abPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(abPtr, nullptr);
+
+        float *confPtr = nullptr;
+        status = qmpFrame8.getData("conf", (uint16_t **)&confPtr);
+        EXPECT_EQ(status, Status::OK);
+        EXPECT_NE(confPtr, nullptr);
+
+        // Verify all pointers are different
+        EXPECT_NE(depthPtr, abPtr);
+        EXPECT_NE((void *)depthPtr, (void *)confPtr);
+        EXPECT_NE((void *)abPtr, (void *)confPtr);
+    }
+    // Test valid access patterns - all data types accessible independently
+    {
+        Frame frame;
+        frame.setDetails(qmpDetails, 8, 16);
+
+        // Valid combination 1: depth only
+        uint16_t *depthOnly = nullptr;
+        EXPECT_EQ(frame.getData("depth", &depthOnly), Status::OK);
+        EXPECT_NE(depthOnly, nullptr);
+
+        // Valid combination 2: AB only
+        uint16_t *abOnly = nullptr;
+        EXPECT_EQ(frame.getData("ab", &abOnly), Status::OK);
+        EXPECT_NE(abOnly, nullptr);
+
+        // Valid combination 3: conf only
+        float *confOnly = nullptr;
+        EXPECT_EQ(frame.getData("conf", (uint16_t **)&confOnly), Status::OK);
+        EXPECT_NE(confOnly, nullptr);
+
+        // Valid combination 4: all three together
+        uint16_t *d = nullptr, *a = nullptr;
+        float *c = nullptr;
+        EXPECT_EQ(frame.getData("depth", &d), Status::OK);
+        EXPECT_EQ(frame.getData("ab", &a), Status::OK);
+        EXPECT_EQ(frame.getData("conf", (uint16_t **)&c), Status::OK);
+        EXPECT_NE(d, nullptr);
+        EXPECT_NE(a, nullptr);
+        EXPECT_NE(c, nullptr);
+    }
 }
 
 TEST_F(FrameOperationsTest, GetDataInvalidTypeReturnsError) {

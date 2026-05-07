@@ -40,6 +40,9 @@ add_aditof_test(definitions-test definitions/definitions-test.cpp LABELS "unit")
 # Phase 4: Camera API Unit Tests
 add_aditof_test(camera-api_test camera/camera-api_test.cpp LABELS "unit;api")
 
+# Phase 5: Security Validation Tests
+add_aditof_test(platform-security_test platform/platform-security_test.cpp LABELS "unit;security")
+
 # Copy camera parameters test data if it exists
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/camera/data/camera-parameters/)
     file(COPY camera/data/camera-parameters/ DESTINATION ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})

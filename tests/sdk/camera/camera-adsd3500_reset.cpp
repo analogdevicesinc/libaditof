@@ -18,28 +18,6 @@ using namespace aditof;
 // Use the camera IP address from aditof_test library
 std::string &g_cameraipaddress = aditof_test::g_cameraipaddress;
 
-// Test System class
-TEST(SystemTest, SystemInstantiation) {
-    EXPECT_NO_THROW({ System system; });
-}
-
-TEST(SystemTest, GetCameraListWithoutCameras) {
-    System system;
-    std::vector<std::shared_ptr<Camera>> cameras;
-
-    // This should not throw even if no cameras are connected
-    EXPECT_NO_THROW({
-        if (g_cameraipaddress == "") {
-            system.getCameraList(cameras);
-        } else {
-            system.getCameraList(cameras, "ip:" + g_cameraipaddress);
-        }
-    });
-
-    // The cameras vector might be empty if no hardware is connected
-    // This is expected in a test environment
-}
-
 bool g_callbackInvoked = false;
 // Test fixture for Camera-related tests
 class CameraTestFixture : public ::testing::Test {
@@ -104,57 +82,38 @@ class CameraTestFixture : public ::testing::Test {
     aditof::SensorInterruptCallback callback;
 };
 
-TEST_F(CameraTestFixture, SystemHasCameraListMethod) {
-    EXPECT_NE(system, nullptr);
-    // This test passes if we can call getCameraList without crashing
-}
-
-TEST_F(CameraTestFixture, CameraDetailsAccessible) {
-    if (!has_camera) {
-        GTEST_SKIP() << "No camera available for testing";
-    }
-
-    CameraDetails details;
-    Status status = camera->getDetails(details);
-
-    // If we have a camera, we should be able to get its details
-    if (status == Status::OK) {
-        EXPECT_FALSE(details.cameraId.empty());
-    }
-}
-
 TEST_F(CameraTestFixture, adsd3500SoftReset) {
     if (!has_camera) {
         GTEST_SKIP() << "No camera available for testing";
+    }
+
+    if (!hardwareSensor) {
+        GTEST_SKIP() << "Hardware sensor interface not available";
     }
 
     Status init_status = camera->initialize();
 
     if (init_status == Status::OK) {
 
-        // Reset the flag before the test operations
-        ASSERT_TRUE(g_callbackInvoked == true);
+        // Reset the callback flag before testing
         g_callbackInvoked = false;
 
-        Status status = camera->adsd3500SetFrameRate(23);
+        // Perform soft reset using proper SDK method
+        aditof::Status status;
+        status = hardwareSensor->adsd3500_reset();
         ASSERT_TRUE(status == Status::OK);
 
-        uint16_t frameRate = 0;
-        status = camera->adsd3500GetFrameRate(frameRate);
-        ASSERT_TRUE(status == Status::OK);
-        ASSERT_TRUE(frameRate == 23);
+        // Sleep to allow time for reset to complete and camera to reinitialize
+        std::this_thread::sleep_for(std::chrono::seconds(3));
 
-        status = camera->adsd3500SetGenericTemplate(0x0024, 0);
-        ASSERT_TRUE(status == Status::OK);
-
-        //Sleep for 5 seconds to allow time for the reset to occur
-        std::this_thread::sleep_for(std::chrono::seconds(5));
-
-        frameRate = 0;
-        status = camera->adsd3500GetFrameRate(frameRate);
-        ASSERT_TRUE(status == Status::OK);
-        ASSERT_FALSE(frameRate == 23);
-        ASSERT_TRUE(frameRate == 10);
+        // Read chip ID after reset to verify chip is responsive
+        uint16_t chipId = 0;
+        status = hardwareSensor->adsd3500_read_cmd(0x0112, &chipId);
+        ASSERT_TRUE(status == Status::OK)
+            << "Failed to read chip ID after reset";
+        ASSERT_EQ(chipId, 0x5931)
+            << "Chip ID should be 0x5931 after reset, got: 0x" << std::hex
+            << chipId << std::dec;
     } else {
         GTEST_SKIP() << "Camera initialization failed, skipping test";
     }

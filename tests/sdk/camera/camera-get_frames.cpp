@@ -13,13 +13,15 @@
 #include <iostream>
 #include <map>
 #include <random>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <vector>
 
 using namespace aditof;
 
 // Use the camera IP address from aditof_test library
 std::string &g_cameraipaddress = aditof_test::g_cameraipaddress;
-bool g_savelastframe = false;
+bool g_savelastframe = true; // Save frames to images/ directory
 std::string g_timestamp;
 
 struct ModeDetails_struct {
@@ -109,30 +111,19 @@ class CameraTestFixture : public ::testing::Test {
     bool has_camera = false;
 };
 
-TEST_F(CameraTestFixture, SystemHasCameraListMethod) {
-    EXPECT_NE(system, nullptr);
-    // This test passes if we can call getCameraList without crashing
-}
-
-TEST_F(CameraTestFixture, CameraDetailsAccessible) {
-    if (!has_camera) {
-        GTEST_SKIP() << "No camera available for testing";
-    }
-
-    CameraDetails details;
-    Status status = camera->getDetails(details);
-
-    // If we have a camera, we should be able to get its details
-    if (status == Status::OK) {
-        EXPECT_FALSE(details.cameraId.empty());
-    }
-}
-
 #include <fstream>
 Status save_frames(const std::string testname, aditof::Frame &frame,
                    const int &mode_num) {
 
-    const std::string filename = testname + "_mode_" + std::to_string(mode_num);
+    // Create images directory if it doesn't exist
+    const std::string imageDir = "images";
+    struct stat st;
+    if (stat(imageDir.c_str(), &st) != 0) {
+        mkdir(imageDir.c_str(), 0755);
+    }
+
+    const std::string filename =
+        imageDir + "/" + testname + "_mode_" + std::to_string(mode_num);
     FrameHandler fh;
     return fh.SnapShotFrames(filename.c_str(), &frame, nullptr, nullptr);
 }

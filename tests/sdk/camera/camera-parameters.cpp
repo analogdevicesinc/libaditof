@@ -45,28 +45,6 @@ std::map<std::string, std::string> g_moduleJSONMap = {
     {"tembinv2", "depth_params_tembinv2.json"},
     {"mystic", "depth_params_mystic.json"}};
 
-// Test System class
-TEST(SystemTest, SystemInstantiation) {
-    EXPECT_NO_THROW({ System system; });
-}
-
-TEST(SystemTest, GetCameraListWithoutCameras) {
-    System system;
-    std::vector<std::shared_ptr<Camera>> cameras;
-
-    // This should not throw even if no cameras are connected
-    EXPECT_NO_THROW({
-        if (g_cameraipaddress == "") {
-            system.getCameraList(cameras);
-        } else {
-            system.getCameraList(cameras, "ip:" + g_cameraipaddress);
-        }
-    });
-
-    // The cameras vector might be empty if no hardware is connected
-    // This is expected in a test environment
-}
-
 bool g_callbackInvoked = false;
 // Test fixture for Camera-related tests
 class CameraTestFixture : public ::testing::Test {
@@ -135,25 +113,6 @@ class CameraTestFixture : public ::testing::Test {
     const std::string jsonFilePathReference =
         "/tmp/depth_params_reference.json";
 };
-
-TEST_F(CameraTestFixture, SystemHasCameraListMethod) {
-    EXPECT_NE(system, nullptr);
-    // This test passes if we can call getCameraList without crashing
-}
-
-TEST_F(CameraTestFixture, CameraDetailsAccessible) {
-    if (!has_camera) {
-        GTEST_SKIP() << "No camera available for testing";
-    }
-
-    CameraDetails details;
-    Status status = camera->getDetails(details);
-
-    // If we have a camera, we should be able to get its details
-    if (status == Status::OK) {
-        EXPECT_FALSE(details.cameraId.empty());
-    }
-}
 
 TEST_F(CameraTestFixture, parametercomparedefault) {
     if (!has_camera) {

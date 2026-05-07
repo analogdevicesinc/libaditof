@@ -137,18 +137,20 @@ int TestRunner::initialize(int &argc, char **argv) {
     }
 
     // Create GTest output argument
-    gtestOutput_ =
-        "--gtest_output=json:report_" + execName_ + "_" + timestamp_ + ".json";
+    // NOTE: JSON report generation disabled for local development
+    // Uncomment below lines to re-enable for CI/CD integration
+    // gtestOutput_ =
+    //     "--gtest_output=json:report_" + execName_ + "_" + timestamp_ + ".json";
 
     // Build new argv with the additional argument
     newArgv_.clear();
     for (int i = 0; i < argc; ++i) {
         newArgv_.push_back(argv[i]);
     }
-    newArgv_.push_back(const_cast<char *>(gtestOutput_.c_str()));
+    // newArgv_.push_back(const_cast<char *>(gtestOutput_.c_str()));
     newArgv_.push_back(nullptr);
 
-    newArgc_ = argc + 1;
+    newArgc_ = argc; // Changed from argc + 1 since JSON output is disabled
 
     // Initialize GTest
     ::testing::InitGoogleTest(&newArgc_, newArgv_.data());
