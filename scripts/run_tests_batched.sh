@@ -22,8 +22,8 @@
 set -e  # Exit on error
 
 # Default configuration
-DELAY=2
-BUILD_DIR="../../build"  # Relative to libaditof directory
+DELAY=1
+BUILD_DIR="../../build"
 FILTER=""
 VERBOSE=0
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -99,8 +99,8 @@ declare -a TEST_BATCHES=(
     # Batch 4: Integration tests (parameters, frame capture, hardware reset, end-to-end)
     "parameter|CameraGetFrames|adsd3500SoftReset|IntegrationTest"
     
-    # Batch 5: Python bindings tests
-    "PythonBindingsTests"
+    # Batch 5: Python bindings tests (29 individual tests)
+    "Python\\."
 )
 
 # Statistics
@@ -124,6 +124,18 @@ for i in "${!TEST_BATCHES[@]}"; do
     
     echo -e "${BLUE}[Batch $BATCH_NUM/$TOTAL_BATCHES] Running: $PATTERN${NC}"
     
+    # Clear/prepare images directory before frame capture tests (Batch 4)
+    if [[ $BATCH_NUM -eq 4 ]]; then
+        IMAGES_DIR="libaditof/tests/sdk/images"
+        if [[ -d "$IMAGES_DIR" ]]; then
+            echo -e "${YELLOW}  🗑  Clearing images directory for fresh frame captures...${NC}"
+            rm -rf "$IMAGES_DIR"/*
+        else
+            echo -e "${YELLOW}  📁 Creating images directory for frame captures...${NC}"
+            mkdir -p "$IMAGES_DIR"
+        fi
+    fi
+    
     # Run the test batch
     if [[ $VERBOSE -eq 1 ]]; then
         OUTPUT=$(ctest -R "$PATTERN" --output-on-failure 2>&1)
@@ -141,7 +153,8 @@ for i in "${!TEST_BATCHES[@]}"; do
         # CTest outputs: "X% tests passed, Y tests failed out of Z"
         TESTS_TOTAL=$(echo "$OUTPUT" | grep -oP '(?<=out of )\d+' | head -1 | tr -d '\n')
         TESTS_FAILED=$(echo "$OUTPUT" | grep -oP '\d+(?= tests? failed)' | head -1 | tr -d '\n')
-        TESTS_SKIPPED=$(echo "$OUTPUT" | grep -c "Skipped" | tr -d '\n')
+        # Count unique skipped tests (from "***Skipped" lines only)
+        TESTS_SKIPPED=$(echo "$OUTPUT" | grep -c "\*\*\*Skipped" | tr -d '\n')
         
         # Ensure variables are valid integers
         TESTS_TOTAL=${TESTS_TOTAL:-0}

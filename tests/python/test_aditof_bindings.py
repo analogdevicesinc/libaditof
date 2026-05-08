@@ -45,7 +45,7 @@ class TestSystemAPI:
         cameras = []
         status = system.getCameraList(cameras)
         # Should not throw, cameras list might be empty
-        assert status == tof.Status.OK or cameras == []
+        assert status == tof.Status.Ok or cameras == []
 
     def test_camera_list_returns_list(self, camera_list):
         """Test that getCameraList returns a list."""
@@ -58,7 +58,7 @@ class TestSystemAPI:
         try:
             status = system.getCameraList(cameras, "ip:192.168.1.100")
             # If it succeeds, status should be OK or cameras should be empty
-            assert status == tof.Status.OK or cameras == []
+            assert status == tof.Status.Ok or cameras == []
         except Exception:
             pytest.skip("Network interface not available")
 
@@ -76,7 +76,7 @@ class TestFrameAPI:
         try:
             status = frame.getDetails(frameDetails)
             # Frame details might not be available until frame is populated
-            assert status == tof.Status.OK or status == tof.Status.GENERIC_ERROR
+            assert status == tof.Status.Ok or status == tof.Status.GenericError
         except Exception:
             # Expected if frame is not initialized
             pass
@@ -95,7 +95,7 @@ class TestCameraAPI:
         details = tof.CameraDetails()
         try:
             status = camera.getDetails(details)
-            assert status == tof.Status.OK
+            assert status == tof.Status.Ok
             assert hasattr(details, 'cameraId')
             assert hasattr(details, 'connection')
         except Exception as e:
@@ -105,7 +105,7 @@ class TestCameraAPI:
         """Test getting available camera modes."""
         modes = []
         status = initialized_camera.getAvailableModes(modes)
-        assert status == tof.Status.OK
+        assert status == tof.Status.Ok
         assert isinstance(modes, list)
         assert len(modes) > 0, "Should have at least one mode available"
 
@@ -115,7 +115,7 @@ class TestCameraAPI:
         initialized_camera.getAvailableModes(modes)
         if modes:
             status = initialized_camera.setMode(modes[0])
-            assert status == tof.Status.OK
+            assert status == tof.Status.Ok
 
     def test_camera_start_stop(self, initialized_camera):
         """Test camera start and stop."""
@@ -128,11 +128,11 @@ class TestCameraAPI:
             
             # Start camera
             status = initialized_camera.start()
-            assert status == tof.Status.OK
+            assert status == tof.Status.Ok
             
             # Stop camera
             status = initialized_camera.stop()
-            assert status == tof.Status.OK
+            assert status == tof.Status.Ok
 
     def test_camera_request_frame(self, initialized_camera):
         """Test requesting a frame from the camera."""
@@ -150,7 +150,7 @@ class TestCameraAPI:
             initialized_camera.stop()
             
             # Frame request might fail if hardware not available
-            assert status == tof.Status.OK or status == tof.Status.GENERIC_ERROR
+            assert status == tof.Status.Ok or status == tof.Status.GenericError
 
 
 class TestFrameDataAccess:
@@ -181,17 +181,17 @@ class TestStatusEnum:
     """Tests for Status enumeration."""
 
     def test_status_ok_value(self):
-        """Test that Status.OK exists and is 0."""
-        assert hasattr(tof.Status, 'OK')
-        assert tof.Status.OK == 0
+        """Test that Status.Ok exists and is 0."""
+        assert hasattr(tof.Status, 'Ok')
+        assert tof.Status.Ok.value == 0
 
     def test_status_generic_error_exists(self):
-        """Test that Status.GENERIC_ERROR exists."""
-        assert hasattr(tof.Status, 'GENERIC_ERROR')
+        """Test that Status.GenericError exists."""
+        assert hasattr(tof.Status, 'GenericError')
 
     def test_status_invalid_argument_exists(self):
-        """Test that Status.INVALID_ARGUMENT exists."""
-        assert hasattr(tof.Status, 'INVALID_ARGUMENT')
+        """Test that Status.InvalidArgument exists."""
+        assert hasattr(tof.Status, 'InvalidArgument')
 
 
 class TestCameraDetails:
@@ -215,10 +215,10 @@ class TestSensorInterface:
         except Exception as e:
             pytest.skip(f"Could not get sensor: {e}")
 
-    def test_sensor_callback_registration(self, camera):
+    def test_sensor_callback_registration(self, initialized_camera):
         """Test registering and unregistering sensor callbacks."""
         try:
-            sensor = camera.getSensor()
+            sensor = initialized_camera.getSensor()
             
             # Define a simple callback
             callback_called = []
@@ -228,11 +228,11 @@ class TestSensorInterface:
             
             # Register callback
             status = sensor.adsd3500_register_interrupt_callback(test_callback)
-            assert status == tof.Status.OK
+            assert status == tof.Status.Ok
             
             # Unregister callback
             status = sensor.adsd3500_unregister_interrupt_callback(test_callback)
-            assert status == tof.Status.OK
+            assert status == tof.Status.Ok
         except Exception as e:
             pytest.skip(f"Sensor callback test not available: {e}")
 
@@ -277,7 +277,7 @@ class TestIntegrationScenarios:
         # Get cameras
         cameras = []
         status = system.getCameraList(cameras)
-        assert status == tof.Status.OK or cameras == []
+        assert status == tof.Status.Ok or cameras == []
         
         if not cameras:
             pytest.skip("No cameras available")
@@ -286,16 +286,16 @@ class TestIntegrationScenarios:
         camera = cameras[0]
         details = tof.CameraDetails()
         status = camera.getDetails(details)
-        assert status == tof.Status.OK
+        assert status == tof.Status.Ok
 
     def test_camera_initialization_workflow(self, initialized_camera):
         """Test camera initialization workflow."""
         # Get available modes
         modes = []
         status = initialized_camera.getAvailableModes(modes)
-        assert status == tof.Status.OK
+        assert status == tof.Status.Ok
         assert len(modes) > 0
         
         # Set a mode
         status = initialized_camera.setMode(modes[0])
-        assert status == tof.Status.OK
+        assert status == tof.Status.Ok

@@ -41,7 +41,7 @@ def initialized_camera(camera):
     """Fixture that provides an initialized camera."""
     try:
         status = camera.initialize()
-        if status != tof.Status.OK:
+        if status != tof.Status.Ok:
             pytest.skip(f"Could not initialize camera: {status}")
     except Exception as e:
         pytest.skip(f"Camera initialization failed: {e}")
