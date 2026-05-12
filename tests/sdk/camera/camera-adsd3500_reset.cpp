@@ -1,3 +1,4 @@
+#include <aditof/adsd3500_hardware_interface.h>
 #include <aditof/camera.h>
 #include <aditof/camera_definitions.h>
 #include <aditof/depth_sensor_interface.h>
@@ -61,13 +62,16 @@ class CameraTestFixture : public ::testing::Test {
             g_callbackInvoked = false;
             // Registering a callback to be executed when ADSD3500 issues an interrupt
             std::shared_ptr<DepthSensorInterface> sensor = camera->getSensor();
+            auto adsd3500Sensor =
+                std::dynamic_pointer_cast<Adsd3500HardwareInterface>(sensor);
+            ASSERT_TRUE(adsd3500Sensor != nullptr);
             callback = [this](Adsd3500Status status) {
                 g_callbackInvoked = true;
                 EXPECT_EQ(status, Adsd3500Status::OK);
             };
 
             Status registerCbStatus =
-                sensor->adsd3500_register_interrupt_callback(callback);
+                adsd3500Sensor->adsd3500_register_interrupt_callback(callback);
             ASSERT_TRUE(registerCbStatus == Status::OK);
         } else {
             has_camera = false;
@@ -77,7 +81,11 @@ class CameraTestFixture : public ::testing::Test {
     void TearDown() override {
         camera = cameras.front();
         std::shared_ptr<DepthSensorInterface> sensor = camera->getSensor();
-        sensor->adsd3500_unregister_interrupt_callback(callback);
+        auto adsd3500Sensor =
+            std::dynamic_pointer_cast<Adsd3500HardwareInterface>(sensor);
+        if (adsd3500Sensor) {
+            adsd3500Sensor->adsd3500_unregister_interrupt_callback(callback);
+        }
         // No explicit cleanup needed - cameras will be cleaned up automatically
         cameras.clear();
         camera.reset();

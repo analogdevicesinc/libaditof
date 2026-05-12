@@ -50,6 +50,8 @@
 #define ADSD3500_CHIP_INFO_CCB_MASK 0x00FF
 #define ADSD3500_CHIP_INFO_IMAGER_MASK 0xFF00
 #define ADSD3500_CHIP_INFO_IMAGER_SHIFT 8
+#define ADSD3500_CHIP_INFO_REVISION_MASK 0x3
+#define ADSD3500_CHIP_INFO_REVISION_ADJUST 2
 
 // Invalid markers
 #define ADSD3500_INVALID_MODE_NUMBER 0xFF
@@ -204,9 +206,13 @@ aditof::Status Adsd3500ChipConfigManager::discoverChipCapabilities() {
             break;
         }
 
-        // Parse imager type
+        // Parse imager type with revision adjustment
         uint8_t imager_version = (readValue & ADSD3500_CHIP_INFO_IMAGER_MASK) >>
                                  ADSD3500_CHIP_INFO_IMAGER_SHIFT;
+        uint8_t revision_ver = ccb_version & ADSD3500_CHIP_INFO_REVISION_MASK;
+        imager_version = (revision_ver == ADSD3500_CHIP_INFO_REVISION_ADJUST)
+                             ? (imager_version + revision_ver)
+                             : imager_version;
         switch (imager_version) {
         case 1:
             m_imagerType = SensorImagerType::IMAGER_ADSD3100;
