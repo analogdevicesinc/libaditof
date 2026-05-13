@@ -60,6 +60,95 @@
 static const int skMetaDataBytesCount = 128;
 
 /**
+ * @brief Rotates XYZ lookup tables 90° clockwise to match rotated frame layout.
+ * 
+ * When frame rotation is enabled, depth pixels are physically repositioned but
+ * XYZ tables are generated for original geometry. This function creates rotated
+ * tables so ComputeXYZ can work directly on rotated depth with correct calibration.
+ * 
+ * Uses cache-blocking optimization (64×64 tiles) and fused plane processing to
+ * maximize L1 cache efficiency, similar to buffer_processor frame rotation.
+ * 
+ * @param[in,out] p_x_table Pointer to X coefficient table
+ * @param[in,out] p_y_table Pointer to Y coefficient table  
+ * @param[in,out] p_z_table Pointer to Z coefficient table
+ * @param[in] width Original frame width (number of columns before rotation)
+ * @param[in] height Original frame height (number of rows before rotation)
+ */
+static void rotateXYZTables(const float **p_x_table, const float **p_y_table, const float **p_z_table,
+                            uint32_t width, uint32_t height) {
+    if (!p_x_table || !p_y_table || !p_z_table || 
+        !*p_x_table || !*p_y_table || !*p_z_table) {
+        return;
+    }
+    
+    const uint32_t W = width;  // Original width (columns, e.g., 512)
+    const uint32_t H = height; // Original height (rows, e.g., 640)
+    const size_t numPixels = static_cast<size_t>(W) * H;
+    
+    // Allocate rotated tables
+    float *x_rot = new float[numPixels];
+    float *y_rot = new float[numPixels];
+    float *z_rot = new float[numPixels];
+    
+    // Cache-blocking optimization: T=64 tile sweep, all three tables fused in one pass
+    // blkX 16KB + blkY 16KB + blkZ 16KB = 48KB < L1D 64KB → stays in cache
+    constexpr uint32_t T = 64;
+    
+    const float *__restrict__ src_x = *p_x_table;
+    const float *__restrict__ src_y = *p_y_table;
+    const float *__restrict__ src_z = *p_z_table;
+    float *__restrict__ dst_x = x_rot;
+    float *__restrict__ dst_y = y_rot;
+    float *__restrict__ dst_z = z_rot;
+    
+    // Process in 64×64 tiles for cache efficiency
+    // Rotate 90° CW: original(r,c) -> rotated(c, H-1-r)
+    // Also rotate 3D coordinates: (x,y,z) -> (-y,x,z)
+    float blkX[T][T], blkY[T][T], blkZ[T][T];
+    
+    for (uint32_t tc = 0; tc < W; tc += T) {
+        const uint32_t tW = std::min(T, W - tc);
+        for (uint32_t tr = 0; tr < H; tr += T) {
+            const uint32_t tH = std::min(T, H - tr);
+            
+            // Load tile from original tables (sequential reads)
+            for (uint32_t r = 0; r < tH; r++) {
+                const uint32_t srcRow = tr + r;
+                memcpy(blkX[r], &src_x[srcRow * W + tc], tW * sizeof(float));
+                memcpy(blkY[r], &src_y[srcRow * W + tc], tW * sizeof(float));
+                memcpy(blkZ[r], &src_z[srcRow * W + tc], tW * sizeof(float));
+            }
+            
+            // Rotate and write tile (sequential writes per output column)
+            for (uint32_t c = 0; c < tW; c++) {
+                const uint32_t dstRow = tc + c;
+                const uint32_t dstColStart = H - tr - tH;
+                float *__restrict__ dx = &dst_x[dstRow * H + dstColStart];
+                float *__restrict__ dy = &dst_y[dstRow * H + dstColStart];
+                float *__restrict__ dz = &dst_z[dstRow * H + dstColStart];
+                
+                // Write in reverse order: bottom to top of original tile
+                for (int32_t r = (int32_t)tH - 1; r >= 0; r--) {
+                    *dx++ = -blkY[r][c];  // New X = -Original Y
+                    *dy++ = blkX[r][c];   // New Y = Original X
+                    *dz++ = blkZ[r][c];   // Z unchanged
+                }
+            }
+        }
+    }
+    
+    // Replace original tables with rotated versions
+    delete[] const_cast<float*>(*p_x_table);
+    delete[] const_cast<float*>(*p_y_table);
+    delete[] const_cast<float*>(*p_z_table);
+    
+    *const_cast<float**>(p_x_table) = x_rot;
+    *const_cast<float**>(p_y_table) = y_rot;
+    *const_cast<float**>(p_z_table) = z_rot;
+}
+
+/**
  * @brief Constructor for CameraItof.
  *
  * Initializes a camera instance with a depth sensor interface and version information.
@@ -87,7 +176,7 @@ CameraItof::CameraItof(
       m_enableEdgeConfidence(-1), m_modesVersion(0),
       m_xyzTable({nullptr, nullptr, nullptr}),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFirstFrame(true),
-      m_dropFrameOnce(true) {
+      m_dropFrameOnce(true), m_rotationEnabled(false) {
 
     FloatToLinGenerateTable();
     memset(&m_xyzTable, 0, sizeof(m_xyzTable));
@@ -578,6 +667,12 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_modeDetailsCache.isPCM = m_offline_parameters.modeDetailsCache.isPCM;
         // Offline recordings always contain processed output, never raw bypass
         m_modeDetailsCache.isRawBypass = false;
+        
+        // Restore rotation state from recording
+        m_rotationEnabled = (m_offline_parameters.rotationEnabled == 1);
+        LOG(INFO) << "[PLAYBACK] Rotation state from recording: " 
+                  << (m_rotationEnabled ? "ENABLED" : "DISABLED");
+        
         m_modeDetailsCache.frameContent.clear();
 
         LOG(INFO) << "[PLAYBACK] Reading frameContent from file header...";
@@ -637,6 +732,13 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             !m_xyzTable.p_z_table) {
             LOG(ERROR) << "Failed to generate the XYZ tables";
             return Status::GENERIC_ERROR;
+        }
+        
+        // Rotate XYZ tables if frame rotation is enabled
+        if (m_rotationEnabled) {
+            rotateXYZTables(&m_xyzTable.p_x_table, &m_xyzTable.p_y_table, &m_xyzTable.p_z_table,
+                           m_modeDetailsCache.baseResolutionWidth,
+                           m_modeDetailsCache.baseResolutionHeight);
         }
 
         configureSensorModeDetails();
@@ -722,6 +824,9 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         // Always apply the rotation control after setMode
         m_depthSensor->setControl("enableRotation", rotationValue);
+        m_rotationEnabled = (rotationValue == "1");
+        LOG(INFO) << "Frame rotation " << (m_rotationEnabled ? "ENABLED" : "DISABLED") 
+                  << " for mode " << (int)mode;
 
         status = m_depthSensor->getModeDetails(mode, m_modeDetailsCache);
         if (status != Status::OK) {
@@ -955,6 +1060,13 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 LOG(ERROR) << "Failed to generate the XYZ tables";
                 return Status::GENERIC_ERROR;
             }
+            
+            // Rotate XYZ tables if frame rotation is enabled
+            if (m_rotationEnabled) {
+                rotateXYZTables(&m_xyzTable.p_x_table, &m_xyzTable.p_y_table, &m_xyzTable.p_z_table,
+                               m_modeDetailsCache.baseResolutionWidth,
+                               m_modeDetailsCache.baseResolutionHeight);
+            }
         }
 
         // If a Dynamic Mode Switching sequences has been loaded from config file then configure ADSD3500
@@ -1126,6 +1238,11 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
 
         // m_offline_parameters.enableMetaDatainAB
         m_offline_parameters.enableMetaDatainAB = m_enableMetaDatainAB;
+
+        // m_offline_parameters.rotationEnabled - save rotation state for playback
+        m_offline_parameters.rotationEnabled = m_rotationEnabled ? 1 : 0;
+        LOG(INFO) << "[RECORDING] Rotation state: " 
+                  << (m_rotationEnabled ? "ENABLED" : "DISABLED");
 
         // modeDetailsCache
         m_offline_parameters.modeDetailsCache.modeNumber =
@@ -1458,10 +1575,16 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
 
         if (getDepthStatus == Status::OK && getXYZStatus == Status::OK &&
             depthFrame != nullptr && xyzFrame != nullptr) {
+            
+            const uint32_t W = m_modeDetailsCache.baseResolutionWidth;
+            const uint32_t H = m_modeDetailsCache.baseResolutionHeight;
+            
+            // When rotation enabled, tables are pre-rotated so use actual buffer dimensions
+            uint32_t xyzRows = m_rotationEnabled ? H : W;
+            uint32_t xyzCols = m_rotationEnabled ? W : H;
+            
             Algorithms::ComputeXYZ((const uint16_t *)depthFrame, &m_xyzTable,
-                                   (int16_t *)xyzFrame,
-                                   m_modeDetailsCache.baseResolutionHeight,
-                                   m_modeDetailsCache.baseResolutionWidth);
+                                   (int16_t *)xyzFrame, xyzRows, xyzCols);
         } else {
             LOG(WARNING) << "XYZ enabled but frame buffers not allocated. "
                          << "Depth status: " << (int)getDepthStatus

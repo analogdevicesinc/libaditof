@@ -262,6 +262,7 @@ class CameraItof : public aditof::Camera {
     aditof::ImagerType m_imagerType;
     bool m_dropFirstFrame;
     bool m_dropFrameOnce;
+    bool m_rotationEnabled;
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
 
     struct offlineparameter_struct {
@@ -271,6 +272,8 @@ class CameraItof : public aditof::Camera {
         const uint32_t formatVersion = 0x00000001;
         uint16_t frameRate;
         uint16_t enableMetaDatainAB;
+        uint8_t rotationEnabled;  // 1 if frames were recorded with rotation, 0 otherwise
+        uint8_t reserved[3];       // Padding for alignment
         TofiXYZDealiasData dealias;
         struct {
             uint32_t mode;
