@@ -66,7 +66,7 @@ Status CameraInitializationManager::initializeOnlineMode(
     std::vector<DepthSensorModeDetails> &availableSensorModeDetails,
     ImagerType &imagerType,
     std::pair<std::string, std::string> &adsd3500FwVersion,
-    const std::string &configFilepath) {
+    const std::string &configFilepath, std::string &effectiveConfigPath) {
 
     using namespace aditof;
     Status status = Status::OK;
@@ -74,7 +74,7 @@ Status CameraInitializationManager::initializeOnlineMode(
     LOG(INFO) << "Initializing camera: Online";
 
     // Auto-discover config file path
-    std::string effectiveConfigPath = configFilepath;
+    effectiveConfigPath = configFilepath;
     if (effectiveConfigPath.empty()) {
         effectiveConfigPath = m_config->autoDiscoverConfigFile();
         if (!effectiveConfigPath.empty()) {

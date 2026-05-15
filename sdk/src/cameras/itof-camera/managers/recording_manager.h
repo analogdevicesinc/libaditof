@@ -49,13 +49,16 @@ class RecordingManager {
      * @param abEnabled AB frame recording enabled
      * @param confEnabled Confidence frame recording enabled
      * @param xyzEnabled XYZ frame recording enabled
+     * @param rotationEnabled True if frames/XYZ tables are rotated 90° CW
      * @return Status::OK on success
      */
-    Status startRecording(
-        std::string &filePath, uint16_t cameraFps, const CameraDetails &details,
-        const DepthSensorModeDetails &modeDetailsCache,
-        const std::vector<DepthSensorModeDetails> &availableModes,
-        bool depthEnabled, bool abEnabled, bool confEnabled, bool xyzEnabled);
+    Status
+    startRecording(std::string &filePath, uint16_t cameraFps,
+                   const CameraDetails &details,
+                   const DepthSensorModeDetails &modeDetailsCache,
+                   const std::vector<DepthSensorModeDetails> &availableModes,
+                   bool depthEnabled, bool abEnabled, bool confEnabled,
+                   bool xyzEnabled, bool rotationEnabled);
 
     /**
      * @brief Stops recording and closes the recording file.
@@ -75,10 +78,11 @@ class RecordingManager {
      * @brief Loads recording header and initializes playback state.
      * @param[out] modeDetailsCache Mode details loaded from file
      * @param[out] details Camera details loaded from file
+     * @param[out] rotationEnabled True if recording was made with rotation enabled
      * @return Status::OK on success
      */
     Status loadPlaybackHeader(DepthSensorModeDetails &modeDetailsCache,
-                              CameraDetails &details);
+                              CameraDetails &details, bool &rotationEnabled);
 
     /**
      * @brief Gets the number of frames in the playback file.
@@ -107,6 +111,8 @@ class RecordingManager {
         const uint32_t formatVersion = 0x00000001;
         uint16_t frameRate;
         uint16_t enableMetaDatainAB;
+        uint32_t
+            rotationEnabled; // 1 if XYZ tables and frames are rotated 90° CW, 0 otherwise
         TofiXYZDealiasData dealias;
         struct {
             uint32_t mode;
