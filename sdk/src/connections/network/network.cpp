@@ -54,7 +54,7 @@ struct clientData {
 int nBytes = 0;          /*no of bytes sent*/
 int recv_data_error = 0; /*flag for recv data*/
 char server_msg[] = "Connection Allowed";
-static std::atomic<bool> zmq_thread_done{false};
+static std::atomic<bool> zmq_thread_done[MAX_CAMERA_NUM];
 
 /*Declare static members*/
 std::vector<std::unique_ptr<zmq::socket_t>> Network::command_socket;
@@ -444,22 +444,29 @@ void Network::call_zmq_service(const std::string &ip) {
             if (monitor_sockets[m_connectionId]) {
                 monitor_sockets[m_connectionId]->close();
                 running[m_connectionId] = false;
-                zmq_thread_done.store(true, std::memory_order_release);
+                zmq_thread_done[m_connectionId].store(true, std::memory_order_release);
             }
         }
 
         if (running[m_connectionId]) {
             // SECURITY: Validate message size before memcpy to prevent buffer over-read
-            if (msg.size() >= sizeof(event)) {
-                memcpy(&event, msg.data(), sizeof(event));
+            // Note: ZMQ sends zmq_event_t as 6 bytes (packed: uint16_t + int32_t),
+            // but sizeof(zmq_event_t) is 8 bytes due to alignment padding.
+            // Accept both 6-byte (wire format) and 8-byte (padded) messages.
+            constexpr size_t ZMQ_EVENT_WIRE_SIZE = 6; // sizeof(uint16_t) + sizeof(int32_t)
+            if (msg.size() >= ZMQ_EVENT_WIRE_SIZE) {
+                // Zero-initialize to handle padding bytes correctly
+                memset(&event, 0, sizeof(event));
+                // Copy actual wire data (6 or 8 bytes, whichever is smaller)
+                memcpy(&event, msg.data(), std::min(msg.size(), sizeof(event)));
                 callback_function(command_socket.at(m_connectionId), event);
             } else {
                 LOG(WARNING) << "ZMQ event message too small: " << msg.size()
-                             << " bytes (expected " << sizeof(event) << ")";
+                             << " bytes (expected at least " << ZMQ_EVENT_WIRE_SIZE << ")";
             }
         }
     }
-    zmq_thread_done.store(true, std::memory_order_release);
+    zmq_thread_done[m_connectionId].store(true, std::memory_order_release);
 }
 
 /*
@@ -494,26 +501,8 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
             std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
             Server_Connected[connectionId] = false;
             running[connectionId] = false;
-
-            if (monitor_sockets.at(connectionId)) {
-                monitor_sockets.at(connectionId)->set(zmq::sockopt::linger, 0);
-                monitor_sockets.at(connectionId)->close();
-            }
-
-            uint32_t cntr = 0;
-            while (!zmq_thread_done.load(std::memory_order_acquire)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                if (cntr++ > 50) { // wait for 500ms
-                    LOG(ERROR) << "Timeout waiting for zmq thread to finish";
-                    break;
-                }
-            }
-            command_socket.at(connectionId)->set(zmq::sockopt::linger, 0);
-            command_socket.at(connectionId)->close();
-            contexts.at(connectionId)->close();
-            command_socket.at(connectionId) = NULL;
-            monitor_sockets.at(connectionId) = NULL;
-            contexts.at(connectionId) = NULL;
+            // Note: Do NOT close monitor_sockets here - we're inside the monitor thread!
+            // Thread will exit on its own, destructor will clean up.
         }
         break;
     case ZMQ_EVENT_CONNECT_RETRIED:
@@ -528,26 +517,8 @@ int Network::callback_function(std::unique_ptr<zmq::socket_t> &stx,
             std::lock_guard<std::recursive_mutex> guard(m_mutex[connectionId]);
             Server_Connected[connectionId] = false;
             running[connectionId] = false;
-
-            if (monitor_sockets.at(connectionId)) {
-                monitor_sockets.at(connectionId)->set(zmq::sockopt::linger, 0);
-                monitor_sockets.at(connectionId)->close();
-            }
-
-            uint32_t cntr = 0;
-            while (!zmq_thread_done.load(std::memory_order_acquire)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                if (cntr++ > 50) { // wait for 500ms
-                    LOG(ERROR) << "Timeout waiting for zmq thread to finish";
-                    break;
-                }
-            }
-            command_socket.at(connectionId)->set(zmq::sockopt::linger, 0);
-            command_socket.at(connectionId)->close();
-            contexts.at(connectionId)->close();
-            command_socket.at(connectionId) = NULL;
-            monitor_sockets.at(connectionId) = NULL;
-            contexts.at(connectionId) = NULL;
+            // Note: Do NOT close monitor_sockets here - we're inside the monitor thread!
+            // Thread will exit on its own, destructor will clean up.
         }
         break;
     case ZMQ_EVENT_CONNECT_DELAYED:
@@ -592,6 +563,7 @@ Network::Network(int connectionId)
     Network::Thread_Detached[connectionId] = false;
     Network::InterruptDetected[connectionId] = false;
     running[connectionId] = true;
+    zmq_thread_done[connectionId].store(false, std::memory_order_relaxed);
 
     m_connectionId = connectionId;
     while (contexts.size() <= static_cast<size_t>(m_connectionId))
@@ -616,17 +588,20 @@ Network::~Network() {
             Server_Connected[m_connectionId] = false;
             running[m_connectionId] = false;
 
-            monitor_sockets.at(m_connectionId)->set(zmq::sockopt::linger, 200);
-            monitor_sockets.at(m_connectionId)->close();
-
+            // Wait for thread to finish BEFORE closing monitor socket
+            // to avoid poll() assertion when socket closes mid-wait
             uint32_t cntr = 0;
-            while (!zmq_thread_done.load(std::memory_order_acquire)) {
+            while (!zmq_thread_done[m_connectionId].load(std::memory_order_acquire)) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 if (cntr++ > 50) { // wait for 500ms
                     LOG(ERROR) << "Timeout waiting for zmq thread to finish";
                     break;
                 }
             }
+
+            // Now safe to close monitor socket after thread exits
+            monitor_sockets.at(m_connectionId)->set(zmq::sockopt::linger, 200);
+            monitor_sockets.at(m_connectionId)->close();
             const std::string wake_ep = "inproc://wakeup";
             command_socket.at(m_connectionId)->bind(wake_ep);
             command_socket.at(m_connectionId)->set(zmq::sockopt::linger, 200);
