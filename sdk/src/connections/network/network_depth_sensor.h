@@ -105,6 +105,7 @@ class NetworkDepthSensor : public aditof::DepthSensorInterface,
   private:
     struct ImplData;
     std::string m_sensorName;
+    std::string m_imagerType;
     aditof::SensorDetails m_sensorDetails;
     std::unique_ptr<ImplData> m_implData;
     int m_sensorIndex;

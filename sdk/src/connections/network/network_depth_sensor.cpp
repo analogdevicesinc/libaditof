@@ -535,13 +535,20 @@ NetworkDepthSensor::getModeDetails(const uint8_t &mode,
                                               .frame_content(i));
     }
 
+    // Get imager type for buffer size calculation
+    std::string imagerType;
+    getControl("imagerType", imagerType);
+    
 #ifdef DUAL
-    if (mode == 0 || mode == 1) {
+    // ADSD3100: modes 0-1 only have depth + AB (no confidence)
+    // ADSD3100: other modes have depth + AB + confidence
+    // ADTF3066: all modes have depth + AB + confidence
+    // Metadata is NOT transmitted (deinterleaved frames)
+    if (imagerType == "adsd3100" && (mode == 0 || mode == 1)) {
         frame_size =
             (details.baseResolutionWidth * details.baseResolutionHeight * 2) *
             sizeof(uint16_t);
     } else {
-
         frame_size =
             (details.baseResolutionWidth * details.baseResolutionHeight * 4) *
             sizeof(uint16_t);
@@ -633,6 +640,13 @@ NetworkDepthSensor::setMode(const aditof::DepthSensorModeDetails &type) {
 
     net->send_buff[m_sensorIndex].set_expect_reply(true);
 
+    // Get imager type for buffer size calculation
+    std::string imagerType;
+    getControl("imagerType", imagerType);
+    
+    // ADSD3100 modes 0-1: depth + AB only
+    // Other: depth + AB + confidence
+    // Metadata is NOT transmitted (deinterleaved frames)
     frame_size = (type.baseResolutionWidth * type.baseResolutionHeight * 4) *
                  sizeof(uint16_t);
 
