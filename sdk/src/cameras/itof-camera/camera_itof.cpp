@@ -62,6 +62,104 @@
 #include <cassert>
 
 /**
+ * @brief Rotates XYZ lookup tables 90° clockwise for portrait VGA orientation.
+ *
+ * Performs an in-place 90° clockwise rotation of the X, Y, Z coefficient tables
+ * used for 3D pointcloud generation. Also rotates the 3D coordinate system:
+ * (x, y, z) → (-y, x, z) to maintain correct world-space alignment after rotation.
+ *
+ * This operation is required when the imager is mounted in portrait orientation
+ * (e.g., ADTF3066 in VGA mode) but pointcloud output should match landscape
+ * sensor calibration.
+ *
+ * Uses cache-blocking optimization (64×64 tiles) and fused plane processing to
+ * maximize L1 cache efficiency, similar to buffer_processor frame rotation.
+ *
+ * @param[in,out] p_x_table Pointer to X coefficient table
+ * @param[in,out] p_y_table Pointer to Y coefficient table
+ * @param[in,out] p_z_table Pointer to Z coefficient table
+ * @param[in] width Original frame width (number of columns before rotation)
+ * @param[in] height Original frame height (number of rows before rotation)
+ */
+void rotateXYZTables(const float **p_x_table, const float **p_y_table,
+                     const float **p_z_table, uint32_t width, uint32_t height) {
+    if (!p_x_table || !p_y_table || !p_z_table || !*p_x_table || !*p_y_table ||
+        !*p_z_table) {
+        return;
+    }
+
+    // Allocate rotated tables
+    float *x_rot = (float *)calloc(width * height, sizeof(float));
+    float *y_rot = (float *)calloc(width * height, sizeof(float));
+    float *z_rot = (float *)calloc(width * height, sizeof(float));
+
+    if (!x_rot || !y_rot || !z_rot) {
+        free(x_rot);
+        free(y_rot);
+        free(z_rot);
+        return;
+    }
+
+    // Cache-blocking: Process all 3 planes (X, Y, Z) together in one pass
+    // blkX 16KB + blkY 16KB + blkZ 16KB = 48KB < L1D 64KB → stays in cache
+    constexpr uint32_t T = 64;
+    const float *__restrict__ src_x = *p_x_table;
+    const float *__restrict__ src_y = *p_y_table;
+    const float *__restrict__ src_z = *p_z_table;
+    float *__restrict__ dst_x = x_rot;
+    float *__restrict__ dst_y = y_rot;
+    float *__restrict__ dst_z = z_rot;
+
+    // Process in 64×64 tiles for cache efficiency
+    // Rotate 90° CW: original(r,c) -> rotated(c, H-1-r)
+    // Also rotate 3D coordinates: (x,y,z) -> (-y,x,z)
+    float blkX[T][T], blkY[T][T], blkZ[T][T];
+
+    for (uint32_t r0 = 0; r0 < height; r0 += T) {
+        for (uint32_t c0 = 0; c0 < width; c0 += T) {
+            // Load tile from all 3 planes
+            uint32_t rEnd = (r0 + T < height) ? T : (height - r0);
+            uint32_t cEnd = (c0 + T < width) ? T : (width - c0);
+
+            for (uint32_t r = 0; r < rEnd; ++r) {
+                uint32_t srcRow = r0 + r;
+                for (uint32_t c = 0; c < cEnd; ++c) {
+                    uint32_t srcIdx = srcRow * width + (c0 + c);
+                    blkX[r][c] = src_x[srcIdx];
+                    blkY[r][c] = src_y[srcIdx];
+                    blkZ[r][c] = src_z[srcIdx];
+                }
+            }
+
+            // Rotate tile and apply coordinate transform
+            for (uint32_t r = 0; r < rEnd; ++r) {
+                uint32_t srcRow = r0 + r;
+                for (uint32_t c = 0; c < cEnd; ++c) {
+                    uint32_t srcCol = c0 + c;
+                    // 90° CW: (r,c) -> (c, H-1-r)
+                    uint32_t dstRow = srcCol;
+                    uint32_t dstCol = (height - 1) - srcRow;
+                    uint32_t dstIdx = dstRow * height + dstCol;
+
+                    // Coordinate transform: (x,y,z) -> (-y,x,z)
+                    dst_x[dstIdx] = -blkY[r][c];
+                    dst_y[dstIdx] = blkX[r][c];
+                    dst_z[dstIdx] = blkZ[r][c];
+                }
+            }
+        }
+    }
+
+    // Replace original tables
+    free((void *)*p_x_table);
+    free((void *)*p_y_table);
+    free((void *)*p_z_table);
+    *p_x_table = x_rot;
+    *p_y_table = y_rot;
+    *p_z_table = z_rot;
+}
+
+/**
  * @brief Constructor for CameraItof.
  *
  * Initializes a camera instance with a depth sensor interface and version information.
@@ -191,15 +289,17 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         return Status::UNAVAILABLE;
     }
 
-    m_initConfigFilePath = configFilepath;
-
     if (!m_netLinkTest.empty()) {
         m_depthSensor->setControl("netlinktest", "1");
     }
 
+    std::string effectiveConfigPath;
     status = m_initManager->initializeOnlineMode(
         m_details, m_availableModes, m_availableSensorModeDetails, m_imagerType,
-        m_adsd3500FwGitHash, configFilepath);
+        m_adsd3500FwGitHash, configFilepath, effectiveConfigPath);
+
+    // Store the effective config path (auto-discovered or provided)
+    m_initConfigFilePath = effectiveConfigPath;
 
     if (status != Status::OK) {
         return status;
@@ -326,11 +426,21 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
     Status status = Status::OK;
 
     if (m_isOffline) {
-        status =
-            m_recordingMgr->loadPlaybackHeader(m_modeDetailsCache, m_details);
+        bool playbackRotation = false;
+        status = m_recordingMgr->loadPlaybackHeader(
+            m_modeDetailsCache, m_details, playbackRotation);
         if (status != Status::OK) {
             return status;
         }
+
+        // Use rotation state from recording file
+        m_rotationEnabled = playbackRotation;
+        LOG(INFO) << "[PLAYBACK] Using rotation state: "
+                  << (m_rotationEnabled ? "ENABLED" : "DISABLED");
+
+        // Set rotation control on sensor for playback
+        m_depthSensor->setControl("enableRotation",
+                                  m_rotationEnabled ? "1" : "0");
 
         m_pcmFrame = m_modeDetailsCache.isPCM;
         configureSensorModeDetails();
@@ -411,6 +521,9 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 LOG(INFO) << "Rotation using default: disabled";
             }
         }
+
+        // Store rotation state for XYZ computation and recording
+        m_rotationEnabled = (rotationValue == "1");
 
         // Apply the rotation control before setMode
         m_depthSensor->setControl("enableRotation", rotationValue);
@@ -665,6 +778,18 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 LOG(ERROR) << "Failed to generate the XYZ tables";
                 return Status::GENERIC_ERROR;
             }
+
+            // Rotate XYZ tables if rotation is enabled
+            if (m_rotationEnabled) {
+                LOG(INFO) << "Rotating XYZ tables 90° CW for mode "
+                          << (int)mode;
+                rotateXYZTables(&xyzTable.p_x_table, &xyzTable.p_y_table,
+                                &xyzTable.p_z_table,
+                                m_modeDetailsCache.baseResolutionWidth,
+                                m_modeDetailsCache.baseResolutionHeight);
+                m_calibrationMgr->setXYZTable(xyzTable);
+                LOG(INFO) << "XYZ tables rotated successfully";
+            }
         }
 
         // If a Dynamic Mode Switching sequences has been loaded from config file then configure ADSD3500
@@ -794,10 +919,18 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         return aditof::Status::GENERIC_ERROR; // Invalid call
     }
 
-    return m_recordingMgr->startRecording(
+    aditof::Status status = m_recordingMgr->startRecording(
         filePath, m_cameraFps, m_details, m_modeDetailsCache,
         m_availableSensorModeDetails, m_depthEnabled, m_abEnabled,
-        m_confEnabled, m_xyzEnabled);
+        m_confEnabled, m_xyzEnabled, m_rotationEnabled);
+
+    // Rotation state is now stored in recording header via RecordingManager
+    if (status == aditof::Status::OK) {
+        LOG(INFO) << "[RECORDING] Started recording with rotation "
+                  << (m_rotationEnabled ? "ENABLED" : "DISABLED");
+    }
+
+    return status;
 }
 
 /**
@@ -1365,7 +1498,14 @@ aditof::Status
 CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
                                         const int16_t mode_in_use) {
     assert(!m_isOffline);
-    return m_config->loadDepthParamsFromJsonFile(pathFile, mode_in_use);
+    aditof::Status status =
+        m_config->loadDepthParamsFromJsonFile(pathFile, mode_in_use);
+    if (status == aditof::Status::OK) {
+        m_userJsonLoaded = true;
+        LOG(INFO) << "User JSON config loaded, enableRotation overrides will "
+                     "be respected";
+    }
+    return status;
 }
 
 /**

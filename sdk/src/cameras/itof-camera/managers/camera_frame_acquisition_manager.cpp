@@ -91,7 +91,8 @@ Status CameraFrameAcquisitionManager::requestFrame(
     }
 
     // Step 7: Compute XYZ point cloud if enabled
-    status = computeXYZIfEnabled(frame, xyzEnabled, depthEnabled, modeDetails);
+    status = computeXYZIfEnabled(frame, xyzEnabled, depthEnabled, frameType,
+                                 modeDetails);
     if (status != Status::OK) {
         return status;
     }
@@ -195,7 +196,7 @@ Status CameraFrameAcquisitionManager::acquireRawFrame(uint16_t *dataLocation,
 
 Status CameraFrameAcquisitionManager::computeXYZIfEnabled(
     Frame *frame, bool xyzEnabled, bool depthEnabled,
-    const DepthSensorModeDetails &modeDetails) {
+    const FrameDetails &frameType, const DepthSensorModeDetails &modeDetails) {
 
     // XYZ computation requires depth and XYZ both enabled
     if (!xyzEnabled || !depthEnabled || !frame->haveDataType("xyz")) {
@@ -211,14 +212,15 @@ Status CameraFrameAcquisitionManager::computeXYZIfEnabled(
     if (getDepthStatus == Status::OK && getXYZStatus == Status::OK &&
         depthFrame != nullptr && xyzFrame != nullptr) {
 
-        // Get XYZ calibration table
+        // Get XYZ calibration table (already rotated if rotation enabled)
         XYZTable xyzTable = m_calibrationMgr->getXYZTable();
 
-        // Compute point cloud
+        // Compute point cloud using actual frame dimensions
+        // When rotation is enabled, both depth frame and XYZ tables are rotated,
+        // so we use the actual frame dimensions (which are swapped)
         Algorithms::ComputeXYZ(static_cast<const uint16_t *>(depthFrame),
                                &xyzTable, reinterpret_cast<int16_t *>(xyzFrame),
-                               modeDetails.baseResolutionHeight,
-                               modeDetails.baseResolutionWidth);
+                               frameType.height, frameType.width);
 
         return Status::OK;
     } else {

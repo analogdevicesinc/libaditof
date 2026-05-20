@@ -110,7 +110,7 @@ class CameraInitializationManager {
         std::vector<DepthSensorModeDetails> &availableSensorModeDetails,
         ImagerType &imagerType,
         std::pair<std::string, std::string> &adsd3500FwVersion,
-        const std::string &configFilepath);
+        const std::string &configFilepath, std::string &effectiveConfigPath);
 
     /**
      * @brief Initializes camera for offline (playback) operation.
