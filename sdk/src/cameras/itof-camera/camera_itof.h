@@ -38,11 +38,17 @@
 #include <aditof/adsd_errs.h>
 #include <aditof/camera.h>
 #include <aditof/depth_sensor_interface.h>
+#include <cstdint>
 #include <map>
 #include <memory>
 #include <unordered_map>
 
 #define NR_READADSD3500CCB 3
+
+// XYZ table rotation utility function
+// Rotates X, Y, Z lookup tables 90° clockwise for portrait orientation
+void rotateXYZTables(const float **p_x_table, const float **p_y_table,
+                     const float **p_z_table, uint32_t width, uint32_t height);
 
 namespace aditof {
 class Adsd3500Controller;
@@ -271,6 +277,8 @@ class CameraItof : public aditof::Camera {
     bool m_userJsonLoaded = false;
     aditof::ImagerType m_imagerType;
     bool m_dropFrameOnce; // Per-frame state; m_dropFirstFrame moved to m_config
+    bool m_rotationEnabled =
+        false; // True if XYZ tables and frames are rotated 90° CW
 };
 
 #endif // CAMERA_ITOF_H

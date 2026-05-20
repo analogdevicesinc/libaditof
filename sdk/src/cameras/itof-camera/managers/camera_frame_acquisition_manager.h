@@ -163,11 +163,13 @@ class CameraFrameAcquisitionManager {
      * @brief Computes XYZ point cloud from depth frame.
      *
      * @param[in] frame Frame object containing depth data.
+     * @param[in] frameType Frame details with actual dimensions (swapped if rotation enabled).
      * @param[in] modeDetails Mode configuration for resolution info.
      *
      * @return Status::OK if XYZ computed successfully.
      */
     Status computeXYZIfEnabled(Frame *frame, bool xyzEnabled, bool depthEnabled,
+                               const FrameDetails &frameType,
                                const DepthSensorModeDetails &modeDetails);
 
     /**

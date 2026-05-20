@@ -8,6 +8,11 @@
 #include "calibration_manager.h"
 #include "camera_configuration.h"
 
+// Forward declare rotateXYZTables to avoid circular dependency
+extern void rotateXYZTables(const float **p_x_table, const float **p_y_table,
+                            const float **p_z_table, uint32_t width,
+                            uint32_t height);
+
 #include "tofi/algorithms.h"
 #include <aditof/frame_definitions.h>
 #include <aditof/log.h>
@@ -31,7 +36,8 @@ Status RecordingManager::startRecording(
     std::string &filePath, uint16_t cameraFps, const CameraDetails &details,
     const DepthSensorModeDetails &modeDetailsCache,
     const std::vector<DepthSensorModeDetails> &availableModes,
-    bool depthEnabled, bool abEnabled, bool confEnabled, bool xyzEnabled) {
+    bool depthEnabled, bool abEnabled, bool confEnabled, bool xyzEnabled,
+    bool rotationEnabled) {
 
     // Reset frame counter
     m_offline_parameters.numberOfFrames = 0;
@@ -46,6 +52,11 @@ Status RecordingManager::startRecording(
 
     // Store metadata embedding flag
     m_offline_parameters.enableMetaDatainAB = m_config->getMetadataInAB();
+
+    // Store rotation state for playback
+    m_offline_parameters.rotationEnabled = rotationEnabled ? 1 : 0;
+    LOG(INFO) << "[RECORDING] Rotation state: "
+              << (rotationEnabled ? "ENABLED" : "DISABLED");
 
     // Copy mode details cache
     m_offline_parameters.modeDetailsCache.modeNumber =
@@ -109,8 +120,9 @@ Status RecordingManager::startRecording(
     }
 
     m_offline_parameters.details.mode = mode;
-    m_offline_parameters.details.width = (*modeIt).baseResolutionWidth;
-    m_offline_parameters.details.height = (*modeIt).baseResolutionHeight;
+    // Store actual frame dimensions (already swapped if rotation enabled)
+    m_offline_parameters.details.width = details.frameType.width;
+    m_offline_parameters.details.height = details.frameType.height;
     m_offline_parameters.details.totalCaptures = 1;
 
     LOG(INFO) << "[RECORDING] Building fDataDetails from frameContent...";
@@ -132,10 +144,10 @@ Status RecordingManager::startRecording(
             .type[sizeof(m_offline_parameters.fDataDetails[idx].type) - 1] =
             '\0';
 
-        m_offline_parameters.fDataDetails[idx].width =
-            modeDetailsCache.baseResolutionWidth;
+        // Use actual frame dimensions (already swapped if rotation enabled)
+        m_offline_parameters.fDataDetails[idx].width = details.frameType.width;
         m_offline_parameters.fDataDetails[idx].height =
-            modeDetailsCache.baseResolutionHeight;
+            details.frameType.height;
         m_offline_parameters.fDataDetails[idx].subelementSize =
             sizeof(uint16_t);
         m_offline_parameters.fDataDetails[idx].subelementsPerElement = 1;
@@ -207,7 +219,8 @@ Status RecordingManager::setPlaybackFile(std::string &filePath) {
 
 Status
 RecordingManager::loadPlaybackHeader(DepthSensorModeDetails &modeDetailsCache,
-                                     CameraDetails &details) {
+                                     CameraDetails &details,
+                                     bool &rotationEnabled) {
 
     // Clear and read header from playback file
     memset((void *)&m_offline_parameters, 0, sizeof(m_offline_parameters));
@@ -272,6 +285,11 @@ RecordingManager::loadPlaybackHeader(DepthSensorModeDetails &modeDetailsCache,
     details.mode = m_offline_parameters.details.mode;
     details.frameType.width = m_offline_parameters.details.width;
     details.frameType.height = m_offline_parameters.details.height;
+
+    // Return rotation state from recording
+    rotationEnabled = (m_offline_parameters.rotationEnabled != 0);
+    LOG(INFO) << "[PLAYBACK] Rotation state from recording: "
+              << (rotationEnabled ? "ENABLED" : "DISABLED");
     details.frameType.totalCaptures =
         m_offline_parameters.details.totalCaptures;
     details.frameType.dataDetails.clear();
@@ -313,6 +331,17 @@ RecordingManager::loadPlaybackHeader(DepthSensorModeDetails &modeDetailsCache,
         !xyzTable.p_z_table) {
         LOG(ERROR) << "Failed to generate the XYZ tables";
         return Status::GENERIC_ERROR;
+    }
+
+    // Rotate XYZ tables if recording was made with rotation enabled
+    if (rotationEnabled) {
+        LOG(INFO) << "[PLAYBACK] Rotating XYZ tables 90° CW to match recording";
+        rotateXYZTables(&xyzTable.p_x_table, &xyzTable.p_y_table,
+                        &xyzTable.p_z_table,
+                        modeDetailsCache.baseResolutionWidth,
+                        modeDetailsCache.baseResolutionHeight);
+        m_calibrationMgr->setXYZTable(xyzTable);
+        LOG(INFO) << "[PLAYBACK] XYZ tables rotated successfully";
     }
 
     return Status::OK;
