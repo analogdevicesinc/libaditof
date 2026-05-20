@@ -209,7 +209,8 @@ aditof::Status Adsd3500ChipConfigManager::discoverChipCapabilities() {
         // Parse imager type with revision adjustment
         uint8_t imager_version = (readValue & ADSD3500_CHIP_INFO_IMAGER_MASK) >>
                                  ADSD3500_CHIP_INFO_IMAGER_SHIFT;
-        uint8_t revision_ver = ccb_version & ADSD3500_CHIP_INFO_REVISION_MASK;
+        uint8_t revision_ver =
+            imager_version & ADSD3500_CHIP_INFO_REVISION_MASK;
         imager_version = (revision_ver == ADSD3500_CHIP_INFO_REVISION_ADJUST)
                              ? (imager_version + revision_ver)
                              : imager_version;

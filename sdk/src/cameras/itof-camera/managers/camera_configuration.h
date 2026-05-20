@@ -164,6 +164,31 @@ class CameraConfiguration {
         m_iniKeyValPairs = pairs;
     }
 
+    std::string getExpectedFirmwareVersion() const {
+        return m_expectedFirmwareVersion;
+    }
+    void setExpectedFirmwareVersion(const std::string &version) {
+        m_expectedFirmwareVersion = version;
+    }
+
+    bool getSkipFirmwareVersionCheck() const {
+        return m_skipFirmwareVersionCheck;
+    }
+    void setSkipFirmwareVersionCheck(bool skip) {
+        m_skipFirmwareVersionCheck = skip;
+    }
+
+    /**
+     * @brief Loads firmware version configuration from a JSON file.
+     *
+     * Reads expectedFirmwareVersion and skipFirmwareVersionCheck fields from
+     * a dedicated firmware config file.
+     *
+     * @param[in] pathFile Path to firmware version config JSON file
+     * @return Status::OK on success, error codes on failure
+     */
+    Status loadFirmwareVersionConfig(const std::string &pathFile);
+
   private:
     /**
      * @brief Checks if a string is convertible to double.
@@ -187,6 +212,10 @@ class CameraConfiguration {
     bool m_dropFirstFrame;
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
     std::map<std::string, std::string> m_iniKeyValPairs;
+
+    // Firmware version checking
+    std::string m_expectedFirmwareVersion;
+    bool m_skipFirmwareVersionCheck;
 };
 
 } // namespace aditof

@@ -39,7 +39,8 @@ namespace aditof {
 CameraConfiguration::CameraConfiguration()
     : m_mipiOutputSpeed(-1), m_isdeskewEnabled(-1),
       m_enableTempCompensation(-1), m_enableEdgeConfidence(-1),
-      m_enableMetaDatainAB(-1), m_fsyncMode(-1), m_dropFirstFrame(true) {}
+      m_enableMetaDatainAB(-1), m_fsyncMode(-1), m_dropFirstFrame(true),
+      m_expectedFirmwareVersion(""), m_skipFirmwareVersionCheck(false) {}
 
 CameraConfiguration::~CameraConfiguration() {}
 
@@ -195,6 +196,28 @@ CameraConfiguration::loadDepthParamsFromJsonFile(const std::string &pathFile,
             }
         }
 
+        // Firmware version checking
+        json_object *expectedFirmwareVersion = NULL;
+        if (json_object_object_get_ex(config_json, "expectedFirmwareVersion",
+                                      &expectedFirmwareVersion)) {
+            if (json_object_is_type(expectedFirmwareVersion,
+                                    json_type_string)) {
+                const char *versionStr =
+                    json_object_get_string(expectedFirmwareVersion);
+                m_expectedFirmwareVersion = std::string(versionStr);
+            }
+        }
+
+        json_object *skipFirmwareVersionCheck = NULL;
+        if (json_object_object_get_ex(config_json, "skipFirmwareVersionCheck",
+                                      &skipFirmwareVersionCheck)) {
+            if (json_object_is_type(skipFirmwareVersionCheck,
+                                    json_type_boolean)) {
+                m_skipFirmwareVersionCheck =
+                    json_object_get_boolean(skipFirmwareVersionCheck);
+            }
+        }
+
         // Note: Mode iteration requires external available modes list
         // This will be provided by CameraItof via setDepthParamsForMode
         // For now, parse all numeric keys as modes
@@ -206,7 +229,9 @@ CameraConfiguration::loadDepthParamsFromJsonFile(const std::string &pathFile,
                 std::string(key) == "isdeskewEnabled" ||
                 std::string(key) == "enableTempCompensation" ||
                 std::string(key) == "enableEdgeConfidence" ||
-                std::string(key) == "dynamicModeSwitching") {
+                std::string(key) == "dynamicModeSwitching" ||
+                std::string(key) == "expectedFirmwareVersion" ||
+                std::string(key) == "skipFirmwareVersionCheck") {
                 continue;
             }
 
@@ -414,6 +439,62 @@ Status CameraConfiguration::restoreCachedDepthParams() {
         return Status::GENERIC_ERROR;
     }
     m_depth_params_map = m_depth_params_map_cache;
+    return Status::OK;
+}
+
+Status
+CameraConfiguration::loadFirmwareVersionConfig(const std::string &pathFile) {
+    using namespace std;
+
+    // Reset to defaults
+    m_expectedFirmwareVersion = "";
+    m_skipFirmwareVersionCheck = false;
+
+    // Check if file exists
+    ifstream configFile(pathFile);
+    if (!configFile.good()) {
+        LOG(WARNING) << "Firmware version config file not found: " << pathFile;
+        LOG(INFO) << "Firmware version check will be disabled";
+        return Status::OK; // Not an error - just means no firmware check
+    }
+    configFile.close();
+
+    // Read JSON file
+    json_object *firmware_config_json = json_object_from_file(pathFile.c_str());
+    if (!firmware_config_json) {
+        LOG(ERROR) << "Failed to parse firmware version config JSON: "
+                   << pathFile;
+        return Status::INVALID_ARGUMENT;
+    }
+
+    // Extract expectedFirmwareVersion
+    json_object *expectedFirmwareVersion = NULL;
+    if (json_object_object_get_ex(firmware_config_json,
+                                  "expectedFirmwareVersion",
+                                  &expectedFirmwareVersion)) {
+        if (json_object_is_type(expectedFirmwareVersion, json_type_string)) {
+            const char *versionStr =
+                json_object_get_string(expectedFirmwareVersion);
+            m_expectedFirmwareVersion = std::string(versionStr);
+            LOG(INFO) << "Loaded expected firmware version: "
+                      << m_expectedFirmwareVersion;
+        }
+    }
+
+    // Extract skipFirmwareVersionCheck
+    json_object *skipFirmwareVersionCheck = NULL;
+    if (json_object_object_get_ex(firmware_config_json,
+                                  "skipFirmwareVersionCheck",
+                                  &skipFirmwareVersionCheck)) {
+        if (json_object_is_type(skipFirmwareVersionCheck, json_type_boolean)) {
+            m_skipFirmwareVersionCheck =
+                json_object_get_boolean(skipFirmwareVersionCheck);
+            LOG(INFO) << "Skip firmware version check: "
+                      << (m_skipFirmwareVersionCheck ? "true" : "false");
+        }
+    }
+
+    json_object_put(firmware_config_json);
     return Status::OK;
 }
 

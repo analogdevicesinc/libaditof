@@ -1220,16 +1220,12 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
             // Update runtime bit config so setMode/setVideoProperties uses correct value
             if (modeNum < m_bitsInAB.size()) {
                 m_bitsInAB[modeNum] = actualBits;
-                LOG(INFO) << "Runtime config: m_bitsInAB[" << (int)modeNum
-                          << "] = " << (int)actualBits;
             }
         } else if (control == "confidenceBits") {
             m_modeSelector.setControl("confBits", convertor[bitIndex]);
             // Update runtime bit config so setMode/setVideoProperties uses correct value
             if (modeNum < m_bitsInConf.size()) {
                 m_bitsInConf[modeNum] = actualBits;
-                LOG(INFO) << "Runtime config: m_bitsInConf[" << (int)modeNum
-                          << "] = " << (int)actualBits;
             }
         }
     }
