@@ -33,8 +33,15 @@
 #include <aditof/adsd3500_hardware_interface.h>
 #include <aditof/camera_definitions.h>
 #include <aditof/log.h>
+#include <chrono>
 #include <cstring>
+#include <fstream>
+#include <thread>
 #include <unordered_map>
+#ifdef __linux__
+#include <limits.h>
+#include <unistd.h>
+#endif
 
 namespace aditof {
 
@@ -81,6 +88,47 @@ Status CameraInitializationManager::initializeOnlineMode(
             LOG(INFO) << "Auto-discovered configuration file: "
                       << effectiveConfigPath;
         }
+    }
+
+    // Load firmware version configuration from dedicated file
+    // Priority: 1) Build directory (shared by all examples)
+    //           2) System installation path
+    std::string fwConfigPath = "";
+
+#ifdef __linux__
+    // Try to find build directory by going up from binary location
+    char binaryPath[PATH_MAX];
+    ssize_t len =
+        readlink("/proc/self/exe", binaryPath, sizeof(binaryPath) - 1);
+    if (len != -1) {
+        binaryPath[len] = '\0';
+        std::string binPath(binaryPath);
+
+        // Navigate up to find build directory
+        // Typical path: build/examples/first-frame/first-frame
+        // We want: build/firmware_version_config.json
+        size_t examplesPos = binPath.find("/examples/");
+        if (examplesPos != std::string::npos) {
+            std::string buildDir = binPath.substr(0, examplesPos);
+            std::string buildFwConfigPath =
+                buildDir + "/firmware_version_config.json";
+            std::ifstream testFile(buildFwConfigPath);
+            if (testFile.good()) {
+                fwConfigPath = buildFwConfigPath;
+                testFile.close();
+            }
+        }
+    }
+#endif
+
+    // Fallback to system installation path
+    if (fwConfigPath.empty()) {
+        fwConfigPath = "/usr/local/share/aditof/firmware_version_config.json";
+    }
+
+    status = m_config->loadFirmwareVersionConfig(fwConfigPath);
+    if (status != Status::OK && status != Status::INVALID_ARGUMENT) {
+        LOG(WARNING) << "Could not load firmware version config, continuing...";
     }
 
     // Open sensor hardware interface
@@ -131,6 +179,35 @@ Status CameraInitializationManager::initializeOnlineMode(
         LOG(INFO) << "Current adsd3500 firmware git hash is: " << fwHash;
     }
     adsd3500FwVersion = {fwVersion, fwHash};
+
+    // Check firmware version against expected version from JSON config
+    std::string expectedFwVersion = m_config->getExpectedFirmwareVersion();
+    bool skipFwCheck = m_config->getSkipFirmwareVersionCheck();
+
+    if (!expectedFwVersion.empty() && !skipFwCheck && fwVersion != "unknown") {
+        if (fwVersion != expectedFwVersion) {
+            LOG(WARNING) << "Firmware version mismatch!";
+            LOG(WARNING) << "  Expected: " << expectedFwVersion;
+            LOG(WARNING) << "  Actual:   " << fwVersion;
+            LOG(WARNING) << "Delaying 10 seconds before proceeding...";
+            LOG(INFO)
+                << "To skip this delay, add \"skipFirmwareVersionCheck\": true "
+                   "to your JSON config";
+
+            // 10-second delay with countdown
+            for (int i = 10; i > 0; i--) {
+                LOG(INFO) << "Waiting... " << i << " seconds remaining";
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            }
+
+            LOG(INFO)
+                << "Continuing initialization with mismatched firmware version";
+        } else {
+            LOG(INFO) << "Firmware version matches expected version";
+        }
+    } else if (!expectedFwVersion.empty() && skipFwCheck) {
+        LOG(INFO) << "Firmware version check skipped per JSON config override";
+    }
 
     // Load CCB data if any mode needs non-ISP processing
     status = loadCCBDataIfNeeded(availableModes);
