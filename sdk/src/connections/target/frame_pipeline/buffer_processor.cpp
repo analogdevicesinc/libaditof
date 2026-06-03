@@ -110,6 +110,7 @@ BufferProcessor::BufferProcessor()
 
     m_outputFrameWidth = 0;
     m_outputFrameHeight = 0;
+    m_abFrameSize = 0;
     m_processorPropSet = false;
     m_vidPropSet = false;
     m_isRawBypassMode = false;
@@ -338,6 +339,7 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     }
 
     m_tofiBufferSize = depthSize + abSize + confSize;
+    m_abFrameSize = abSize;
 
     // For raw bypass, ensure ToFi buffer can hold the complete V4L2 buffer including NVIDIA alignment
     if (m_isRawBypassMode) {
@@ -358,9 +360,10 @@ void BufferProcessor::rotateEntireToFiBuffer(const uint16_t *src, uint16_t *dst,
     const uint32_t W = width;
     const uint32_t H = height;
     const uint32_t numPixels = W * H;
-    const uint32_t confOffset = numPixels * 2;
-    const bool hasAB = bufferSize > numPixels;
-    const bool hasConf = bufferSize > confOffset;
+    const uint32_t confOffset =
+        numPixels + m_abFrameSize; // actual layout: depth | [AB] | conf
+    const bool hasAB = m_abFrameSize > 0;
+    const bool hasConf = bufferSize > numPixels + m_abFrameSize;
     constexpr uint32_t T = 64;
 
     // Three explicit branch-free code paths so the hot inner loop contains no conditionals.
