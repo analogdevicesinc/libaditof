@@ -312,8 +312,9 @@ CameraConfiguration::loadDepthParamsFromJsonFile(const std::string &pathFile,
     return status;
 }
 
-Status CameraConfiguration::saveDepthParamsToJsonFile(
-    const std::string &savePathFile, bool rotationEnabled) {
+Status
+CameraConfiguration::saveDepthParamsToJsonFile(const std::string &savePathFile,
+                                               bool rotationEnabled) {
 
     Status status = Status::OK;
 

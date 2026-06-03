@@ -230,6 +230,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
 
     uint32_t m_rawFrameBufferSize;
     uint32_t m_tofiBufferSize;
+    uint32_t
+        m_abFrameSize; ///< AB plane size in uint16_t units (0 when bitsInAB=0)
     // Ping-pong output buffer for rotation: avoids final memcpy by swapping with
     // tofi_compute_io_buff after each frame so the rotated result is used directly.
     std::shared_ptr<uint16_t> m_rotationOutputBuffer;

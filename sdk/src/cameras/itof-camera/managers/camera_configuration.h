@@ -84,7 +84,7 @@ class CameraConfiguration {
      * @return Status::OK on success, error codes on failure
      */
     Status saveDepthParamsToJsonFile(const std::string &savePathFile,
-                                      bool rotationEnabled = false);
+                                     bool rotationEnabled = false);
 
     /**
      * @brief Retrieves depth parameters for a specific mode.
