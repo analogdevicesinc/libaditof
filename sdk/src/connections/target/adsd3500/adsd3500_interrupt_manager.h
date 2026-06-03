@@ -97,6 +97,16 @@ class Adsd3500InterruptManager {
      */
     static aditof::Adsd3500Status convertIdToAdsd3500Status(int status);
 
+    /**
+     * @brief Skips the status register read on the next interrupt.
+     *
+     * Call before triggering a reset or stream-off so the resulting interrupt
+     * is silently consumed without reading ADSD3500 status registers.
+     *
+     * @param value true to skip next interrupt, false otherwise
+     */
+    void setSkipNextInterrupt(bool value) { m_skipNextInterrupt = value; }
+
   private:
     Adsd3500ProtocolManager
         *m_protocolManager;     ///< Protocol manager for status reads
@@ -104,7 +114,8 @@ class Adsd3500InterruptManager {
     int &m_imagerStatus;        ///< Reference to imager status
     bool &m_interruptAvailable; ///< Reference to interrupt available flag
     std::unordered_map<void *, aditof::SensorInterruptCallback>
-        &m_interruptCallbackMap; ///< Reference to interrupt callback map
+        &m_interruptCallbackMap;      ///< Reference to interrupt callback map
+    bool m_skipNextInterrupt = false; ///< Skip status read on next interrupt
 };
 
 #endif // ADSD3500_INTERRUPT_MANAGER_H

@@ -104,6 +104,8 @@ PYBIND11_MODULE(aditofpython, m) {
                aditof::Adsd3500Status::INVALID_INI_UPDATE_IN_PCM_MODE)
         .value("Unsupported_Mode_INI_Read",
                aditof::Adsd3500Status::UNSUPPORTED_MODE_INI_READ)
+        .value("Second_Adsd3500_Boot_Failure",
+               aditof::Adsd3500Status::SECOND_ADSD3500_BOOT_FAILURE)
         .value("Imager_Stream_Off", aditof::Adsd3500Status::IMAGER_STREAM_OFF)
         .value("Unknown_Error_Id", aditof::Adsd3500Status::UNKNOWN_ERROR_ID);
 
