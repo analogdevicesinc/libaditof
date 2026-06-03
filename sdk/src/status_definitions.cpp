@@ -180,6 +180,9 @@ std::ostream &operator<<(std::ostream &os, aditof::Adsd3500Status status) {
     case Adsd3500Status::UNSUPPORTED_MODE_INI_READ:
         os << "Adsd3500Status::UNSUPPORTED_MODE_INI_READ";
         break;
+    case Adsd3500Status::SECOND_ADSD3500_BOOT_FAILURE:
+        os << "Adsd3500Status::SECOND_ADSD3500_BOOT_FAILURE";
+        break;
     case Adsd3500Status::IMAGER_STREAM_OFF:
         os << "Adsd3500Status::IMAGER_STREAM_OFF";
         break;

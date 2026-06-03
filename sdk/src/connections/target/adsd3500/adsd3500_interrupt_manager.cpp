@@ -67,7 +67,11 @@ Adsd3500InterruptManager::adsd3500InterruptHandler(int signalValue) {
     uint16_t statusRegister;
     aditof::Status status = aditof::Status::OK;
 
-    usleep(ADSD3500_STATUS_READ_DELAY_US);
+    if (m_skipNextInterrupt) {
+        LOG(INFO) << "Skipping status register read for expected interrupt.";
+        m_skipNextInterrupt = false;
+        return status;
+    }
 
     status = m_protocolManager->adsd3500_read_cmd(ADSD3500_REG_CHIP_STATUS,
                                                   &statusRegister);
@@ -206,6 +210,9 @@ Adsd3500InterruptManager::convertIdToAdsd3500Status(int status) {
 
     case 35:
         return Adsd3500Status::UNSUPPORTED_MODE_INI_READ;
+
+    case 38:
+        return Adsd3500Status::SECOND_ADSD3500_BOOT_FAILURE;
 
     case 41:
         return Adsd3500Status::IMAGER_STREAM_OFF;
