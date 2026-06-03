@@ -284,7 +284,7 @@ Status CameraFrameAcquisitionManager::extractOrGenerateMetadata(
     uint8_t abBitsPerPixel, uint8_t confBitsPerPixel) {
 
     // Try to extract metadata from AB frame header if enabled
-    if (m_config->getMetadataInAB() && abEnabled) {
+    if (m_config->getMetadataInAB() && abEnabled && frame->haveDataType("ab")) {
         uint16_t *abFrame = nullptr;
         Status status = frame->getData("ab", &abFrame);
         if (status != Status::OK || abFrame == nullptr) {

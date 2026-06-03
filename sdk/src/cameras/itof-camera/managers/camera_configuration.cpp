@@ -313,9 +313,16 @@ CameraConfiguration::loadDepthParamsFromJsonFile(const std::string &pathFile,
 }
 
 Status CameraConfiguration::saveDepthParamsToJsonFile(
-    const std::string &savePathFile) {
+    const std::string &savePathFile, bool rotationEnabled) {
 
     Status status = Status::OK;
+
+    // Apply current rotation state to all modes before saving
+    // This ensures enableRotation is consistent across all modes in the saved config
+    std::string rotationValue = rotationEnabled ? "1" : "0";
+    for (auto &modePair : m_depth_params_map) {
+        modePair.second["enableRotation"] = rotationValue;
+    }
 
     json_object *rootjson = json_object_new_object();
 

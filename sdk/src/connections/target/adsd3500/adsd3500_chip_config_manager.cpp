@@ -429,9 +429,18 @@ aditof::Status Adsd3500ChipConfigManager::configureFrameContent(
 
     using namespace aditof;
 
-    // Allocate bit depth vectors based on number of modes
-    bitsInAB.resize(availableModes.size());
-    bitsInConf.resize(availableModes.size());
+    // Find maximum mode number to size bit depth vectors correctly
+    uint8_t maxModeNumber = 0;
+    for (const auto &mode : availableModes) {
+        if (mode.modeNumber > maxModeNumber) {
+            maxModeNumber = mode.modeNumber;
+        }
+    }
+
+    // Allocate bit depth vectors based on maximum mode number (not mode count)
+    // This allows direct indexing by modeNumber without out-of-bounds access
+    bitsInAB.resize(maxModeNumber + 1, 0);
+    bitsInConf.resize(maxModeNumber + 1, 0);
 
     // Configure frame content for each mode
     for (size_t i = 0; i < availableModes.size(); ++i) {
