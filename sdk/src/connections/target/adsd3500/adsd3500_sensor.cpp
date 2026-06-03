@@ -627,6 +627,11 @@ aditof::Status Adsd3500Sensor::stop() {
             dev->started = false;
         }
     }
+
+    if (m_interruptManager) {
+        m_interruptManager->setSkipNextInterrupt(true);
+    }
+
     status = Adsd3500Sensor::adsd3500_getInterruptandReset();
     return status;
 }
@@ -1459,6 +1464,11 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     };
     status = adsd3500_register_interrupt_callback(cb);
     bool interruptsAvailable = (status == Status::OK);
+
+    // Signal interrupt handler to skip status read on first reset interrupt
+    if (m_interruptManager) {
+        m_interruptManager->setSkipNextInterrupt(true);
+    }
 
     // Use platform-specific reset logic
     auto &platform = aditof::platform::Platform::getInstance();
