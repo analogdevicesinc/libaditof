@@ -1474,7 +1474,7 @@ std::string CameraItof::autoDiscoverConfigFile() {
 aditof::Status
 CameraItof::saveDepthParamsToJsonFile(const std::string &savePathFile) {
     assert(!m_isOffline);
-    return m_config->saveDepthParamsToJsonFile(savePathFile);
+    return m_config->saveDepthParamsToJsonFile(savePathFile, m_rotationEnabled);
 }
 
 /**
