@@ -81,6 +81,7 @@ class CameraConfiguration {
      * Parameters are organized by mode with depth-compute and configuration sections.
      *
      * @param[in] savePathFile Path where JSON file should be written
+     * @param[in] rotationEnabled Current rotation state to apply to all modes
      * @return Status::OK on success, error codes on failure
      */
     Status saveDepthParamsToJsonFile(const std::string &savePathFile,
