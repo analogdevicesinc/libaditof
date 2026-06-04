@@ -25,6 +25,7 @@
 #include "adsd3500_interrupt_notifier.h"
 #include "adsd3500_protocol_manager.h"
 #include <aditof/log.h>
+#include <chrono>
 #include <unistd.h>
 
 // ADSD3500 register addresses
@@ -33,6 +34,12 @@
 
 // Timing constants
 #define ADSD3500_STATUS_READ_DELAY_US 2000
+
+// Maximum age of a pending skip request in milliseconds.
+// The GPIO toggle interrupt typically arrives within a few ms of the reset.
+// If no interrupt has arrived within this window, the skip is expired and
+// the next interrupt (the real reset-complete) is processed normally.
+#define ADSD3500_SKIP_INTERRUPT_WINDOW_MS 500
 
 Adsd3500InterruptManager::Adsd3500InterruptManager(
     Adsd3500ProtocolManager *protocolManager, int &chipStatus,
@@ -68,9 +75,23 @@ Adsd3500InterruptManager::adsd3500InterruptHandler(int signalValue) {
     aditof::Status status = aditof::Status::OK;
 
     if (m_skipNextInterrupt) {
-        LOG(INFO) << "Skipping status register read for expected interrupt.";
-        m_skipNextInterrupt = false;
-        return status;
+        using clock = std::chrono::steady_clock;
+        auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                             clock::now() - m_skipSetAt)
+                             .count();
+        if (elapsedMs <= ADSD3500_SKIP_INTERRUPT_WINDOW_MS) {
+            LOG(INFO) << "Skipping status register read for expected GPIO "
+                         "toggle interrupt (elapsed: "
+                      << elapsedMs << " ms).";
+            m_skipNextInterrupt = false;
+            return status;
+        } else {
+            // Skip window expired — this is the real reset-complete interrupt;
+            // process it normally.
+            LOG(INFO) << "Skip window expired (" << elapsedMs
+                      << " ms); processing interrupt as reset-complete.";
+            m_skipNextInterrupt = false;
+        }
     }
 
     status = m_protocolManager->adsd3500_read_cmd(ADSD3500_REG_CHIP_STATUS,
