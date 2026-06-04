@@ -90,40 +90,27 @@ Status CameraInitializationManager::initializeOnlineMode(
         }
     }
 
-    // Load firmware version configuration from dedicated file
-    // Priority: 1) Build directory (shared by all examples)
-    //           2) System installation path
-    std::string fwConfigPath = "";
+    // Load firmware version configuration from the SDK config directory.
+    // Priority: 1) SDK source/build config dir (ADITOF_SDK_CONFIG_DIR, set by CMake)
+    //           2) System data installation path (CMAKE_INSTALL_DATADIR/aditof)
+    const std::string fwConfigFilename = "firmware_version_config.json";
+    std::string fwConfigPath;
 
-#ifdef __linux__
-    // Try to find build directory by going up from binary location
-    char binaryPath[PATH_MAX];
-    ssize_t len =
-        readlink("/proc/self/exe", binaryPath, sizeof(binaryPath) - 1);
-    if (len != -1) {
-        binaryPath[len] = '\0';
-        std::string binPath(binaryPath);
-
-        // Navigate up to find build directory
-        // Typical path: build/examples/first-frame/first-frame
-        // We want: build/firmware_version_config.json
-        size_t examplesPos = binPath.find("/examples/");
-        if (examplesPos != std::string::npos) {
-            std::string buildDir = binPath.substr(0, examplesPos);
-            std::string buildFwConfigPath =
-                buildDir + "/firmware_version_config.json";
-            std::ifstream testFile(buildFwConfigPath);
-            if (testFile.good()) {
-                fwConfigPath = buildFwConfigPath;
-                testFile.close();
-            }
+#ifdef ADITOF_SDK_CONFIG_DIR
+    {
+        std::string sdkConfigPath =
+            std::string(ADITOF_SDK_CONFIG_DIR) + "/" + fwConfigFilename;
+        std::ifstream testFile(sdkConfigPath);
+        if (testFile.good()) {
+            fwConfigPath = sdkConfigPath;
         }
     }
 #endif
 
-    // Fallback to system installation path
+    // Fallback to installed data path
     if (fwConfigPath.empty()) {
-        fwConfigPath = "/usr/local/share/aditof/firmware_version_config.json";
+        fwConfigPath =
+            std::string(ADITOF_SDK_DATA_INSTALL_DIR) + "/" + fwConfigFilename;
     }
 
     status = m_config->loadFirmwareVersionConfig(fwConfigPath);
@@ -184,15 +171,68 @@ Status CameraInitializationManager::initializeOnlineMode(
     std::string expectedFwVersion = m_config->getExpectedFirmwareVersion();
     bool skipFwCheck = m_config->getSkipFirmwareVersionCheck();
 
+    // Parse the major version from the leading numeric component of a
+    // version string (e.g. "8.1.0.0" -> 8). std::stoi stops at '.'.
+    auto parseMajorVersion = [](const std::string &version) -> int {
+        try {
+            return std::stoi(version);
+        } catch (...) {
+            return -1;
+        }
+    };
+
+    // Hard minimum major version — enforced unconditionally, but can be
+    // bypassed by setting skipFirmwareVersionCheck: true in the config file
+    // (intended for development/testing with older firmware only).
+    constexpr int MINIMUM_REQUIRED_MAJOR = 8;
+
+    if (fwVersion != "unknown" && !skipFwCheck) {
+        const int actualMajor = parseMajorVersion(fwVersion);
+        if (actualMajor >= 0 && actualMajor < MINIMUM_REQUIRED_MAJOR) {
+            LOG(ERROR) << "Firmware version is too old to proceed!";
+            LOG(ERROR) << "  Actual: " << fwVersion;
+            LOG(ERROR) << "  Actual major (" << actualMajor
+                       << ") < required minimum major ("
+                       << MINIMUM_REQUIRED_MAJOR << ")";
+            LOG(ERROR) << "Please update the ADSD3500 firmware before using "
+                          "this SDK version";
+            return Status::GENERIC_ERROR;
+        }
+    } else if (fwVersion != "unknown" && skipFwCheck) {
+        const int actualMajor = parseMajorVersion(fwVersion);
+        if (actualMajor >= 0 && actualMajor < MINIMUM_REQUIRED_MAJOR) {
+            LOG(WARNING)
+                << "Firmware version is below minimum required major ("
+                << MINIMUM_REQUIRED_MAJOR
+                << ") but check is bypassed via skipFirmwareVersionCheck";
+        }
+    }
+
+    // Config-based version check (runs only when a config file was found)
     if (!expectedFwVersion.empty() && !skipFwCheck && fwVersion != "unknown") {
-        if (fwVersion != expectedFwVersion) {
+        const int actualMajor = parseMajorVersion(fwVersion);
+        const int expectedMajor = parseMajorVersion(expectedFwVersion);
+
+        if (fwVersion == expectedFwVersion) {
+            LOG(INFO) << "Firmware version matches expected version";
+        } else if (actualMajor >= 0 && expectedMajor >= 0 &&
+                   actualMajor < expectedMajor) {
+            // Major below what the config requires — abort
+            LOG(ERROR) << "Firmware version is too old to proceed!";
+            LOG(ERROR) << "  Expected: " << expectedFwVersion;
+            LOG(ERROR) << "  Actual:   " << fwVersion;
+            LOG(ERROR) << "  Actual major (" << actualMajor
+                       << ") < required major (" << expectedMajor << ")";
+            LOG(ERROR) << "Please update the ADSD3500 firmware before using "
+                          "this SDK version";
+            return Status::GENERIC_ERROR;
+        } else {
+            // Major >= expected major but version doesn't match — warn and wait
             LOG(WARNING) << "Firmware version mismatch!";
             LOG(WARNING) << "  Expected: " << expectedFwVersion;
             LOG(WARNING) << "  Actual:   " << fwVersion;
             LOG(WARNING) << "Delaying 10 seconds before proceeding...";
-            LOG(INFO)
-                << "To skip this delay, add \"skipFirmwareVersionCheck\": true "
-                   "to your JSON config";
+            LOG(WARNING) << "This may cause issues with the SDK";
 
             // 10-second delay with countdown
             for (int i = 10; i > 0; i--) {
@@ -202,8 +242,6 @@ Status CameraInitializationManager::initializeOnlineMode(
 
             LOG(INFO)
                 << "Continuing initialization with mismatched firmware version";
-        } else {
-            LOG(INFO) << "Firmware version matches expected version";
         }
     } else if (!expectedFwVersion.empty() && skipFwCheck) {
         LOG(INFO) << "Firmware version check skipped per JSON config override";
