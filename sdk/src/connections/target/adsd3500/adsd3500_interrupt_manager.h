@@ -27,6 +27,7 @@
 #include <aditof/depth_sensor_interface.h>
 #include <aditof/sensor_definitions.h>
 #include <aditof/status_definitions.h>
+#include <chrono>
 #include <unordered_map>
 
 // Forward declarations
@@ -105,7 +106,12 @@ class Adsd3500InterruptManager {
      *
      * @param value true to skip next interrupt, false otherwise
      */
-    void setSkipNextInterrupt(bool value) { m_skipNextInterrupt = value; }
+    void setSkipNextInterrupt(bool value) {
+        m_skipNextInterrupt = value;
+        if (value) {
+            m_skipSetAt = std::chrono::steady_clock::now();
+        }
+    }
 
   private:
     Adsd3500ProtocolManager
@@ -116,6 +122,7 @@ class Adsd3500InterruptManager {
     std::unordered_map<void *, aditof::SensorInterruptCallback>
         &m_interruptCallbackMap;      ///< Reference to interrupt callback map
     bool m_skipNextInterrupt = false; ///< Skip status read on next interrupt
+    std::chrono::steady_clock::time_point m_skipSetAt; ///< When skip was armed
 };
 
 #endif // ADSD3500_INTERRUPT_MANAGER_H
