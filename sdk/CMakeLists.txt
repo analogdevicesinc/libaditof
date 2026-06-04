@@ -13,6 +13,9 @@ endif()
 
 add_definitions(-DSDK_EXPORTS)
 
+# SDK config directory: used at build time to locate firmware_version_config.json
+add_definitions(-DADITOF_SDK_CONFIG_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/cameras/itof-camera/config")
+
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND NOT (WIN32 OR ON_TARGET))
     if (CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL "13.0.0")
         message(STATUS "Applying flags for GCC/G++ version 13.x or higher")
@@ -319,7 +322,7 @@ endif()
 
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(${PROJECT_NAME} PUBLIC
+    target_compile_options(${PROJECT_NAME} PRIVATE
             -Wall
             -Wno-unknown-pragmas
             -Werror=return-type
@@ -330,6 +333,9 @@ endif()
 
 # includes install paths
 include(GNUInstallDirs)
+
+# SDK installed data path: used at runtime on deployed systems
+add_definitions(-DADITOF_SDK_DATA_INSTALL_DIR="${CMAKE_INSTALL_FULL_DATADIR}/aditof")
 
 # install path for the aditof-config.cmake and aditof-config-version.cmake
 set(INSTALL_CONFIG_DIR ${CMAKE_INSTALL_LIBDIR}/cmake/aditof)
@@ -373,6 +379,12 @@ install(EXPORT aditof-targets
 
 # install the include folder
 install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+# install SDK data files (firmware version config)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/cameras/itof-camera/config/firmware_version_config.json
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/aditof
+)
 
 # include helper functions to write the config files
 include(CMakePackageConfigHelpers)
