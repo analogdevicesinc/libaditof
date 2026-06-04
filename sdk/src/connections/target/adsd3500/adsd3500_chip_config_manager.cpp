@@ -95,7 +95,7 @@ aditof::Status Adsd3500ChipConfigManager::queryChipConfiguration(
         }
 
         // Check if CCBM (CCB Master) is supported and enabled
-        if (m_ccbVersion == CCBVersion::CCB_VERSION3 ||
+        if (m_ccbVersion >= CCBVersion::CCB_VERSION3 ||
             (m_ccbVersion == CCBVersion::CCB_VERSION2 &&
              m_controls["disableCCBM"] == "0")) {
 
@@ -201,8 +201,15 @@ aditof::Status Adsd3500ChipConfigManager::discoverChipCapabilities() {
             m_ccbVersion = CCBVersion::CCB_VERSION3;
             break;
         default:
-            LOG(WARNING) << "Unknown CCB version read from ADSD3500: "
-                         << static_cast<int>(ccb_version);
+            if (ccb_version > 4) {
+                LOG(INFO)
+                    << "CCB version " << static_cast<int>(ccb_version)
+                    << " is newer than known versions; treating as CCB master.";
+                m_ccbVersion = CCBVersion::CCB_VERSION3;
+            } else {
+                LOG(WARNING) << "Unknown CCB version read from ADSD3500: "
+                             << static_cast<int>(ccb_version);
+            }
             break;
         }
 
