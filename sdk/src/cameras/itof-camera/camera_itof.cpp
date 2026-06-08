@@ -493,6 +493,17 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             m_depthSensor->setControl("lensScatterCompensationEnabled", "0");
         }
 
+        // Forward dualPulsatrixSystemEnabled from INI to sensor for V4L2 dimension
+        // calculation in MP mode (Pulsatrix appends padding bytes for use cases 1 & 2)
+        {
+            auto dualPulsatrixIt =
+                iniKeyValPairs.find("dualPulsatrixSystemEnabled");
+            m_depthSensor->setControl("dualPulsatrixSystemEnabled",
+                                      (dualPulsatrixIt != iniKeyValPairs.end())
+                                          ? dualPulsatrixIt->second
+                                          : "0");
+        }
+
         // Declare rotationValue here for use in both rotation logic and frame details
         std::string rotationValue;
 
