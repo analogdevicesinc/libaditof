@@ -1245,6 +1245,10 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
         m_modeSelector.setControl("lensScatterCompensationEnabled", value);
         return Status::OK;
     }
+    if (control == "dualPulsatrixSystemEnabled") {
+        m_modeSelector.setControl("dualPulsatrixSystemEnabled", value);
+        return Status::OK;
+    }
     if (control == "enableRotation") {
         m_rotationEnabled = (value == "1");
         m_bufferProcessor->setNeedsRotation(m_rotationEnabled);

@@ -49,6 +49,7 @@ Adsd3500ModeSelector::Adsd3500ModeSelector() : m_configuration("standard") {
 
     m_controls.emplace("inputFormat", "");
     m_controls.emplace("lensScatterCompensationEnabled", "0");
+    m_controls.emplace("dualPulsatrixSystemEnabled", "0");
 }
 
 /**
@@ -264,6 +265,47 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
             configurationTable.frameWidthInBytes = 1024;
             configurationTable.frameHeightInBytes = 2880;
         }
+        return aditof::Status::OK;
+    }
+
+    // Dual Pulsatrix MP mode (ADSD3100 modes 0 and 1):
+    // ISP outputs (D+C) interleaved and AB as a superframe in two transactions.
+    // Pulsatrix requires V4L2 width = imageWidth * bytesPerPixel_DC so that
+    // height is always a whole number. When not divisible, padding bytes are added.
+    //
+    // conf != 0: width = imgW * (depth+conf)/8, height = ceil(totalBytes / width)
+    //            (mode 0 gets +1024 bytes padding, mode 1 gets +2048 bytes padding)
+    // conf == 0: width = imgW (no interleaving), height = totalBytes / imgW
+    bool isDualPulsatrix = (m_controls["dualPulsatrixSystemEnabled"] == "1");
+    bool isADSD3100 = (m_controls["imagerType"] ==
+                       aditof::imagerType.at(aditof::ImagerType::ADSD3100));
+    int modeNum = 0;
+    try {
+        modeNum = std::stoi(m_controls["mode"]);
+    } catch (...) {
+    }
+    bool isMPMode = (modeNum == 0 || modeNum == 1);
+
+    if (isDualPulsatrix && isADSD3100 && isMPMode) {
+        int imgW = configurationTable.baseResolutionWidth;  // 1024
+        int imgH = configurationTable.baseResolutionHeight; // 1024
+
+        if (conf_i == 0) {
+            // No confidence: depth and AB stacked, width stays at imageWidth
+            int totalBytes = imgW * imgH * (depth_i + ab_i) / 8;
+            configurationTable.frameWidthInBytes = imgW;
+            configurationTable.frameHeightInBytes = totalBytes / imgW;
+        } else {
+            // Confidence present: D+C interleaved, width = imgW * (depth+conf)/8
+            // AB sent as superframe; padding added if total not divisible by width
+            int frameW = imgW * (depth_i + conf_i) / 8;
+            int totalRawBytes = imgW * imgH * (depth_i + conf_i + ab_i) / 8;
+            // Ceiling division to include any required padding bytes
+            int frameH = (totalRawBytes + frameW - 1) / frameW;
+            configurationTable.frameWidthInBytes = frameW;
+            configurationTable.frameHeightInBytes = frameH;
+        }
+        configurationTable.pixelFormatIndex = 0;
         return aditof::Status::OK;
     }
 
