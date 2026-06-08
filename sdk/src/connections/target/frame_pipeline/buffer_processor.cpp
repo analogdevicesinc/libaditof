@@ -895,35 +895,6 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
             }
 
-#ifdef DUAL
-            // All modes process uniformly via TofiCompute (or direct copy for depth-only).
-            // For MP modes 0/1 with Dual Pulsatrix, the V4L2 buffer contains trailing
-            // padding bytes (mode 0: +1024 bytes, mode 1: +2048 bytes) appended to achieve
-            // an integer V4L2 height. TofiCompute processes based on context dimensions
-            // (1024x1024), so trailing padding bytes are naturally ignored.
-            // Confidence data is included for all modes (0/1 and QMP) via the context
-            // pointers already set above from the bit configuration.
-            if (allocatedAfterDepth == 0) {
-                // Depth-only: direct copy, no deinterleaving needed
-                memcpy(m_tofiComputeContext->p_depth_frame,
-                       process_frame.data.get(), numPixels * 2);
-            } else {
-                uint32_t ret = TofiCompute(
-                    reinterpret_cast<uint16_t *>(process_frame.data.get()),
-                    m_tofiComputeContext, NULL);
-                if (ret != ADI_TOFI_SUCCESS) {
-                    LOG(ERROR)
-                        << "processThread: TofiCompute failed with code: "
-                        << ret;
-                    m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                    m_v4l2_input_buffer_Q.push(process_frame.data);
-                    m_tofiComputeContext->p_depth_frame = tempDepthFrame;
-                    m_tofiComputeContext->p_ab_frame = tempAbFrame;
-                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
-                    continue;
-                }
-            }
-#else
             uint32_t ret = TofiCompute(
                 reinterpret_cast<uint16_t *>(process_frame.data.get()),
                 m_tofiComputeContext, NULL);
@@ -937,7 +908,6 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
                 continue;
             }
-#endif
             m_tofiComputeContext->p_depth_frame = tempDepthFrame;
             m_tofiComputeContext->p_ab_frame = tempAbFrame;
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
