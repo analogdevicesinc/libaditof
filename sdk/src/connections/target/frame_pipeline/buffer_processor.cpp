@@ -896,124 +896,31 @@ void BufferProcessor::processThread() {
             }
 
 #ifdef DUAL
-            // For dual pulsatrix mode 0 and 1:
-            // - ISP enabled (m_ispEnabled=true): Data comes pre-computed from ISP, just copy
-            // - Lens scatter (m_ispEnabled=false): Raw Bayer data needs TofiCompute processing
-            bool isISPPrecomputed =
-                (m_currentModeNumber == 0 || m_currentModeNumber == 1) &&
-                m_ispEnabled;
-
-            if (isISPPrecomputed) {
-                // ISP pre-computed mode: Data comes deinterleaved from ISP chip
-                // V4L2 buffer layout: [depth: numPixels*2 bytes | AB: numPixels*2 bytes | ...]
-                // The 128-byte metadata is embedded in the FIRST 128 bytes of
-                // the AB section, not as a separate header before depth.
-                // So depth starts at offset 0.
-
-                if (m_isADSD3100) {
-                    // Always copy depth frame
-                    memcpy(m_tofiComputeContext->p_depth_frame,
-                           process_frame.data.get(), numPixels * 2);
-
-                    // Calculate actual sizes based on m_tofiBufferSize
-                    // m_tofiBufferSize is in uint16_t units: depth + AB + conf
-                    uint32_t remainingSize =
-                        m_tofiBufferSize -
-                        static_cast<uint32_t>(numPixels); // After depth
-
-                    // Copy AB frame if allocated (remainingSize > 0)
-                    // AB section: first 128 bytes are metadata (extracted by requestFrame())
-                    if (remainingSize > 0) {
-                        uint32_t abCopySize =
-                            std::min(remainingSize,
-                                     static_cast<uint32_t>(
-                                         numPixels)); // AB is at most numPixels
-                        memcpy(m_tofiComputeContext->p_ab_frame,
-                               process_frame.data.get() + numPixels * 2,
-                               abCopySize * 2);
-                        remainingSize -= abCopySize;
-                    }
-
-                    // Copy confidence frame if allocated (remainingSize > 0 after AB)
-                    // Confidence is numPixels*2 uint16_t (same as numPixels float)
-                    if (remainingSize > 0) {
-                        uint32_t confCopySize =
-                            std::min(remainingSize,
-                                     static_cast<uint32_t>(numPixels * 2)) *
-                            2; // In bytes
-                        memcpy(m_tofiComputeContext->p_conf_frame,
-                               process_frame.data.get() + numPixels * 4,
-                               confCopySize);
-                    }
-                } else {
-                    // Other imagers: Call TofiCompute for ISP pre-computed modes
-                    uint32_t ret = TofiCompute(
-                        reinterpret_cast<uint16_t *>(process_frame.data.get()),
-                        m_tofiComputeContext, NULL);
-
-                    if (ret != ADI_TOFI_SUCCESS) {
-                        LOG(ERROR) << "processThread: TofiCompute failed for "
-                                      "ISP mode, code: "
-                                   << ret;
-                        m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                        m_v4l2_input_buffer_Q.push(process_frame.data);
-                        m_tofiComputeContext->p_depth_frame = tempDepthFrame;
-                        m_tofiComputeContext->p_ab_frame = tempAbFrame;
-                        m_tofiComputeContext->p_conf_frame = tempConfFrame;
-                        continue;
-                    }
-                }
-            } else if (m_currentModeNumber == 0 || m_currentModeNumber == 1) {
-                // Lens scatter mode for mode 0/1: Process raw Bayer data with TofiCompute
-                // Input: Raw Bayer (RG12 format, 2048×4608 for mode 1)
-
+            // All modes process uniformly via TofiCompute (or direct copy for depth-only).
+            // For MP modes 0/1 with Dual Pulsatrix, the V4L2 buffer contains trailing
+            // padding bytes (mode 0: +1024 bytes, mode 1: +2048 bytes) appended to achieve
+            // an integer V4L2 height. TofiCompute processes based on context dimensions
+            // (1024x1024), so trailing padding bytes are naturally ignored.
+            // Confidence data is included for all modes (0/1 and QMP) via the context
+            // pointers already set above from the bit configuration.
+            if (allocatedAfterDepth == 0) {
+                // Depth-only: direct copy, no deinterleaving needed
+                memcpy(m_tofiComputeContext->p_depth_frame,
+                       process_frame.data.get(), numPixels * 2);
+            } else {
                 uint32_t ret = TofiCompute(
                     reinterpret_cast<uint16_t *>(process_frame.data.get()),
                     m_tofiComputeContext, NULL);
-
                 if (ret != ADI_TOFI_SUCCESS) {
-                    LOG(ERROR) << "processThread: TofiCompute failed for lens "
-                                  "scatter mode "
-                               << (int)m_currentModeNumber << ", code: " << ret;
+                    LOG(ERROR)
+                        << "processThread: TofiCompute failed with code: "
+                        << ret;
                     m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
                     m_v4l2_input_buffer_Q.push(process_frame.data);
                     m_tofiComputeContext->p_depth_frame = tempDepthFrame;
                     m_tofiComputeContext->p_ab_frame = tempAbFrame;
                     m_tofiComputeContext->p_conf_frame = tempConfFrame;
                     continue;
-                }
-            } else {
-
-                // If only depth (no deinterleaving needed), just copy
-                // m_tofiBufferSize tells us what's allocated: depth + AB + conf sizes
-                bool needsTofiCompute = true;
-                uint32_t allocatedAfterDepth =
-                    m_tofiBufferSize - static_cast<uint32_t>(numPixels);
-
-                // Case 1: Only depth (0 AB, 0 Conf) - direct copy
-                if (allocatedAfterDepth == 0) {
-                    memcpy(m_tofiComputeContext->p_depth_frame,
-                           process_frame.data.get(), numPixels * 2);
-                    needsTofiCompute = false;
-                }
-
-                // For other combinations, use TofiCompute
-                if (needsTofiCompute) {
-
-                    uint32_t ret = TofiCompute(
-                        reinterpret_cast<uint16_t *>(process_frame.data.get()),
-                        m_tofiComputeContext, NULL);
-                    if (ret != ADI_TOFI_SUCCESS) {
-                        LOG(ERROR)
-                            << "processThread: TofiCompute failed with code: "
-                            << ret;
-                        m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                        m_v4l2_input_buffer_Q.push(process_frame.data);
-                        m_tofiComputeContext->p_depth_frame = tempDepthFrame;
-                        m_tofiComputeContext->p_ab_frame = tempAbFrame;
-                        m_tofiComputeContext->p_conf_frame = tempConfFrame;
-                        continue;
-                    }
                 }
             }
 #else
