@@ -437,12 +437,13 @@ aditof::Status Adsd3500Sensor::open() {
                     continue;
                 }
 
-#ifdef DUAL
-                chipIDStatus = adsd3500_read_cmd(ADSD3500_REG_CHIP_ID_EXT,
-                                                 &chipID, 110 * 1000);
-#else
-                chipIDStatus = adsd3500_read_cmd(ADSD3500_REG_CHIP_ID, &chipID);
-#endif
+                if (m_isDualPulsatrixSystem) {
+                    chipIDStatus = adsd3500_read_cmd(ADSD3500_REG_CHIP_ID_EXT,
+                                                     &chipID, 110 * 1000);
+                } else {
+                    chipIDStatus =
+                        adsd3500_read_cmd(ADSD3500_REG_CHIP_ID, &chipID);
+                }
                 if (chipIDStatus != Status::OK) {
                     LOG(INFO) << "Could not read chip ID";
                     continue;
@@ -1246,6 +1247,7 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
         return Status::OK;
     }
     if (control == "dualPulsatrixSystemEnabled") {
+        m_isDualPulsatrixSystem = (value == "1");
         m_modeSelector.setControl("dualPulsatrixSystemEnabled", value);
         return Status::OK;
     }
