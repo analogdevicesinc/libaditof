@@ -252,6 +252,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     uint16_t m_chipId;
     bool m_lensScatterEnabled = false;
     bool m_rotationEnabled = false;
+    bool m_isDualPulsatrixSystem = true;
     /**
      * @brief Target mode number for runtime bit configuration updates.
      * 
