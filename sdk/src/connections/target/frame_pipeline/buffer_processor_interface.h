@@ -80,15 +80,13 @@ class BufferProcessorInterface {
      * @param bitsInAB Bit depth for AB (amplitude/brightness) data
      * @param bitsInConf Bit depth for confidence data
      * @param isRawBypass True if ISP is bypassing depth computation
-     * @param isADSD3100 True if using ADSD3100 imager (affects processing)
      * @return Status::OK on success, Status::GENERIC_ERROR on allocation failure
      */
     virtual Status setVideoProperties(int frameWidth, int frameHeight,
                                       int WidthInBytes, int HeightInBytes,
                                       int modeNumber, uint8_t bitsInAB,
-                                      uint8_t bitsInConf,
-                                      bool isRawBypass = false,
-                                      bool isADSD3100 = false) = 0;
+                                      uint8_t bitsInConf, uint8_t bitsInDepth,
+                                      bool isRawBypass = false) = 0;
 
     /**
      * @brief Configures ToFi depth computation properties.

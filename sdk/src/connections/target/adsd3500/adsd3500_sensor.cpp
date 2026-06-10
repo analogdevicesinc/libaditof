@@ -965,14 +965,14 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         uint8_t bitsInAB = skipToFiProcessing ? 0 : m_bitsInAB[type.modeNumber];
         uint8_t bitsInConf =
             skipToFiProcessing ? 0 : m_bitsInConf[type.modeNumber];
-
-        bool isADSD3100 =
-            (m_implData->imagerType == SensorImagerType::IMAGER_ADSD3100);
+        uint8_t bitsInDepth = (m_bitsInDepth.size() > type.modeNumber)
+                                  ? m_bitsInDepth[type.modeNumber]
+                                  : 16u;
 
         status = m_bufferProcessor->setVideoProperties(
             type.baseResolutionWidth, type.baseResolutionHeight,
             type.frameWidthInBytes, type.frameHeightInBytes, type.modeNumber,
-            bitsInAB, bitsInConf, skipToFiProcessing, isADSD3100);
+            bitsInAB, bitsInConf, bitsInDepth, skipToFiProcessing);
         if (status != Status::OK) {
             LOG(ERROR) << "Failed to set bufferProcessor properties!";
             goto cleanup_on_error;
@@ -1221,6 +1221,10 @@ aditof::Status Adsd3500Sensor::setControl(const std::string &control,
 
         if (control == "phaseDepthBits") {
             m_modeSelector.setControl("depthBits", convertor[bitIndex]);
+            // Update runtime bit config so setMode/setVideoProperties uses correct value
+            if (modeNum < m_bitsInDepth.size()) {
+                m_bitsInDepth[modeNum] = actualBits;
+            }
         } else if (control == "abBits") {
             m_modeSelector.setControl("abBits", convertor[bitIndex]);
             // Update runtime bit config so setMode/setVideoProperties uses correct value
@@ -1864,7 +1868,7 @@ aditof::Status Adsd3500Sensor::enqueueInternalBuffer(struct v4l2_buffer &buf) {
 aditof::Status Adsd3500Sensor::queryAdsd3500() {
     return m_chipConfigManager->queryChipConfiguration(
         m_availableModes, m_ccbmINIContent, m_iniFileStructList, m_bitsInAB,
-        m_bitsInConf, m_ccbmEnabled);
+        m_bitsInConf, m_bitsInDepth, m_ccbmEnabled);
 }
 
 /**

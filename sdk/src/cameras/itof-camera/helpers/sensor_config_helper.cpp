@@ -146,11 +146,14 @@ Status SensorConfigHelper::configureModeDetails(
         }
 
         // Partial depth enable
+        // partialDepthEnable=0 → full ISP depth enabled (depthEnable=1)
+        // partialDepthEnable=1 → partial depth only  (depthEnable=0)
+        // abAveraging is always 0 (not derived from partialDepthEnable)
         it = globalIniParams.find("partialDepthEnable");
         if (it != globalIniParams.end()) {
             std::string en = (it->second == "0") ? "1" : "0";
             m_depthSensor->setControl("depthEnable", en);
-            m_depthSensor->setControl("abAveraging", en);
+            m_depthSensor->setControl("abAveraging", "0");
         } else {
             LOG(WARNING)
                 << "partialDepthEnable was not found in parameter list";

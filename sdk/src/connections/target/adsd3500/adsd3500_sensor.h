@@ -249,6 +249,8 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     bool m_ccbmEnabled;
     std::vector<uint8_t> m_bitsInAB;
     std::vector<uint8_t> m_bitsInConf;
+    std::vector<uint8_t>
+        m_bitsInDepth; ///< Depth bits per mode (from bitsInPhaseOrDepth INI param)
     uint16_t m_chipId;
     bool m_lensScatterEnabled = false;
     bool m_rotationEnabled = false;
