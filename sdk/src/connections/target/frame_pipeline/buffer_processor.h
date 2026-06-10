@@ -136,9 +136,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     aditof::Status setVideoProperties(int frameWidth, int frameHeight,
                                       int WidthInBytes, int HeightInBytes,
                                       int modeNumber, uint8_t bitsInAB,
-                                      uint8_t bitsInConf,
-                                      bool isRawBypass = false,
-                                      bool isADSD3100 = false) override;
+                                      uint8_t bitsInConf, uint8_t bitsInDepth,
+                                      bool isRawBypass = false) override;
     aditof::Status setProcessorProperties(uint8_t *iniFile,
                                           uint16_t iniFileLength,
                                           uint8_t *calData,
@@ -247,6 +246,12 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     int m_maxTries = 3;
 
     uint8_t m_currentModeNumber;
+    uint8_t
+        m_bitsInAB; ///< AB bits per pixel (0/8/12/16) — used to compute exact ToFi payload
+    uint8_t
+        m_bitsInConf; ///< Conf bits per pixel (0/4/8)  — used to compute exact ToFi payload
+    uint8_t
+        m_bitsInDepth; ///< Depth bits per pixel (from bitsInPhaseOrDepth INI param, default 16)
     bool m_isRawBypassMode;
     bool
         m_ispEnabled; // Whether ISP depth computation is enabled (pre-computed depth)
@@ -254,7 +259,6 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
         m_lensScatterCompensationEnabled; // When true, raw bypass uses TofiCompute
     bool
         m_needsRotation; // When true, rotate frames 90 degrees clockwise (for ADTF3080)
-    bool m_isADSD3100; // True for ADSD3100 imager
 
     aditof::DepthComputeConfig m_depthComputeConfig;
 
