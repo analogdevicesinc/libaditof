@@ -43,6 +43,7 @@
 #include <algorithm>
 #include <arm_neon.h>
 #include <cmath>
+#include <cstdio>
 #include <dlfcn.h>
 #include <exception>
 #include <fcntl.h>
@@ -113,6 +114,9 @@ BufferProcessor::BufferProcessor()
     m_abFrameSize = 0;
     m_processorPropSet = false;
     m_vidPropSet = false;
+    m_bitsInAB = 0;
+    m_bitsInConf = 0;
+    m_bitsInDepth = 16;
     m_isRawBypassMode = false;
     m_ispEnabled = false;
     m_needsRotation = false;
@@ -203,8 +207,8 @@ aditof::Status BufferProcessor::setInputDevice(VideoDev *inputVideoDev) {
  */
 aditof::Status BufferProcessor::setVideoProperties(
     int frameWidth, int frameHeight, int WidthInBytes, int HeightInBytes,
-    int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf, bool isRawBypass,
-    bool isADSD3100) {
+    int modeNumber, uint8_t bitsInAB, uint8_t bitsInConf, uint8_t bitsInDepth,
+    bool isRawBypass) {
 
     // Clear all queues to prevent memory leaks if setVideoProperties is called multiple times
     if (!stopThreadsFlag.load(std::memory_order_acquire)) {
@@ -231,8 +235,10 @@ aditof::Status BufferProcessor::setVideoProperties(
     m_vidPropSet = true;
 
     m_currentModeNumber = modeNumber;
+    m_bitsInAB = bitsInAB;
+    m_bitsInConf = bitsInConf;
+    m_bitsInDepth = (bitsInDepth > 0) ? bitsInDepth : 16u;
     m_isRawBypassMode = isRawBypass;
-    m_isADSD3100 = isADSD3100;
 
     m_outputFrameWidth = frameWidth;
     m_outputFrameHeight = frameHeight;
@@ -895,6 +901,20 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
             }
 
+            // Strip NVIDIA Tegra VI alignment padding AND Pulsatrix extra bytes.
+            // Exact ToFi payload = outW × outH × (bitsInDepth + bitsInAB + bitsInConf) / 8
+            // bitsInDepth comes from bitsInPhaseOrDepth INI param (default 16).
+            // This matches the "Total Bytes" column in the driver config table, e.g.:
+            //   D=16, AB=16, conf=8 → 1024×1024×5   = 5,242,880  (strips 3072+1024)
+            //   D=16, AB=12, conf=8 → 1024×1024×4.5 = 4,718,592  (no Pulsatrix padding)
+            //   D=16, AB=8,  conf=8 → 1024×1024×4   = 4,194,304  (strips 3072+2048)
+            const size_t tofiPayloadBytes =
+                static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight *
+                (m_bitsInDepth + m_bitsInAB + m_bitsInConf) / 8u;
+            if (process_frame.size > tofiPayloadBytes) {
+                process_frame.size = tofiPayloadBytes;
+            }
+
             uint32_t ret = TofiCompute(
                 reinterpret_cast<uint16_t *>(process_frame.data.get()),
                 m_tofiComputeContext, NULL);
@@ -911,7 +931,8 @@ void BufferProcessor::processThread() {
             m_tofiComputeContext->p_depth_frame = tempDepthFrame;
             m_tofiComputeContext->p_ab_frame = tempAbFrame;
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
-        }
+
+        } // end if (tofi_compute_io_buff)
 
         // Apply 90-degree clockwise rotation if needed
         if (m_needsRotation && !m_isRawBypassMode) {

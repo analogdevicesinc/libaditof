@@ -77,7 +77,7 @@ aditof::Status Adsd3500ChipConfigManager::queryChipConfiguration(
     std::vector<IniTableEntry> &ccbmINIContent,
     std::vector<iniFileStruct> &iniFileStructList,
     std::vector<uint8_t> &bitsInAB, std::vector<uint8_t> &bitsInConf,
-    bool &ccbmEnabled) {
+    std::vector<uint8_t> &bitsInDepth, bool &ccbmEnabled) {
 
     using namespace aditof;
     Status status = Status::OK;
@@ -131,7 +131,7 @@ aditof::Status Adsd3500ChipConfigManager::queryChipConfiguration(
 
     // Configure frame content for each mode
     status = configureFrameContent(availableModes, iniFileStructList, bitsInAB,
-                                   bitsInConf);
+                                   bitsInConf, bitsInDepth);
     if (status != Status::OK) {
         return status;
     }
@@ -432,7 +432,8 @@ aditof::Status Adsd3500ChipConfigManager::createIniParamsForModes(
 aditof::Status Adsd3500ChipConfigManager::configureFrameContent(
     std::vector<aditof::DepthSensorModeDetails> &availableModes,
     const std::vector<iniFileStruct> &iniFileStructList,
-    std::vector<uint8_t> &bitsInAB, std::vector<uint8_t> &bitsInConf) {
+    std::vector<uint8_t> &bitsInAB, std::vector<uint8_t> &bitsInConf,
+    std::vector<uint8_t> &bitsInDepth) {
 
     using namespace aditof;
 
@@ -448,6 +449,7 @@ aditof::Status Adsd3500ChipConfigManager::configureFrameContent(
     // This allows direct indexing by modeNumber without out-of-bounds access
     bitsInAB.resize(maxModeNumber + 1, 0);
     bitsInConf.resize(maxModeNumber + 1, 0);
+    bitsInDepth.resize(maxModeNumber + 1, 16); // default 16-bit depth
 
     // Configure frame content for each mode
     for (size_t i = 0; i < availableModes.size(); ++i) {
@@ -460,8 +462,16 @@ aditof::Status Adsd3500ChipConfigManager::configureFrameContent(
             modeDetails.frameContent.clear();
             modeDetails.frameContent = {"raw", "depth"};
 
+            // Check for depth bits
+            auto it = iniFile.iniKeyValPairs.find("bitsInPhaseOrDepth");
+            if (it != iniFile.iniKeyValPairs.end()) {
+                value = it->second;
+                uint8_t bits = (uint8_t)std::stoi(value);
+                bitsInDepth[modeDetails.modeNumber] = (bits > 0) ? bits : 16u;
+            }
+
             // Check for AB frame
-            auto it = iniFile.iniKeyValPairs.find("bitsInAB");
+            it = iniFile.iniKeyValPairs.find("bitsInAB");
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
                 bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
@@ -505,8 +515,16 @@ aditof::Status Adsd3500ChipConfigManager::configureFrameContent(
             // PCM mode: optional AB, no confidence
             modeDetails.frameContent.clear();
 
+            // Check for depth bits
+            auto it = iniFile.iniKeyValPairs.find("bitsInPhaseOrDepth");
+            if (it != iniFile.iniKeyValPairs.end()) {
+                value = it->second;
+                uint8_t bits = (uint8_t)std::stoi(value);
+                bitsInDepth[modeDetails.modeNumber] = (bits > 0) ? bits : 16u;
+            }
+
             // Check for AB frame
-            auto it = iniFile.iniKeyValPairs.find("bitsInAB");
+            it = iniFile.iniKeyValPairs.find("bitsInAB");
             if (it != iniFile.iniKeyValPairs.end()) {
                 value = it->second;
                 bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);

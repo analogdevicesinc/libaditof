@@ -87,6 +87,7 @@ class Adsd3500ChipConfigManager {
      * @param[out] iniFileStructList Vector to populate with INI file structures
      * @param[out] bitsInAB Vector to populate with AB bit depths per mode
      * @param[out] bitsInConf Vector to populate with confidence bit depths per mode
+     * @param[out] bitsInDepth Vector to populate with depth bit depths per mode
      * @param[out] ccbmEnabled Flag to set if CCBM is enabled
      *
      * @return Status::OK on success, error status on failure
@@ -96,7 +97,7 @@ class Adsd3500ChipConfigManager {
         std::vector<IniTableEntry> &ccbmINIContent,
         std::vector<iniFileStruct> &iniFileStructList,
         std::vector<uint8_t> &bitsInAB, std::vector<uint8_t> &bitsInConf,
-        bool &ccbmEnabled);
+        std::vector<uint8_t> &bitsInDepth, bool &ccbmEnabled);
 
   private:
     /**
@@ -150,13 +151,15 @@ class Adsd3500ChipConfigManager {
      * @param[in] iniFileStructList Vector of INI file structures
      * @param[out] bitsInAB Vector to populate with AB bit depths
      * @param[out] bitsInConf Vector to populate with confidence bit depths
+     * @param[out] bitsInDepth Vector to populate with depth bit depths
      *
      * @return Status::OK on success
      */
     aditof::Status configureFrameContent(
         std::vector<aditof::DepthSensorModeDetails> &availableModes,
         const std::vector<iniFileStruct> &iniFileStructList,
-        std::vector<uint8_t> &bitsInAB, std::vector<uint8_t> &bitsInConf);
+        std::vector<uint8_t> &bitsInAB, std::vector<uint8_t> &bitsInConf,
+        std::vector<uint8_t> &bitsInDepth);
 
     /**
      * @brief Merges INI parameters across all modes.
