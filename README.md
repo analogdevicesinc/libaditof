@@ -9,7 +9,7 @@ ADTF Time-of-Flight Imager
 ├─ Dual ADSD3500 v8.1.0
 ├─ ToF-drivers v7.0.0
 └─ libaditof v7.1.0
-└─ Depth Compute Library 5.1.0
+   └─ Depth Compute Library 5.1.0
 ```
 
 ## Overview
