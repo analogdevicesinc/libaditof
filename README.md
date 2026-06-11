@@ -6,11 +6,23 @@ Please note, the [libaditof GitHub Wiki](https://github.com/analogdevicesinc/lib
 
 ```
 ADTF Time-of-Flight Imager
-├─ Dual ADSD3500 v8.1.0
+├─ Single or Dual ADSD3500 v8.1.0
 ├─ ToF-drivers v7.0.0
 └─ libaditof v7.1.0
    └─ Depth Compute Library 5.1.0
 ```
+
+* Single or Dual ADSD3500 v8.1.0: for the library under SLA contact tof@analog.com
+* ToF-driver v7.0.0: 
+* libaditof v7.1.0: https://github.com/analogdevicesinc/libaditof/tree/rel-7.1.0 
+* Depth Conpute LIbrary v5.1.0: for the library under SLA contact tof@analog.com
+
+For reference, the latest Eval Kit, ADCAM 1.0.0, is available here: 
+
+* Source Code: https://github.com/analogdevicesinc/ADCAM/tree/rel-1.0.0
+* Releases: https://github.com/analogdevicesinc/ADCAM/releases
+
+Note, the ADSD3500 Firmware and Depth Compute Libraries included with the evaluation kit are provided for evaluation only.
 
 ## Overview
 
