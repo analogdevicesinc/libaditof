@@ -2,6 +2,16 @@
 
 Please note, the [libaditof GitHub Wiki](https://github.com/analogdevicesinc/libaditof/wiki) is available with additional documentation.
 
+## Release 7.1.0 Dependencies
+
+```
+ADTF Time-of-Flight Imager
+├─ Dual ADSD3500 v8.1.0
+├─ ToF-drivers v7.0.0
+└─ libaditof v7.1.0
+└─ Depth Compute Library 5.1.0
+```
+
 ## Overview
 
 The ADI ToF SDK is designed to support ADI's ToF hardware.
