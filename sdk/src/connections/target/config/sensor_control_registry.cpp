@@ -41,6 +41,7 @@ SensorControlRegistry::SensorControlRegistry() {
     registerControl("disableCCBM", "0", false);
     registerControl("availableCCBM", "0", true); // Read-only
     registerControl("lensScatterCompensationEnabled", "0", false);
+    registerControl("dualPulsatrixSystemEnabled", "0", false);
     registerControl("enableRotation", "0", false);
     // Target mode for runtime bit configuration: Specifies which mode's bit arrays
     // to update when abBits/confidenceBits are set before setMode().
