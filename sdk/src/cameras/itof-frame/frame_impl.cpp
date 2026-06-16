@@ -310,6 +310,10 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
                                      sizeof(float) / sizeof(uint16_t));
         } else if (frameDetail.type == "ab") {
             sz = (unsigned long int)(frameDetail.height * frameDetail.width);
+        } else if (frameDetail.type == "rgb") {
+            // NV12 format: Y plane (width*height) + UV plane (width*height/2)
+            sz = (unsigned long int)(frameDetail.height * frameDetail.width *
+                                     1.5);
         } else {
             sz = (unsigned long int)(frameDetail.height * frameDetail.width);
         }

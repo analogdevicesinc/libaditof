@@ -102,3 +102,11 @@ aditof::Status
 OfflineSensorEnumerator::getSdVersion(std::string &sdVersion) const {
     return aditof::Status::UNAVAILABLE;
 }
+
+aditof::Status OfflineSensorEnumerator::getRGBSensorStatus(
+    bool &isAvailable, std::string &devicePath) const {
+    // Offline mode: no hardware RGB sensor
+    isAvailable = false;
+    devicePath = "";
+    return aditof::Status::OK;
+}
