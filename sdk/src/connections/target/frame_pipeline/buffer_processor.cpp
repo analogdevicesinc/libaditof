@@ -1397,6 +1397,7 @@ aditof::Status BufferProcessor::startRecording(std::string &filePath,
     }
 
     m_frame_count = 0;
+    m_frames_written = 0;
 
     m_stream_file_out = std::ofstream(filePath, std::ios::binary);
 
@@ -1456,7 +1457,8 @@ aditof::Status BufferProcessor::stopRecording() {
  * @return Status::OK on success, Status::GENERIC_ERROR if not recording or I/O error
  */
 aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
-                                           uint32_t bufferSize) {
+                                           uint32_t bufferSize,
+                                           bool incrementCount) {
     if (m_state != ST_RECORD) {
         return aditof::Status::GENERIC_ERROR;
     }
@@ -1472,6 +1474,9 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
             m_stream_file_out.write((char *)(buffer), bufferSize);
 
             m_frame_count++;
+            if (incrementCount) {
+                m_frames_written++;
+            }
 
             return aditof::Status::OK;
         }

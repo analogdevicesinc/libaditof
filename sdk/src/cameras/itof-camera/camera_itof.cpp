@@ -28,6 +28,11 @@
 #include "helpers/depth_parameter_mapper.h"
 #include "utils_ini.h"
 
+#ifdef HAS_RGB_CAMERA
+#include "connections/target/adsd3500/adsd3500_sensor.h" // For BufferProcessor access
+#include <aditof/ar0234_sensor.h>                       // For RGBFrame definition
+#endif
+
 #include "../../platform/platform_impl.h"
 #include "aditof/adsd3500_hardware_interface.h"
 #include "aditof/playback_interface.h"
@@ -197,8 +202,14 @@ CameraItof::CameraItof(
       m_depthSensor(depthSensor), m_adsd3500Hardware(nullptr),
       m_devStarted(false), m_devStreaming(false), m_adsd3500Enabled(false),
       m_isOffline(false), m_xyzEnabled(true), m_xyzSetViaApi(false),
-      m_cameraFps(0), m_modesVersion(0),
+      m_rgbEnabled(false), m_cameraFps(0), m_modesVersion(0),
       m_imagerType(aditof::ImagerType::UNSET), m_dropFrameOnce(true) {
+
+#ifdef HAS_RGB_CAMERA
+    m_rgbStatus.detected = false;
+    m_rgbStatus.enabled = false;
+    m_rgbStatus.path = "";
+#endif
 
     m_adsd3500Hardware =
         std::dynamic_pointer_cast<aditof::Adsd3500HardwareInterface>(
@@ -1007,6 +1018,31 @@ aditof::Status CameraItof::stopRecording() {
         return aditof::Status::GENERIC_ERROR; // Invalid call
     }
     return m_recordingMgr->stopRecording();
+}
+
+uint32_t CameraItof::getRecordedFrameCount() const {
+#ifdef HAS_RGB_CAMERA
+    auto adsd3500Sensor =
+        std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+    if (adsd3500Sensor) {
+        return adsd3500Sensor->getRecordedFrameCount();
+    }
+#endif
+    return 0;
+}
+
+void CameraItof::setRGBSensorInfo(const std::string &devicePath,
+                                  bool isDetected) {
+#ifdef HAS_RGB_CAMERA
+    m_rgbStatus.path = devicePath;
+    m_rgbStatus.detected = isDetected;
+    if (isDetected) {
+        LOG(INFO) << "RGB sensor detected at: " << devicePath;
+    }
+#else
+    (void)devicePath;
+    (void)isDetected;
+#endif
 }
 
 /**

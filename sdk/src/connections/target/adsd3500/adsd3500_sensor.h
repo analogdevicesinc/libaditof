@@ -148,6 +148,9 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     virtual aditof::Status
     getIniParamsArrayForMode(int mode, std::string &iniStr) override;
 
+    // Get BufferProcessor for RGB integration
+    aditof::BufferProcessorInterface *getBufferProcessor() { return m_bufferProcessor; }
+
   public: // implements Adsd3500HardwareInterface
     virtual aditof::Status adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
                                              unsigned int usDelay = 0) override;
@@ -301,4 +304,11 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
 
     std::unique_ptr<aditof::Adsd3500Recorder>
         m_recorder; // Recording operations (implements RecordableInterface portion)
+
+    uint32_t getRecordedFrameCount() const {
+        if (m_bufferProcessor) {
+            return m_bufferProcessor->getRecordedFrameCount();
+        }
+        return 0;
+    }
 };

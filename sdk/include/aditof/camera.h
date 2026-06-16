@@ -114,6 +114,34 @@ class SDK_API Camera {
     virtual Status requestFrame(Frame *frame, uint32_t index = 0) = 0;
 
     /**
+     * @brief Scale AB image with logarithmic base 10.
+     * @param abBuffer - Pointer to the AB buffer
+     * @param abWidth - Width (in pixels) of the AB buffer
+     * @param abHeight - Height (in pixels) of the AB buffer
+     * @param advanceScaling - If is true then use advance AB scaling.
+     * @param useLogScaling - If is false is applied the normalization
+     * between 0 and 255,
+     * if is true is applied normalization between 0 and 255 and log10
+     * @return Status
+     */
+    virtual void normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
+                                   uint16_t abHeight, bool advanceScaling,
+                                   bool useLogScaling) = 0;
+
+    /**
+     * @brief Scale AB image with logarithmic base 10 in a Frame instance.
+     * @param frame - The frame of the camera
+     * @param advanceScaling - If is true then use advance AB scaling.
+     * @param useLogScaling - If is false is applied the normalization
+     * between 0 and 255,
+     * if is true is applied normalization between 0 and 255 and log10
+     * @return Status
+     */
+    virtual aditof::Status normalizeABFrame(aditof::Frame *frame,
+                                            bool advanceScaling,
+                                            bool useLogScaling) = 0;
+
+    /**
      * @brief Gets the current details of the camera
      * @param[out] details
      * @return Status
@@ -568,6 +596,15 @@ class SDK_API Camera {
     adsd3500ResetIniParamsForMode(const uint16_t mode) = 0;
 
     /**
+     * @brief Set sensor configutation table
+     * @param sensorConf - Configuration table name string like
+     * e.g. standard, standardraw, custom and customraw
+     * @return Status
+     */
+    virtual aditof::Status
+    setSensorConfiguration(const std::string &sensorConf) = 0;
+
+    /**
      * @brief Allow drop first frame
      * @param dropFrame - Drop the first frame if true
      * @return void
@@ -593,6 +630,12 @@ class SDK_API Camera {
      * @return Status
      */
     virtual aditof::Status setPlaybackFile(std::string &filePath) = 0;
+
+    /** 
+     * @brief Get the number of frames written during recording (depth+RGB pairs)
+     * @return uint32_t - number of complete frames written
+     */
+    virtual uint32_t getRecordedFrameCount() const = 0;
 
     /**
      * @brief Get depth processing parameters for a specific mode

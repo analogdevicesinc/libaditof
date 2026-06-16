@@ -43,6 +43,11 @@
 #include <memory>
 #include <unordered_map>
 
+#ifdef HAS_RGB_CAMERA
+#include <aditof/ar0234_sensor.h>
+#include <memory>
+#endif
+
 #define NR_READADSD3500CCB 3
 
 // XYZ table rotation utility function
@@ -199,6 +204,14 @@ class CameraItof : public aditof::Camera {
 
     aditof::Status startRecording(std::string &filePath) override;
     aditof::Status stopRecording() override;
+    uint32_t getRecordedFrameCount() const override;
+
+    /**
+     * @brief Set RGB sensor detection information from enumeration
+     * @param[in] devicePath - Path to RGB device (e.g., "/dev/video0")
+     * @param[in] isDetected - Whether RGB hardware was detected
+     */
+    void setRGBSensorInfo(const std::string &devicePath, bool isDetected);
 
     aditof::Status setPlaybackFile(std::string &filePath) override;
     void UpdateDepthParamsMap(bool update, const char *index,
@@ -253,6 +266,7 @@ class CameraItof : public aditof::Camera {
     bool m_abEnabled;
     bool m_confEnabled;
     bool m_xyzEnabled;
+    bool m_rgbEnabled;
     bool m_xyzSetViaApi;
     bool m_pcmFrame;
     std::vector<aditof::DepthSensorModeDetails> m_availableSensorModeDetails;
@@ -279,6 +293,15 @@ class CameraItof : public aditof::Camera {
     bool m_dropFrameOnce; // Per-frame state; m_dropFirstFrame moved to m_config
     bool m_rotationEnabled =
         false; // True if XYZ tables and frames are rotated 90° CW
+
+#ifdef HAS_RGB_CAMERA
+    std::unique_ptr<aditof::RGBSensor> m_rgbSensor;
+    struct {
+        bool detected;    // Hardware detection result from enumeration
+        bool enabled;     // Runtime operational state after successful open()
+        std::string path; // Device path (e.g., "/dev/video0")
+    } m_rgbStatus;
+#endif
 };
 
 #endif // CAMERA_ITOF_H

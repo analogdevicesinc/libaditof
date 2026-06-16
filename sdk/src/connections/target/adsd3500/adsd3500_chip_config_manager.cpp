@@ -476,12 +476,35 @@ aditof::Status Adsd3500ChipConfigManager::configureFrameContent(
                 value = it->second;
                 bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
                 if (bitsInAB[modeDetails.modeNumber] != 0) {
+#ifdef HAS_RGB_CAMERA
+                    // Mutual exclusion: add AB only if RGB is NOT enabled
+                    auto rgbIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
+                    bool rgbEnabledInConfig = (rgbIt != iniFile.iniKeyValPairs.end()) &&
+                                             (rgbIt->second == "1");
+                    if (rgbEnabledInConfig) {
+                        bitsInAB[modeDetails.modeNumber] = 0; // Force disable AB
+                    } else {
+                        modeDetails.frameContent.push_back("ab");
+                    }
+#else
                     modeDetails.frameContent.push_back("ab");
+#endif
                 }
             } else {
                 LOG(WARNING) << "bits In AB was not found in parameter list, "
                                 "discarding it";
             }
+
+#ifdef HAS_RGB_CAMERA
+            {
+                auto rgbCfgIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
+                bool addRGB = (rgbCfgIt != iniFile.iniKeyValPairs.end()) &&
+                              (rgbCfgIt->second == "1");
+                if (addRGB) {
+                    modeDetails.frameContent.push_back("rgb");
+                }
+            }
+#endif
 
             // Check for Confidence frame
             it = iniFile.iniKeyValPairs.find("bitsInConf");
@@ -529,12 +552,36 @@ aditof::Status Adsd3500ChipConfigManager::configureFrameContent(
                 value = it->second;
                 bitsInAB[modeDetails.modeNumber] = (uint8_t)std::stoi(value);
                 if (bitsInAB[modeDetails.modeNumber] != 0) {
+#ifdef HAS_RGB_CAMERA
+                    auto rgbIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
+                    bool rgbEnabledInConfig = (rgbIt != iniFile.iniKeyValPairs.end()) &&
+                                             (rgbIt->second == "1");
+                    if (rgbEnabledInConfig) {
+                        LOG(INFO) << "Mode " << modeDetails.modeNumber
+                                  << ": RGB enabled, AB disabled (mutual exclusion)";
+                        bitsInAB[modeDetails.modeNumber] = 0;
+                    } else {
+                        modeDetails.frameContent.push_back("ab");
+                    }
+#else
                     modeDetails.frameContent.push_back("ab");
+#endif
                 }
             } else {
                 LOG(WARNING) << "bits In AB was not found in parameter list, "
                                 "discarding it";
             }
+
+#ifdef HAS_RGB_CAMERA
+            {
+                auto rgbCfgIt = iniFile.iniKeyValPairs.find("rgbCameraEnable");
+                bool addRGB = (rgbCfgIt != iniFile.iniKeyValPairs.end()) &&
+                              (rgbCfgIt->second == "1");
+                if (addRGB) {
+                    modeDetails.frameContent.push_back("rgb");
+                }
+            }
+#endif
 
             bitsInConf[modeDetails.modeNumber] = 0;
             modeDetails.frameContent.push_back("metadata");

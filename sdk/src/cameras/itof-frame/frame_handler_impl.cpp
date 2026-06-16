@@ -695,6 +695,7 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
     uint16_t *depthFrame;
     float *confFrame;
     uint16_t *xyzFrame;
+    uint8_t *rgbFrame;
     FrameDetails frameDetails;
 
     status = frame->getMetadataStruct(metadata);
@@ -703,16 +704,39 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
         return status;
     }
 
-    status = frame->getData("ab", &abFrame);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to get AB location";
-        return status;
+    // Try to get AB frame - optional (may be absent when RGB is active)
+    if (frame->haveDataType("ab")) {
+        status = frame->getData("ab", &abFrame);
+        if (status != Status::OK) {
+            LOG(WARNING) << "AB frame exists but failed to get location";
+            abFrame = nullptr;
+        }
+    } else {
+        LOG(INFO) << "AB frame not available, skipping AB snapshot";
+        abFrame = nullptr;
     }
 
-    status = frame->getData("depth", &depthFrame);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to get depth location";
-        return status;
+    // Try to get depth frame - optional
+    if (frame->haveDataType("depth")) {
+        status = frame->getData("depth", &depthFrame);
+        if (status != Status::OK) {
+            LOG(WARNING) << "Depth frame exists but failed to get location";
+            depthFrame = nullptr;
+        }
+    } else {
+        LOG(INFO) << "Depth frame not available, skipping depth snapshot";
+        depthFrame = nullptr;
+    }
+
+    // Try to get RGB frame if it exists
+    if (frame->haveDataType("rgb")) {
+        status = frame->getData("rgb", (uint16_t **)&rgbFrame);
+        if (status != Status::OK) {
+            LOG(WARNING) << "RGB frame exists but failed to get location";
+            rgbFrame = nullptr;
+        }
+    } else {
+        rgbFrame = nullptr;
     }
 
     // Only get confidence frame if it exists
@@ -762,6 +786,8 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
     std::string confFileName = stringBaseFileName + "_" +
                                std::to_string(metadata.frameNumber) +
                                "_conf.jpg";
+    std::string rgbFileName = stringBaseFileName + "_" +
+                              std::to_string(metadata.frameNumber) + "_rgb.jpg";
 
     SaveMetaAsTxt(metadataFileName.c_str(), &metadata);
 
@@ -770,18 +796,22 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
                                 frameDetails.width, frameDetails.height);
     }
 
-    SaveUint16AsJPEG(depthFileName.c_str(), depthFrame, frameDetails.width,
-                     frameDetails.height);
-    if (depth != nullptr) {
-        SaveRGBAsJPEG(depthProcessedFileName.c_str(), depth, frameDetails.width,
-                      frameDetails.height);
+    if (depthFrame != nullptr) {
+        SaveUint16AsJPEG(depthFileName.c_str(), depthFrame, frameDetails.width,
+                         frameDetails.height);
+        if (depth != nullptr) {
+            SaveRGBAsJPEG(depthProcessedFileName.c_str(), depth,
+                          frameDetails.width, frameDetails.height);
+        }
     }
 
-    SaveUint16AsJPEG(abFileName.c_str(), abFrame, frameDetails.width,
-                     frameDetails.height);
-    if (ab != nullptr) {
-        SaveRGBAsJPEG(abProcessedFileName.c_str(), ab, frameDetails.width,
-                      frameDetails.height);
+    if (abFrame != nullptr) {
+        SaveUint16AsJPEG(abFileName.c_str(), abFrame, frameDetails.width,
+                         frameDetails.height);
+        if (ab != nullptr) {
+            SaveRGBAsJPEG(abProcessedFileName.c_str(), ab, frameDetails.width,
+                          frameDetails.height);
+        }
     }
 
     if (confFrame != nullptr) {
@@ -791,6 +821,26 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
         } else {
             SaveUint16AsJPEG(confFileName.c_str(), (uint16_t *)confFrame,
                              frameDetails.width, frameDetails.height);
+        }
+    }
+
+    // Save RGB frame if available (convert from NV12 BGR output to RGB JPEG)
+    if (rgbFrame != nullptr) {
+        FrameDataDetails rgbDetails;
+        status = frame->getDataDetails("rgb", rgbDetails);
+        if (status == Status::OK) {
+            // Convert BGR to RGB (swap R and B channels)
+            size_t totalPixels = rgbDetails.width * rgbDetails.height;
+            std::vector<uint8_t> rgbConverted(totalPixels * 3);
+            for (size_t i = 0; i < totalPixels; ++i) {
+                rgbConverted[i * 3 + 0] = rgbFrame[i * 3 + 2]; // R
+                rgbConverted[i * 3 + 1] = rgbFrame[i * 3 + 1]; // G
+                rgbConverted[i * 3 + 2] = rgbFrame[i * 3 + 0]; // B
+            }
+            SaveRGBAsJPEG(rgbFileName.c_str(), rgbConverted.data(),
+                          rgbDetails.width, rgbDetails.height);
+        } else {
+            LOG(WARNING) << "Failed to get RGB frame details for snapshot";
         }
     }
 

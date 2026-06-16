@@ -21,17 +21,15 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-#ifndef NETWORK_SENSOR_ENUMERATOR_H
-#define NETWORK_SENSOR_ENUMERATOR_H
+#ifndef TARGET_SENSOR_ENUMERATOR_H
+#define TARGET_SENSOR_ENUMERATOR_H
 
+#include "aditof/sensor_definitions.h"
 #include "aditof/sensor_enumerator_interface.h"
 
-#include <string>
-
-class NetworkSensorEnumerator : public aditof::SensorEnumeratorInterface {
+class TargetSensorEnumerator : public aditof::SensorEnumeratorInterface {
   public:
-    NetworkSensorEnumerator(const std::string &ip);
-    ~NetworkSensorEnumerator();
+    ~TargetSensorEnumerator() = default;
 
   public: // implements SensorEnumeratorInterface
     virtual aditof::Status searchSensors() override;
@@ -49,13 +47,41 @@ class NetworkSensorEnumerator : public aditof::SensorEnumeratorInterface {
                        std::string &devicePath) const override;
 
   private:
-    std::string m_ip;
-    std::string m_imageSensorsInfo;
+    struct RGBSensorInfo {
+        std::string devicePath; // e.g., "/dev/video0"
+        std::string sensorName; // e.g., "AR0234"
+        bool isAvailable;
+    };
 
-    static int sensorCount;
+    std::string getVersionOfComponent(const std::string &component) const;
+    aditof::Status getRGBSensors(std::vector<RGBSensorInfo> &rgbSensors) const;
+    enum class SensorType {
+        SENSOR_ADSD3500 //!< ADSD3500 sensor
+    };
+
+    struct SensorInfo {
+        SensorType sensorType;
+        std::string driverPath;
+        std::string subDevPath;
+        std::string captureDev;
+    };
+
+    struct SoftwareVersions {
+        std::string cardVersion;
+        std::string kernelVersion;
+        std::string uBootVersion;
+    };
+
+    aditof::Status searchRGBSensors();
+    bool isRGBSensorAvailable(const std::string &devicePath) const;
+
+    std::vector<SensorInfo> m_sensorsInfo;
+    std::vector<RGBSensorInfo> m_rgbSensorsInfo;
+    std::string m_cardImageVersion;
     std::string m_uBootVersion;
     std::string m_kernelVersion;
-    std::string m_sdVersion;
+    std::string m_rfsVersion;
+    std::string m_sdkVersion;
 };
 
-#endif // NETWORK_SENSOR_ENUMERATOR_H
+#endif // TARGET_SENSOR_ENUMERATOR_H
