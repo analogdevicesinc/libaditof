@@ -41,6 +41,11 @@
 #include "tofi/tofi_config.h"
 #include "tofi/tofi_util.h"
 
+#ifdef HAS_RGB_CAMERA
+// RGB camera integration
+#include "aditof/ar0234_sensor.h" // For RGBSensor and RGBFrame
+#endif
+
 #define OUTPUT_DEVICE "/dev/video1"
 #define CHIP_ID_SINGLE 0x5931
 #define DEFAULT_MODE 0
@@ -144,6 +149,10 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
                                           uint32_t calDataLength, uint16_t mode,
                                           bool ispEnabled) override;
     aditof::Status processBuffer(uint16_t *buffer) override;
+#ifdef HAS_RGB_CAMERA
+    aditof::Status processBuffer(uint16_t *depthBuffer,
+                                 aditof::RGBFrame *rgbFrame);
+#endif
     TofiConfig *getTofiConfig() const override;
     aditof::Status getDepthComputeVersion(uint8_t &enabled) const override;
     void setLensScatterCompensationEnabled(bool enabled) override {
@@ -159,6 +168,14 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
 
     void startThreads() override;
     void stopThreads() override;
+
+#ifdef HAS_RGB_CAMERA
+    // RGB sensor management
+    aditof::Status setRGBSensor(aditof::RGBSensor *sensor);
+    aditof::Status enableRGBCapture(bool enable);
+    bool isRGBCaptureEnabled() const { return m_rgbCaptureEnabled; }
+    aditof::Status getLatestRGBFrame(aditof::RGBFrame &frame);
+#endif
 
     // Legacy method (keeping for backward compatibility)
     TofiConfig *getTofiCongfig() const { return getTofiConfig(); }
@@ -190,6 +207,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     void captureFrameThread();
     void processThread();
     void calculateFrameSize(uint8_t &bitsInAB, uint8_t &bitsInConf);
+#ifdef HAS_RGB_CAMERA
+    void captureRGBFrameThread();
+#endif
     void rotateEntireToFiBuffer(const uint16_t *src, uint16_t *dst,
                                 uint32_t width, uint32_t height,
                                 uint32_t bufferSize);
@@ -209,10 +229,23 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
 
     struct VideoDev *m_inputVideoDev;
 
+#ifdef HAS_RGB_CAMERA
+    // RGB sensor integration
+    aditof::RGBSensor *m_rgbSensor;
+    bool m_rgbCaptureEnabled;
+    std::atomic<uint64_t> m_totalRGBCaptured;
+    std::atomic<uint64_t> m_totalRGBFailures;
+    ThreadSafeQueue<aditof::RGBFrame> m_rgb_frame_Q;
+#endif
+
     struct Tofi_v4l2_buffer {
         std::shared_ptr<uint8_t> data;
         size_t size = 0;
         std::shared_ptr<uint16_t> tofiBuffer;
+#ifdef HAS_RGB_CAMERA
+        aditof::RGBFrame rgbFrame;   // RGB frame data (captured by separate thread)
+        bool hasRGB = false;         // Flag indicating if RGB data is valid
+#endif
     };
 
     // Thread-safe pool of empty raw frame buffers for use by capture thread
@@ -270,7 +303,14 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
 
   private:
     aditof::Status automaticStop();
-    aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize);
+    aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize,
+                              bool incrementCount = true);
+    std::atomic<uint32_t> m_frames_written{0};
+
+  public:
+    uint32_t getRecordedFrameCount() const { return m_frames_written.load(); }
+
+  private:
     enum StreamType { ST_STOP, ST_RECORD, ST_PLAYBACK } m_state;
     std::ofstream m_stream_file_out;
     std::ifstream m_stream_file_in;
