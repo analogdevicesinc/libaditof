@@ -161,6 +161,33 @@ file(GLOB OFFLINE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/connections/offline/*.h
 )
 
+# RGB Camera sources (GStreamer-based - conditional)
+if(WITH_RGB_CAMERA)
+    set(RGB_CAMERA_COMMON_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/ar0234_sensor.cpp
+    )
+    set(RGB_CAMERA_COMMON_HEADERS
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/ar0234_sensor.h
+    )
+
+    if(NOT DEFINED RGB_CAMERA_BACKEND OR RGB_CAMERA_BACKEND STREQUAL "GSTREAMER")
+        set(RGB_CAMERA_BACKEND "GSTREAMER")
+        list(APPEND RGB_CAMERA_COMMON_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/gstreamer_frame_grabber.cpp
+        )
+        list(APPEND RGB_CAMERA_COMMON_HEADERS
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/gstreamer_frame_grabber.h
+        )
+        add_definitions(-DHAS_GSTREAMER_BACKEND)
+        message(STATUS "RGB Camera backend: GStreamer")
+    endif()
+
+    set(RGB_CAMERA_ALL_SOURCES ${RGB_CAMERA_COMMON_SOURCES})
+    set(RGB_CAMERA_ALL_HEADERS ${RGB_CAMERA_COMMON_HEADERS})
+    add_definitions(-DHAS_RGB_CAMERA)
+    message(STATUS "RGB Camera support enabled")
+endif()
+
 # Create target and set properties
 add_library(${PROJECT_NAME} SHARED
     ${HEADERS}
@@ -175,6 +202,8 @@ add_library(${PROJECT_NAME} SHARED
     $<$<BOOL:${WITH_NETWORK}>:${NETWORK_HEADERS}>
     $<$<BOOL:${WITH_OFFLINE}>:${OFFLINE_SOURCES}>
     $<$<BOOL:${WITH_OFFLINE}>:${OFFLINE_HEADERS}>
+    $<$<BOOL:${WITH_RGB_CAMERA}>:${RGB_CAMERA_ALL_SOURCES}>
+    $<$<BOOL:${WITH_RGB_CAMERA}>:${RGB_CAMERA_ALL_HEADERS}>
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE crc32)
@@ -296,6 +325,25 @@ endif()
 # Link dl for dynamic loading (used by tofi libraries on target)
 if(UNIX)
     target_link_libraries(${PROJECT_NAME} PUBLIC ${CMAKE_DL_LIBS})
+endif()
+
+# GStreamer dependencies for RGB camera
+if(WITH_RGB_CAMERA AND RGB_CAMERA_BACKEND STREQUAL "GSTREAMER")
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0>=1.14)
+    pkg_check_modules(GSTREAMER_APP REQUIRED gstreamer-app-1.0>=1.14)
+
+    target_include_directories(${PROJECT_NAME} PRIVATE
+        ${GSTREAMER_INCLUDE_DIRS}
+        ${GSTREAMER_APP_INCLUDE_DIRS}
+    )
+
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+        ${GSTREAMER_LIBRARIES}
+        ${GSTREAMER_APP_LIBRARIES}
+    )
+
+    message(STATUS "GStreamer libraries linked")
 endif()
 
 if ( ON_TARGET AND UNIX )

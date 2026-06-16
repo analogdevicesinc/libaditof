@@ -82,6 +82,15 @@ class SensorEnumeratorInterface {
      * @return Status
      */
     virtual aditof::Status getSdVersion(std::string &sdVersion) const = 0;
+
+    /**
+     * @brief Check if RGB sensor is available
+     * @param[out] isAvailable - true if RGB sensor detected, false otherwise
+     * @param[out] devicePath - path to RGB device (e.g., "/dev/video0")
+     * @return Status
+     */
+    virtual aditof::Status getRGBSensorStatus(bool &isAvailable,
+                                               std::string &devicePath) const = 0;
 };
 
 } // namespace aditof
