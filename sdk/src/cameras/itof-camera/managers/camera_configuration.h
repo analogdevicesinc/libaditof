@@ -25,6 +25,7 @@
 #define CAMERA_CONFIGURATION_H
 
 #include <aditof/status_definitions.h>
+#include <cstdint>
 #include <map>
 #include <string>
 #include <vector>
