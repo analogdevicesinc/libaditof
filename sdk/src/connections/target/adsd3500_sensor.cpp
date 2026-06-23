@@ -1772,8 +1772,16 @@ aditof::Status Adsd3500Sensor::queryAdsd3500() {
                 break;
             }
             default: {
-                LOG(WARNING) << "Unknown CCB version read from ADSD3500: "
-                             << ccb_version;
+                if (ccb_version > 3) {
+                    LOG(INFO) << "CCB version " << static_cast<int>(ccb_version)
+                              << " is newer than known versions; treating as "
+                                 "CCB master.";
+                    m_implData->ccbVersion = CCBVersion::CCB_VERSION2;
+                } else {
+                    LOG(WARNING) << "Unknown CCB version read from ADSD3500: "
+                                 << static_cast<int>(ccb_version);
+                }
+                break;
             }
             } // switch (ccb_version)
 
