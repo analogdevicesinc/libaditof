@@ -107,7 +107,8 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 BufferProcessor::BufferProcessor()
     : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE),
       m_capture_to_process_Q(MAX_QUEUE_SIZE),
-      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE) {
+      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE),
+      m_rgb_frame_Q(MAX_QUEUE_SIZE) {
 
     m_outputFrameWidth = 0;
     m_outputFrameHeight = 0;

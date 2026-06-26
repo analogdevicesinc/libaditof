@@ -165,6 +165,13 @@ class BufferProcessorInterface {
      * @brief Stops the capture and processing worker threads.
      */
     virtual void stopThreads() = 0;
+
+    /**
+     * @brief Returns the number of frames written during the current recording session.
+     *
+     * @return Frame count written so far
+     */
+    virtual uint32_t getRecordedFrameCount() const = 0;
 };
 
 } // namespace aditof

@@ -173,6 +173,14 @@ class CameraItof : public aditof::Camera {
     getDepthParamtersMap(uint16_t mode,
                          std::map<std::string, std::string> &params) override;
 
+  public:
+    /**
+     * @brief Set RGB sensor detection information from enumeration
+     * @param[in] devicePath - Path to RGB device (e.g., "/dev/video0")
+     * @param[in] isDetected - Whether RGB hardware was detected
+     */
+    void setRGBSensorInfo(const std::string &devicePath, bool isDetected);
+
   private:
     /**
      * Configure the sensor with various settings that affect the frame type.
@@ -205,13 +213,12 @@ class CameraItof : public aditof::Camera {
     aditof::Status startRecording(std::string &filePath) override;
     aditof::Status stopRecording() override;
     uint32_t getRecordedFrameCount() const override;
-
-    /**
-     * @brief Set RGB sensor detection information from enumeration
-     * @param[in] devicePath - Path to RGB device (e.g., "/dev/video0")
-     * @param[in] isDetected - Whether RGB hardware was detected
-     */
-    void setRGBSensorInfo(const std::string &devicePath, bool isDetected);
+    void normalizeABBuffer(uint16_t *abBuffer, uint16_t abWidth,
+                           uint16_t abHeight, bool advanceScaling,
+                           bool useLogScaling) override;
+    aditof::Status normalizeABFrame(aditof::Frame *frame, bool advanceScaling,
+                                    bool useLogScaling) override;
+    aditof::Status setSensorConfiguration(const std::string &sensorConf) override;
 
     aditof::Status setPlaybackFile(std::string &filePath) override;
     void UpdateDepthParamsMap(bool update, const char *index,

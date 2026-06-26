@@ -308,7 +308,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     std::atomic<uint32_t> m_frames_written{0};
 
   public:
-    uint32_t getRecordedFrameCount() const { return m_frames_written.load(); }
+    uint32_t getRecordedFrameCount() const override { return m_frames_written.load(); }
 
   private:
     enum StreamType { ST_STOP, ST_RECORD, ST_PLAYBACK } m_state;
