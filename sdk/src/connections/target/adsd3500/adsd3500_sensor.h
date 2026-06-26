@@ -186,6 +186,7 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
                                   uint32_t paramSize) override;
     aditof::Status stopRecording() override;
+    uint32_t getRecordedFrameCount() const;
 
   public: // V4lBufferAccessInterface implementation
     virtual aditof::Status waitForBuffer() override;
@@ -310,11 +311,4 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
 
     std::unique_ptr<aditof::Adsd3500Recorder>
         m_recorder; // Recording operations (implements RecordableInterface portion)
-
-    uint32_t getRecordedFrameCount() const {
-        if (m_bufferProcessor) {
-            return m_bufferProcessor->getRecordedFrameCount();
-        }
-        return 0;
-    }
 };

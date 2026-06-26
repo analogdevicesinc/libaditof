@@ -28,9 +28,12 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <string.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <linux/videodev2.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -191,6 +194,9 @@ Status PlatformSensorEnumerator::searchSensors() {
 
     LOG(INFO) << "Found " << m_sensorsInfo.size() << " ToF sensor(s)";
 
+    // Search for RGB sensor (no-op when HAS_RGB_CAMERA is not defined)
+    searchRGBSensors();
+
     // Retrieve version information
     m_uBootVersion = m_platform.getBootloaderVersion();
     m_kernelVersion = m_platform.getKernelVersion();
@@ -298,3 +304,62 @@ Status PlatformSensorEnumerator::getSdVersion(std::string &sdVersion) const {
     sdVersion = m_sdVersion;
     return sdVersion.empty() ? Status::GENERIC_ERROR : Status::OK;
 }
+
+Status PlatformSensorEnumerator::getRGBSensorStatus(
+    bool &isAvailable, std::string &devicePath) const {
+    isAvailable = m_rgbAvailable;
+    devicePath = m_rgbDevicePath;
+    return Status::OK;
+}
+
+#ifdef HAS_RGB_CAMERA
+bool PlatformSensorEnumerator::isRGBSensorAvailable(
+    const std::string &path) const {
+    struct stat st;
+    if (stat(path.c_str(), &st) != 0)
+        return false;
+
+    int fd = open(path.c_str(), O_RDWR | O_NONBLOCK);
+    if (fd < 0)
+        return false;
+
+    struct v4l2_capability cap;
+    if (ioctl(fd, VIDIOC_QUERYCAP, &cap) < 0) {
+        close(fd);
+        return false;
+    }
+    if (!(cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)) {
+        close(fd);
+        return false;
+    }
+    std::string card = reinterpret_cast<const char *>(cap.card);
+    close(fd);
+    // Reject the ToF sensor; accept any other video capture device as RGB
+    return card.find("adsd3500") == std::string::npos;
+}
+
+bool PlatformSensorEnumerator::searchRGBSensors() {
+    m_rgbAvailable = false;
+    m_rgbDevicePath.clear();
+
+    for (int i = 0; i < 10; ++i) {
+        std::string dev = "/dev/video" + std::to_string(i);
+        if (isRGBSensorAvailable(dev)) {
+            m_rgbAvailable = true;
+            m_rgbDevicePath = dev;
+            LOG(INFO) << "Found RGB sensor at " << dev;
+            return true;
+        }
+    }
+    LOG(INFO) << "No RGB sensor found";
+    return false;
+}
+#else
+bool PlatformSensorEnumerator::isRGBSensorAvailable(
+    const std::string & /*path*/) const {
+    return false;
+}
+bool PlatformSensorEnumerator::searchRGBSensors() {
+    return false;
+}
+#endif

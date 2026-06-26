@@ -216,6 +216,13 @@ class BufferProcessorInterface {
      * @return The primary or alternate mode number, whichever was delivered
      */
     virtual uint8_t getLastDeliveredModeNumber() const = 0;
+
+    /**
+     * @brief Returns the number of frames written during the current recording session.
+     *
+     * @return Frame count written so far
+     */
+    virtual uint32_t getRecordedFrameCount() const = 0;
 };
 
 } // namespace aditof

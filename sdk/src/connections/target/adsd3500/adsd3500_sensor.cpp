@@ -2207,4 +2207,11 @@ aditof::Status Adsd3500Sensor::stopRecording() {
     return processor->stopRecording();
 }
 
+uint32_t Adsd3500Sensor::getRecordedFrameCount() const {
+    if (m_bufferProcessor) {
+        return m_bufferProcessor->getRecordedFrameCount();
+    }
+    return 0;
+}
+
 #pragma endregion
