@@ -33,6 +33,7 @@
 #include <aditof/frame_definitions.h>
 #include <aditof/frame_handler.h>
 #include <aditof/frame_operations.h>
+#include <aditof/rgbd_coregistration.h>
 #include <aditof/status_definitions.h>
 #include <aditof/system.h>
 #include <aditof/version.h>
