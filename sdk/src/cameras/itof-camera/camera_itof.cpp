@@ -3073,3 +3073,23 @@ aditof::Status CameraItof::getModeFusion(bool &enabled, uint8_t &srMode,
     return aditof::Status::OK;
 }
 
+void CameraItof::normalizeABBuffer(uint16_t * /*abBuffer*/,
+                                   uint16_t /*abWidth*/,
+                                   uint16_t /*abHeight*/,
+                                   bool /*advanceScaling*/,
+                                   bool /*useLogScaling*/) {
+    // Normalization is performed in the viewer layer; not implemented in SDK core.
+}
+
+aditof::Status CameraItof::normalizeABFrame(aditof::Frame * /*frame*/,
+                                             bool /*advanceScaling*/,
+                                             bool /*useLogScaling*/) {
+    // Normalization is performed in the viewer layer; not implemented in SDK core.
+    return aditof::Status::UNAVAILABLE;
+}
+
+aditof::Status
+CameraItof::setSensorConfiguration(const std::string & /*sensorConf*/) {
+    // Configuration table selection is handled via JSON config; not a runtime API.
+    return aditof::Status::UNAVAILABLE;
+}

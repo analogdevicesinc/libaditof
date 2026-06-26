@@ -49,6 +49,12 @@ class PlatformSensorEnumerator : public SensorEnumeratorInterface {
     Status getUbootVersion(std::string &uBootVersion) const override;
     Status getKernelVersion(std::string &kernelVersion) const override;
     Status getSdVersion(std::string &sdVersion) const override;
+    Status getRGBSensorStatus(bool &isAvailable,
+                              std::string &devicePath) const override;
+
+  private:
+    bool searchRGBSensors();
+    bool isRGBSensorAvailable(const std::string &devicePath) const;
 
   private:
     platform::Platform m_platform;
@@ -56,6 +62,8 @@ class PlatformSensorEnumerator : public SensorEnumeratorInterface {
     std::string m_uBootVersion;
     std::string m_kernelVersion;
     std::string m_sdVersion;
+    bool m_rgbAvailable{false};
+    std::string m_rgbDevicePath;
 };
 
 } // namespace aditof
