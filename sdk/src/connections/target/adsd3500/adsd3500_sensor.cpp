@@ -143,8 +143,8 @@ struct Adsd3500Sensor::ImplData {
         ctrlBuf; /**< Buffer for ISP control commands and responses */
 
     ImplData()
-        : numVideoDevs(1),
-          videoDevs(nullptr), modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
+        : numVideoDevs(1), videoDevs(nullptr),
+          modeDetails{0, {}, 0, 0, 0, 0, 0, 0, 0, 0, {}} {
         ccbVersion = CCBVersion::CCB_UNKNOWN;
         imagerType = SensorImagerType::IMAGER_UNKNOWN;
     }
@@ -313,20 +313,24 @@ aditof::Status Adsd3500Sensor::open() {
         return Status::GENERIC_ERROR;
     }
 
-    // Close file descriptors and delete any existing videoDevs to prevent leaks on repeated open() calls
+    // On repeated open() calls reset file descriptors in-place rather than
+    // delete+reallocate. m_protocolManager, m_bufferManager, and
+    // m_bufferProcessor all hold raw pointers into this array; freeing it
+    // creates a use-after-free: if any heap allocation (e.g. the 104 MB
+    // setVideoProperties() buffers) lands on the freed block before
+    // adsd3500_write_cmd() runs, the stale sfd reads as garbage (32766/32767)
+    // and every subsequent ioctl fails with EBADF. first-frame avoids this only
+    // by luck — the chip command fires before the heap is disturbed.
     if (m_implData->videoDevs) {
-        // Use buffer manager to clean up buffers if available
+        // Clean up V4L2 mmap buffers but keep the array itself
         if (m_bufferManager) {
             for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
-                struct VideoDev *oldDev = &m_implData->videoDevs[i];
-                m_bufferManager->cleanupBuffers(oldDev);
+                m_bufferManager->cleanupBuffers(&m_implData->videoDevs[i]);
             }
         }
 
         for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
             struct VideoDev *oldDev = &m_implData->videoDevs[i];
-
-            // Close file descriptors before deleting
             if (oldDev->fd != -1) {
                 close(oldDev->fd);
                 oldDev->fd = -1;
@@ -335,17 +339,18 @@ aditof::Status Adsd3500Sensor::open() {
                 close(oldDev->sfd);
                 oldDev->sfd = -1;
             }
+            oldDev->started = false;
+            // videoBuffers/nVideoBuffers already reset by cleanupBuffers above
         }
-        delete[] m_implData->videoDevs;
-        m_implData->videoDevs = nullptr;
-    }
-
-    m_implData->videoDevs =
-        new (std::nothrow) VideoDev[m_implData->numVideoDevs];
-    if (!m_implData->videoDevs) {
-        LOG(ERROR) << "Failed to allocate memory for "
-                   << m_implData->numVideoDevs << " video devices";
-        return Status::GENERIC_ERROR;
+        // Array stays at the same address — all manager pointers remain valid
+    } else {
+        m_implData->videoDevs =
+            new (std::nothrow) VideoDev[m_implData->numVideoDevs];
+        if (!m_implData->videoDevs) {
+            LOG(ERROR) << "Failed to allocate memory for "
+                       << m_implData->numVideoDevs << " video devices";
+            return Status::GENERIC_ERROR;
+        }
     }
 
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
@@ -789,11 +794,8 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
     }
 
     if (m_isOpen) { // open the device if it's been closed
-        // free the allocated new buffer
-        if (m_implData->videoDevs) {
-            delete[] m_implData->videoDevs;
-            m_implData->videoDevs = nullptr;
-        }
+        // Do NOT delete videoDevs here — open() now resets it in-place to keep
+        // m_protocolManager/m_bufferManager/m_bufferProcessor pointers valid.
         m_isOpen = false;
         status = open();
         if (status != aditof::Status::OK) {

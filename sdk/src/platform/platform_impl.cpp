@@ -426,7 +426,7 @@ int Platform::getMipiOutputSpeed() const {
 #ifdef NVIDIA
     return 1; // 2.5 Gbps for NVIDIA Jetson
 #elif defined(RPI)
-    return 1; // 2.5 Gbps for Raspberry Pi 
+    return 1; // 2.5 Gbps for Raspberry Pi
 #else
     return -1; // Not configured for other platforms
 #endif
