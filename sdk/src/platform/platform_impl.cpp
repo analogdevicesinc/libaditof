@@ -425,6 +425,8 @@ Status Platform::findToFSensors(std::vector<SensorInfo> &sensors) {
 int Platform::getMipiOutputSpeed() const {
 #ifdef NVIDIA
     return 1; // 2.5 Gbps for NVIDIA Jetson
+#elif defined(RPI)
+    return 1; // 2.5 Gbps for Raspberry Pi 
 #else
     return -1; // Not configured for other platforms
 #endif
@@ -441,6 +443,8 @@ int Platform::getMipiOutputSpeed() const {
 int Platform::getDeskewEnabled() const {
 #ifdef NVIDIA
     return 1; // Enable deskew for NVIDIA Jetson
+#elif defined(RPI)
+    return 1; // Enable deskew for Raspberry Pi
 #else
     return -1; // Not configured for other platforms
 #endif
