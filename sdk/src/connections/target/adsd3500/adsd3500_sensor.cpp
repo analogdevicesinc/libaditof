@@ -401,12 +401,9 @@ aditof::Status Adsd3500Sensor::open() {
             m_protocolManager->updateVideoDevices(m_implData->videoDevs);
         }
 
-        // Initialize interrupt manager BEFORE reset (required for callback registration)
-        if (!m_interruptManager) {
-            m_interruptManager = std::make_unique<Adsd3500InterruptManager>(
-                m_protocolManager.get(), m_chipStatus, m_imagerStatus,
-                m_interruptAvailable, m_interruptCallbackMap);
-        }
+        m_interruptManager = std::make_unique<Adsd3500InterruptManager>(
+            m_protocolManager.get(), m_chipStatus, m_imagerStatus,
+            m_interruptAvailable, m_interruptCallbackMap);
 
         // VideoDeviceDriver and SubdeviceDriver already initialized and opened above
 
