@@ -300,8 +300,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
         // from m_v4l2_input_buffer_Q; must not be recycled into that pool.
         bool skipRawBufferRecycle = false;
 #ifdef HAS_RGB_CAMERA
-        aditof::RGBFrame rgbFrame;   // RGB frame data (captured by separate thread)
-        bool hasRGB = false;         // Flag indicating if RGB data is valid
+        aditof::RGBFrame
+            rgbFrame;        // RGB frame data (captured by separate thread)
+        bool hasRGB = false; // Flag indicating if RGB data is valid
 #endif
     };
 
@@ -351,6 +352,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
 
     std::thread m_captureThread;
     std::thread m_processingThread;
+#ifdef HAS_RGB_CAMERA
+    std::thread m_rgbThread;
+#endif
 
     std::atomic<bool> stopThreadsFlag;
     bool streamRunning = false;
@@ -414,7 +418,9 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     std::atomic<uint32_t> m_frames_written{0};
 
   public:
-    uint32_t getRecordedFrameCount() const override { return m_frames_written.load(); }
+    uint32_t getRecordedFrameCount() const override {
+        return m_frames_written.load();
+    }
 
   private:
     enum StreamType { ST_STOP, ST_RECORD, ST_PLAYBACK } m_state;

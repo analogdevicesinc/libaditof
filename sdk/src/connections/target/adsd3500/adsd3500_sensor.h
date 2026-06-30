@@ -155,7 +155,9 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     virtual aditof::Status getLastDeliveredFrameMode(uint8_t &mode) override;
 
     // Get BufferProcessor for RGB integration
-    aditof::BufferProcessorInterface *getBufferProcessor() { return m_bufferProcessor; }
+    aditof::BufferProcessorInterface *getBufferProcessor() {
+        return m_bufferProcessor;
+    }
 
   public: // implements Adsd3500HardwareInterface
     virtual aditof::Status adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
