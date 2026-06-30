@@ -340,6 +340,7 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
 aditof::Status CameraItof::start() {
     using namespace aditof;
 
+    // Start depth sensor (V4L2 STREAMON) first
     Status status = m_depthSensor->start();
     if (Status::OK != status) {
         LOG(ERROR) << "Error starting adsd3500.";
@@ -348,13 +349,29 @@ aditof::Status CameraItof::start() {
     m_devStreaming = true;
 
 #ifdef HAS_RGB_CAMERA
-    // Start RGB sensor AFTER depth sensor to avoid NVARGUS/V4L2 interference
+    // Start RGB sensor AFTER depth with a delay to let ToF fully initialize
+    // before Argus starts. Starting Argus before V4L2 STREAMON is settled
+    // disrupts the ADSD3500 MIPI link and stops V4L2 frame delivery.
     if (m_rgbEnabled && m_rgbSensor) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
         if (m_rgbSensor->start() != Status::OK) {
             LOG(WARNING)
                 << "Failed to start RGB sensor; continuing without RGB";
+            m_rgbStatus.enabled = false;
         } else {
             LOG(INFO) << "RGB sensor started";
+            // Wire RGB sensor to BufferProcessor NOW that Argus is fully PLAYING
+            auto adsd3500Sensor =
+                std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+            if (adsd3500Sensor) {
+                auto *bufProc = dynamic_cast<BufferProcessor *>(
+                    adsd3500Sensor->getBufferProcessor());
+                if (bufProc) {
+                    bufProc->setRGBSensor(m_rgbSensor.get());
+                    bufProc->enableRGBCapture(true);
+                    LOG(INFO) << "RGB sensor wired to BufferProcessor";
+                }
+            }
         }
     }
 #endif
@@ -744,11 +761,11 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             } else if (item == "conf") {
                 fDataDetails.subelementSize = sizeof(float);
             } else if (item == "rgb") {
-                // AR0234: 1920x1200, BGRx = 4 bytes per pixel
+                // AR0234: 1920x1200, BGR = 3 bytes per pixel (NV12 converted)
                 fDataDetails.width = 1920;
                 fDataDetails.height = 1200;
-                fDataDetails.subelementSize = 1;
-                fDataDetails.subelementsPerElement = 4;
+                fDataDetails.subelementSize = sizeof(uint8_t);
+                fDataDetails.subelementsPerElement = 3;
             }
             fDataDetails.bytesCount = fDataDetails.width * fDataDetails.height *
                                       fDataDetails.subelementSize *
@@ -1087,19 +1104,8 @@ void CameraItof::setRGBSensorInfo(const std::string &devicePath,
     m_rgbStatus.enabled = true;
     m_rgbEnabled = true;
     LOG(INFO) << "RGB sensor opened successfully at " << devicePath;
-
-    // Connect to BufferProcessor (created in Adsd3500Sensor constructor)
-    auto adsd3500Sensor =
-        std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
-    if (adsd3500Sensor) {
-        auto *bufProc = dynamic_cast<BufferProcessor *>(
-            adsd3500Sensor->getBufferProcessor());
-        if (bufProc) {
-            bufProc->setRGBSensor(m_rgbSensor.get());
-            bufProc->enableRGBCapture(true);
-            LOG(INFO) << "RGB sensor connected to BufferProcessor";
-        }
-    }
+    // BufferProcessor wiring (setRGBSensor + enableRGBCapture) is deferred
+    // to start() so it happens only after Argus is fully PLAYING.
 #else
     (void)devicePath;
     (void)isDetected;
@@ -1224,16 +1230,27 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     }
 
 #ifdef HAS_RGB_CAMERA
-    if (m_rgbEnabled && m_rgbSensor) {
+    if (m_rgbStatus.enabled && m_rgbSensor) {
         uint16_t *rgbBuf = nullptr;
         if (frame->getData("rgb", &rgbBuf) == aditof::Status::OK && rgbBuf) {
-            aditof::RGBFrame rgbFrame;
-            if (m_rgbSensor->getFrame(rgbFrame, 200) == aditof::Status::OK &&
-                rgbFrame.isValid()) {
-                const size_t copyBytes = std::min(
-                    rgbFrame.data.size(), static_cast<size_t>(1920 * 1200 * 4));
-                memcpy(reinterpret_cast<uint8_t *>(rgbBuf),
-                       rgbFrame.data.data(), copyBytes);
+            FrameDataDetails rgbDetails;
+            frame->getDataDetails("rgb", rgbDetails);
+            auto adsd3500Sensor =
+                std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+            if (adsd3500Sensor) {
+                auto *bufProc = dynamic_cast<BufferProcessor *>(
+                    adsd3500Sensor->getBufferProcessor());
+                if (bufProc) {
+                    aditof::RGBFrame rgbFrame;
+                    if (bufProc->getLatestRGBFrame(rgbFrame) ==
+                            aditof::Status::OK &&
+                        rgbFrame.isValid()) {
+                        memcpy(reinterpret_cast<uint8_t *>(rgbBuf),
+                               rgbFrame.data.data(), rgbFrame.data.size());
+                    } else {
+                        memset(rgbBuf, 0, rgbDetails.bytesCount);
+                    }
+                }
             }
         }
     }

@@ -37,6 +37,7 @@
  * Thread-safe queue management ensures proper buffer lifecycle and prevents memory leaks.
  */
 
+#include "../nv12_to_rgb.h"
 #include "platform/platform_impl.h"
 #include <aditof/log.h>
 #include <aditof/utils.h>
@@ -107,8 +108,12 @@ static int xioctl(int fh, unsigned int request, void *arg) {
 BufferProcessor::BufferProcessor()
     : m_v4l2_input_buffer_Q(MAX_QUEUE_SIZE),
       m_capture_to_process_Q(MAX_QUEUE_SIZE),
-      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE),
-      m_rgb_frame_Q(MAX_QUEUE_SIZE) {
+      m_tofi_io_Buffer_Q(MAX_QUEUE_SIZE), m_process_done_Q(MAX_QUEUE_SIZE)
+#ifdef HAS_RGB_CAMERA
+      ,
+      m_rgb_frame_Q(MAX_QUEUE_SIZE)
+#endif
+{
 
     m_outputFrameWidth = 0;
     m_outputFrameHeight = 0;
@@ -714,9 +719,11 @@ void BufferProcessor::captureFrameThread() {
         if (v4l2_frame_holder != nullptr) {
             memcpy(v4l2_frame_holder.get(), pdata, buf_data_len);
         } else {
-            LOG(WARNING)
+            LOG(ERROR)
                 << __func__
-                << ": v4l2_frame_holder is nullptr skipping frame copy";
+                << ": v4l2_frame_holder is nullptr, requeuing V4L2 buffer";
+            // Critical: must requeue V4L2 buffer to avoid permanent starvation
+            enqueueInternalBufferPrivate(buf, dev);
             continue;
         }
 
@@ -1294,10 +1301,8 @@ void BufferProcessor::startThreads() {
     m_captureThread = std::thread(&BufferProcessor::captureFrameThread, this);
     m_processingThread = std::thread(&BufferProcessor::processThread, this);
 #ifdef HAS_RGB_CAMERA
-    if (m_rgbSensor && m_rgbCaptureEnabled) {
-        m_rgbThread =
-            std::thread(&BufferProcessor::captureRGBFrameThread, this);
-    }
+    // Always start RGB thread — captureRGBFrameThread checks m_rgbCaptureEnabled internally
+    m_rgbThread = std::thread(&BufferProcessor::captureRGBFrameThread, this);
 #endif
     sched_param param;
     param.sched_priority = THREAD_PRIORITY;
@@ -1319,7 +1324,19 @@ void BufferProcessor::stopThreads() {
 
     stopRecording();
 
-    // Join threads FIRST — wait for them to fully exit before touching any buffers
+    // Wait for queue drainage with timeout to prevent indefinite blocking
+    auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (((m_capture_to_process_Q.size() > 0) ||
+            (m_process_done_Q.size() > 0)) &&
+           std::chrono::steady_clock::now() < timeout) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (std::chrono::steady_clock::now() >= timeout) {
+        LOG(WARNING) << "stopThreads: Queue drainage timed out. Forcing thread "
+                        "shutdown.";
+    }
+
+    // Join threads FIRST - wait for them to fully exit before touching any buffers
     // This prevents race conditions where threads access buffers during cleanup
     if (m_captureThread.joinable()) {
         m_captureThread.join();
@@ -1390,23 +1407,37 @@ aditof::Status BufferProcessor::getLatestRGBFrame(aditof::RGBFrame &frame) {
 
 void BufferProcessor::captureRGBFrameThread() {
     LOG(INFO) << "captureRGBFrameThread: started";
+    bool loggedWaiting = false;
     while (!stopThreadsFlag.load(std::memory_order_acquire)) {
-        // Wait until the sensor is open and capturing (start() may be called after thread launch)
-        if (!m_rgbSensor || !m_rgbCaptureEnabled ||
-            !m_rgbSensor->isCapturing()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        if (!m_rgbSensor || !m_rgbCaptureEnabled) {
+            if (!loggedWaiting) {
+                LOG(INFO) << "captureRGBFrameThread: waiting for sensor...";
+                loggedWaiting = true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
-        aditof::RGBFrame frame;
-        aditof::Status status = m_rgbSensor->getFrame(frame, 200);
-        if (status == aditof::Status::OK && frame.isValid()) {
-            if (!m_rgb_frame_Q.push(std::move(frame),
-                                    std::chrono::milliseconds(50))) {
-                // Queue full — drop oldest to keep latency low
-                aditof::RGBFrame discarded;
-                m_rgb_frame_Q.pop(discarded, std::chrono::milliseconds(0));
-                m_rgb_frame_Q.push(std::move(frame),
-                                   std::chrono::milliseconds(50));
+        aditof::RGBFrame nv12Frame;
+        aditof::Status status = m_rgbSensor->getFrame(nv12Frame, 200);
+        if (status == aditof::Status::OK && nv12Frame.isValid()) {
+            // Convert NV12 to BGR (3 bytes/pixel) before queuing
+            aditof::RGBFrame bgrFrame;
+            bgrFrame.width = nv12Frame.width;
+            bgrFrame.height = nv12Frame.height;
+            bgrFrame.timestamp = nv12Frame.timestamp;
+            if (aditof::convertNV12toBGR(nv12Frame.data, bgrFrame.data,
+                                         nv12Frame.width, nv12Frame.height) ==
+                aditof::Status::OK) {
+                if (!m_rgb_frame_Q.push(std::move(bgrFrame),
+                                        std::chrono::milliseconds(50))) {
+                    aditof::RGBFrame discarded;
+                    m_rgb_frame_Q.pop(discarded, std::chrono::milliseconds(0));
+                    m_rgb_frame_Q.push(std::move(bgrFrame),
+                                       std::chrono::milliseconds(50));
+                }
+            } else {
+                LOG(ERROR)
+                    << "captureRGBFrameThread: NV12->BGR conversion failed";
             }
         } else if (status == aditof::Status::UNAVAILABLE) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));
