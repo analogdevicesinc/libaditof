@@ -29,11 +29,11 @@
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <linux/videodev2.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <linux/videodev2.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -305,8 +305,9 @@ Status PlatformSensorEnumerator::getSdVersion(std::string &sdVersion) const {
     return sdVersion.empty() ? Status::GENERIC_ERROR : Status::OK;
 }
 
-Status PlatformSensorEnumerator::getRGBSensorStatus(
-    bool &isAvailable, std::string &devicePath) const {
+Status
+PlatformSensorEnumerator::getRGBSensorStatus(bool &isAvailable,
+                                             std::string &devicePath) const {
     isAvailable = m_rgbAvailable;
     devicePath = m_rgbDevicePath;
     return Status::OK;
@@ -359,7 +360,5 @@ bool PlatformSensorEnumerator::isRGBSensorAvailable(
     const std::string & /*path*/) const {
     return false;
 }
-bool PlatformSensorEnumerator::searchRGBSensors() {
-    return false;
-}
+bool PlatformSensorEnumerator::searchRGBSensors() { return false; }
 #endif
