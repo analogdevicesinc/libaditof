@@ -130,17 +130,42 @@ Status SensorConfigHelper::configureModeDetails(
         }
 
         // Configure AB bits
+        // When RGB is enabled, AB is mutually exclusive — skip setControl to
+        // avoid re-enabling AB that the chip config manager already suppressed.
         it = globalIniParams.find("bitsInAB");
         if (it != globalIniParams.end()) {
             value = it->second;
             abEnabled = true;
             abBitsPerPixel = std::stoi(value);
+#ifdef HAS_RGB_CAMERA
+            {
+                auto rgbIt = globalIniParams.find("rgbCameraEnable");
+                bool rgbOn =
+                    (rgbIt != globalIniParams.end() && rgbIt->second == "1");
+                if (rgbOn) {
+                    // AB disabled for RGB mode. Must still call setControl("abBits","0")
+                    // so that m_controls["abBits"]="0" is set in the mode selector before
+                    // setMode() calls updateConfigurationTable() (which stoi's the value).
+                    abEnabled = false;
+                    abBitsPerPixel = 0;
+                    m_depthSensor->setControl("abBits", "0");
+                } else {
+                    std::string sensorValue =
+                        (lensScatterEnabled && value != "0") ? "0" : value;
+                    sensorValue = convertBitsToSensorValue(sensorValue, true);
+                    if (sensorValue == "0" && !lensScatterEnabled)
+                        abEnabled = false;
+                    m_depthSensor->setControl("abBits", sensorValue);
+                }
+            }
+#else
             std::string sensorValue =
                 (lensScatterEnabled && value != "0") ? "0" : value;
             sensorValue = convertBitsToSensorValue(sensorValue, true);
             if (sensorValue == "0" && !lensScatterEnabled)
                 abEnabled = false;
             m_depthSensor->setControl("abBits", sensorValue);
+#endif
         } else {
             LOG(WARNING) << "bitsInAB was not found in parameter list";
         }
@@ -199,6 +224,14 @@ Status SensorConfigHelper::configureModeDetails(
 
         // Rebuild frameContent based on enabled frame types
         if (!globalIniParams.empty() && !modeDetailsCache.isRawBypass) {
+#ifdef HAS_RGB_CAMERA
+            // Mutual exclusion: RGB and AB cannot coexist in frameContent
+            auto rgbIt = globalIniParams.find("rgbCameraEnable");
+            bool rgbCameraEnabled =
+                (rgbIt != globalIniParams.end() && rgbIt->second == "1");
+            // Note: abEnabled/abBitsPerPixel were already adjusted above in
+            // the AB configuration block — no hardware control changes needed here.
+#endif
             modeDetailsCache.frameContent.clear();
             if (depthEnabled) {
                 modeDetailsCache.frameContent.emplace_back("depth");
@@ -212,6 +245,11 @@ Status SensorConfigHelper::configureModeDetails(
             if (xyzEnabled) {
                 modeDetailsCache.frameContent.emplace_back("xyz");
             }
+#ifdef HAS_RGB_CAMERA
+            if (rgbCameraEnabled) {
+                modeDetailsCache.frameContent.emplace_back("rgb");
+            }
+#endif
             // Always include metadata last
             modeDetailsCache.frameContent.emplace_back("metadata");
         }
