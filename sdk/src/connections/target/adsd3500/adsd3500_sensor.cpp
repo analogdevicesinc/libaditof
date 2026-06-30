@@ -391,18 +391,15 @@ aditof::Status Adsd3500Sensor::open() {
         }
         dev->sfd = m_subdeviceDriver->getFileDescriptor();
 
-        // Initialize protocol manager after video devices are opened (required for reset)
-        if (!m_protocolManager) {
-            m_protocolManager = std::make_unique<Adsd3500ProtocolManager>(
-                m_implData->videoDevs, m_implData->ctrlBuf, m_adsd3500_mutex);
-        }
+        // Always recreate protocol/interrupt managers so they hold a fresh
+        // pointer to videoDevs — setMode() may delete/reallocate videoDevs,
+        // which would leave the old managers with a dangling pointer (fd=65535).
+        m_protocolManager = std::make_unique<Adsd3500ProtocolManager>(
+            m_implData->videoDevs, m_implData->ctrlBuf, m_adsd3500_mutex);
 
-        // Initialize interrupt manager BEFORE reset (required for callback registration)
-        if (!m_interruptManager) {
-            m_interruptManager = std::make_unique<Adsd3500InterruptManager>(
-                m_protocolManager.get(), m_chipStatus, m_imagerStatus,
-                m_interruptAvailable, m_interruptCallbackMap);
-        }
+        m_interruptManager = std::make_unique<Adsd3500InterruptManager>(
+            m_protocolManager.get(), m_chipStatus, m_imagerStatus,
+            m_interruptAvailable, m_interruptCallbackMap);
 
         // VideoDeviceDriver and SubdeviceDriver already initialized and opened above
 
