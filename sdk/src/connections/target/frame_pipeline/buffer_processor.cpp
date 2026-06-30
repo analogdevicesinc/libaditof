@@ -127,6 +127,10 @@ BufferProcessor::BufferProcessor()
     m_tofiConfig = nullptr;
     m_tofiComputeContext = nullptr;
     m_inputVideoDev = nullptr;
+#ifdef HAS_RGB_CAMERA
+    m_rgbSensor = nullptr;
+    m_rgbCaptureEnabled = false;
+#endif
     m_v4l2_input_buffer_Q.set_max_size(MAX_QUEUE_SIZE);
     m_capture_to_process_Q.set_max_size(MAX_QUEUE_SIZE);
     m_tofi_io_Buffer_Q.set_max_size(MAX_QUEUE_SIZE);
@@ -1289,6 +1293,12 @@ void BufferProcessor::startThreads() {
 
     m_captureThread = std::thread(&BufferProcessor::captureFrameThread, this);
     m_processingThread = std::thread(&BufferProcessor::processThread, this);
+#ifdef HAS_RGB_CAMERA
+    if (m_rgbSensor && m_rgbCaptureEnabled) {
+        m_rgbThread =
+            std::thread(&BufferProcessor::captureRGBFrameThread, this);
+    }
+#endif
     sched_param param;
     param.sched_priority = THREAD_PRIORITY;
     pthread_setschedparam(m_processingThread.native_handle(), SCHED_FIFO,
@@ -1309,19 +1319,7 @@ void BufferProcessor::stopThreads() {
 
     stopRecording();
 
-    // Wait for queue drainage with timeout to prevent indefinite blocking
-    auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (((m_capture_to_process_Q.size() > 0) ||
-            (m_process_done_Q.size() > 0)) &&
-           std::chrono::steady_clock::now() < timeout) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    if (std::chrono::steady_clock::now() >= timeout) {
-        LOG(WARNING) << "stopThreads: Queue drainage timed out. Forcing thread "
-                        "shutdown.";
-    }
-
-    // Join threads FIRST - wait for them to fully exit before touching any buffers
+    // Join threads FIRST — wait for them to fully exit before touching any buffers
     // This prevents race conditions where threads access buffers during cleanup
     if (m_captureThread.joinable()) {
         m_captureThread.join();
@@ -1329,6 +1327,12 @@ void BufferProcessor::stopThreads() {
     if (m_processingThread.joinable()) {
         m_processingThread.join();
     }
+#ifdef HAS_RGB_CAMERA
+    if (m_rgbThread.joinable()) {
+        m_rgbThread.join();
+    }
+    m_rgbThread = std::thread();
+#endif
 
     // Reset thread objects
     m_captureThread = std::thread();
@@ -1362,6 +1366,55 @@ void BufferProcessor::stopThreads() {
               << ", tofi_io: " << m_tofi_io_Buffer_Q.size()
               << ", process_done: " << m_process_done_Q.size();
 }
+
+#ifdef HAS_RGB_CAMERA
+aditof::Status BufferProcessor::setRGBSensor(aditof::RGBSensor *sensor) {
+    m_rgbSensor = sensor;
+    return aditof::Status::OK;
+}
+
+aditof::Status BufferProcessor::enableRGBCapture(bool enable) {
+    m_rgbCaptureEnabled = enable;
+    return aditof::Status::OK;
+}
+
+aditof::Status BufferProcessor::getLatestRGBFrame(aditof::RGBFrame &frame) {
+    if (!m_rgbCaptureEnabled || !m_rgbSensor) {
+        return aditof::Status::UNAVAILABLE;
+    }
+    if (m_rgb_frame_Q.pop(frame, std::chrono::milliseconds(100))) {
+        return aditof::Status::OK;
+    }
+    return aditof::Status::GENERIC_ERROR;
+}
+
+void BufferProcessor::captureRGBFrameThread() {
+    LOG(INFO) << "captureRGBFrameThread: started";
+    while (!stopThreadsFlag.load(std::memory_order_acquire)) {
+        // Wait until the sensor is open and capturing (start() may be called after thread launch)
+        if (!m_rgbSensor || !m_rgbCaptureEnabled ||
+            !m_rgbSensor->isCapturing()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            continue;
+        }
+        aditof::RGBFrame frame;
+        aditof::Status status = m_rgbSensor->getFrame(frame, 200);
+        if (status == aditof::Status::OK && frame.isValid()) {
+            if (!m_rgb_frame_Q.push(std::move(frame),
+                                    std::chrono::milliseconds(50))) {
+                // Queue full — drop oldest to keep latency low
+                aditof::RGBFrame discarded;
+                m_rgb_frame_Q.pop(discarded, std::chrono::milliseconds(0));
+                m_rgb_frame_Q.push(std::move(frame),
+                                   std::chrono::milliseconds(50));
+            }
+        } else if (status == aditof::Status::UNAVAILABLE) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    }
+    LOG(INFO) << "captureRGBFrameThread: stopped";
+}
+#endif
 
 #pragma region Stream_Recording_and_Playback
 
@@ -1457,8 +1510,7 @@ aditof::Status BufferProcessor::stopRecording() {
  *
  * @return Status::OK on success, Status::GENERIC_ERROR if not recording or I/O error
  */
-aditof::Status BufferProcessor::writeFrame(uint8_t *buffer,
-                                           uint32_t bufferSize,
+aditof::Status BufferProcessor::writeFrame(uint8_t *buffer, uint32_t bufferSize,
                                            bool incrementCount) {
     if (m_state != ST_RECORD) {
         return aditof::Status::GENERIC_ERROR;

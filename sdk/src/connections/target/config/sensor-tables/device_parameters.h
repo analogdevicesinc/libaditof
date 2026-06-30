@@ -64,7 +64,8 @@ static std::map<std::string, std::string> adsd3100_partialDepth = {
     {"phaseInvalid", "0"},
     {"enableRotation", "0"},
     {"xyzEnable", "1"},
-    {"fps", "10"}};
+    {"fps", "10"},
+    {"rgbCameraEnable", "1"}};
 
 static std::map<std::string, std::string> adsd3100_dual_fullDepth = {
     {"abThreshMin", "3.0"},
@@ -93,7 +94,8 @@ static std::map<std::string, std::string> adsd3100_dual_fullDepth = {
     {"enableRotation", "0"},
     {"xyzEnable", "1"},
     {"withABFrame", "1"},
-    {"fps", "10"}};
+    {"fps", "10"},
+    {"rgbCameraEnable", "1"}};
 
 static std::map<std::string, std::string> adsd3100_fullDepth = {
     {"abThreshMin", "3.0"},
@@ -120,7 +122,8 @@ static std::map<std::string, std::string> adsd3100_fullDepth = {
     {"phaseInvalid", "0"},
     {"enableRotation", "0"},
     {"xyzEnable", "1"},
-    {"fps", "40"}};
+    {"fps", "40"},
+    {"rgbCameraEnable", "1"}};
 
 static std::map<std::string, std::string> adsd_PCM = {
     {"abThreshMin", "3.0"},
@@ -147,7 +150,8 @@ static std::map<std::string, std::string> adsd_PCM = {
     {"phaseInvalid", "0"},
     {"enableRotation", "0"},
     {"xyzEnable", "0"},
-    {"fps", "15"}};
+    {"fps", "15"},
+    {"rgbCameraEnable", "1"}};
 
 static std::map<std::string, std::string> adsd3030_fullDepth = {
     {"abThreshMin", "3.0"},
@@ -174,7 +178,8 @@ static std::map<std::string, std::string> adsd3030_fullDepth = {
     {"phaseInvalid", "0"},
     {"enableRotation", "0"},
     {"xyzEnable", "1"},
-    {"fps", "40"}};
+    {"fps", "40"},
+    {"rgbCameraEnable", "1"}};
 
 static std::map<std::string, std::string> adtf3080_fullDepth = {
     {"abThreshMin", "3.0"},
@@ -201,7 +206,8 @@ static std::map<std::string, std::string> adtf3080_fullDepth = {
     {"phaseInvalid", "0"},
     {"enableRotation", "0"},
     {"xyzEnable", "1"},
-    {"fps", "40"}};
+    {"fps", "40"},
+    {"rgbCameraEnable", "1"}};
 
 /**
  * @brief Default depth computation parameters for ADTF3066 imager.
@@ -231,6 +237,7 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"phaseInvalid", "0"},
     {"enableRotation", "0"},
     {"xyzEnable", "1"},
-    {"fps", "40"}};
+    {"fps", "40"},
+    {"rgbCameraEnable", "1"}};
 
 #endif

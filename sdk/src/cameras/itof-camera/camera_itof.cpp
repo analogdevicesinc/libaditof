@@ -29,8 +29,8 @@
 #include "utils_ini.h"
 
 #ifdef HAS_RGB_CAMERA
-#include "connections/target/adsd3500/adsd3500_sensor.h" // For BufferProcessor access
-#include <aditof/ar0234_sensor.h>                       // For RGBFrame definition
+#include "connections/target/adsd3500/adsd3500_sensor.h" // For Adsd3500Sensor cast + BufferProcessor (transitively)
+#include <aditof/ar0234_sensor.h> // For RGBSensor/RGBFrame
 #endif
 
 #include "../../platform/platform_impl.h"
@@ -347,6 +347,18 @@ aditof::Status CameraItof::start() {
     }
     m_devStreaming = true;
 
+#ifdef HAS_RGB_CAMERA
+    // Start RGB sensor AFTER depth sensor to avoid NVARGUS/V4L2 interference
+    if (m_rgbEnabled && m_rgbSensor) {
+        if (m_rgbSensor->start() != Status::OK) {
+            LOG(WARNING)
+                << "Failed to start RGB sensor; continuing without RGB";
+        } else {
+            LOG(INFO) << "RGB sensor started";
+        }
+    }
+#endif
+
     return aditof::Status::OK;
 }
 
@@ -374,10 +386,19 @@ aditof::Status CameraItof::stop() {
         }
     }
 
+    // Stop depth sensor first — this calls stopThreads() which joins the RGB
+    // capture thread, ensuring captureRGBFrameThread has exited before we stop
+    // the RGB sensor (avoids "AR0234Sensor not capturing" error on getFrame).
     status = m_depthSensor->stop();
     if (status != aditof::Status::OK) {
         LOG(INFO) << "Failed to stop camera!";
     }
+
+#ifdef HAS_RGB_CAMERA
+    if (m_rgbEnabled && m_rgbSensor) {
+        m_rgbSensor->stop();
+    }
+#endif
 
     m_devStreaming = false;
 
@@ -594,6 +615,13 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             return status;
         }
 
+        LOG(INFO) << "frameContent for mode " << int(mode) << ": [" << [&]() {
+            std::string s;
+            for (const auto &f : m_modeDetailsCache.frameContent)
+                s += f + " ";
+            return s;
+        }() << "]";
+
         // For lens scatter mode: ToFi processes raw input → depth+AB output
         // Frame buffers are sized for processed OUTPUT (1024×1024), not raw input (2048×4608)
         if (rawBypassEnabled) {
@@ -715,6 +743,12 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 fDataDetails.height = 1;
             } else if (item == "conf") {
                 fDataDetails.subelementSize = sizeof(float);
+            } else if (item == "rgb") {
+                // AR0234: 1920x1200, BGRx = 4 bytes per pixel
+                fDataDetails.width = 1920;
+                fDataDetails.height = 1200;
+                fDataDetails.subelementSize = 1;
+                fDataDetails.subelementsPerElement = 4;
             }
             fDataDetails.bytesCount = fDataDetails.width * fDataDetails.height *
                                       fDataDetails.subelementSize *
@@ -1036,8 +1070,35 @@ void CameraItof::setRGBSensorInfo(const std::string &devicePath,
 #ifdef HAS_RGB_CAMERA
     m_rgbStatus.path = devicePath;
     m_rgbStatus.detected = isDetected;
-    if (isDetected) {
-        LOG(INFO) << "RGB sensor detected at: " << devicePath;
+    if (!isDetected || devicePath.empty()) {
+        return;
+    }
+    LOG(INFO) << "RGB sensor detected at: " << devicePath;
+
+    // Open the RGB sensor
+    aditof::RGBSensorConfig rgbConfig;
+    rgbConfig.devicePath = devicePath;
+    m_rgbSensor = std::make_unique<aditof::RGBSensor>();
+    if (m_rgbSensor->open(rgbConfig) != aditof::Status::OK) {
+        LOG(WARNING) << "Failed to open RGB sensor at " << devicePath;
+        m_rgbSensor.reset();
+        return;
+    }
+    m_rgbStatus.enabled = true;
+    m_rgbEnabled = true;
+    LOG(INFO) << "RGB sensor opened successfully at " << devicePath;
+
+    // Connect to BufferProcessor (created in Adsd3500Sensor constructor)
+    auto adsd3500Sensor =
+        std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+    if (adsd3500Sensor) {
+        auto *bufProc = dynamic_cast<BufferProcessor *>(
+            adsd3500Sensor->getBufferProcessor());
+        if (bufProc) {
+            bufProc->setRGBSensor(m_rgbSensor.get());
+            bufProc->enableRGBCapture(true);
+            LOG(INFO) << "RGB sensor connected to BufferProcessor";
+        }
     }
 #else
     (void)devicePath;
@@ -1153,11 +1214,32 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
 aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     using namespace aditof;
 
-    return m_frameAcqManager->requestFrame(
+    aditof::Status status = m_frameAcqManager->requestFrame(
         frame, index, m_details.frameType, m_modeDetailsCache, m_isOffline,
         m_pcmFrame, m_depthEnabled, m_abEnabled, m_confEnabled, m_xyzEnabled,
         m_confBitsPerPixel, m_abBitsPerPixel, m_depthBitsPerPixel,
         m_dropFrameOnce);
+    if (status != aditof::Status::OK) {
+        return status;
+    }
+
+#ifdef HAS_RGB_CAMERA
+    if (m_rgbEnabled && m_rgbSensor) {
+        uint16_t *rgbBuf = nullptr;
+        if (frame->getData("rgb", &rgbBuf) == aditof::Status::OK && rgbBuf) {
+            aditof::RGBFrame rgbFrame;
+            if (m_rgbSensor->getFrame(rgbFrame, 200) == aditof::Status::OK &&
+                rgbFrame.isValid()) {
+                const size_t copyBytes = std::min(
+                    rgbFrame.data.size(), static_cast<size_t>(1920 * 1200 * 4));
+                memcpy(reinterpret_cast<uint8_t *>(rgbBuf),
+                       rgbFrame.data.data(), copyBytes);
+            }
+        }
+    }
+#endif
+
+    return status;
 }
 
 /**
@@ -2685,16 +2767,15 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
 }
 
 void CameraItof::normalizeABBuffer(uint16_t * /*abBuffer*/,
-                                   uint16_t /*abWidth*/,
-                                   uint16_t /*abHeight*/,
+                                   uint16_t /*abWidth*/, uint16_t /*abHeight*/,
                                    bool /*advanceScaling*/,
                                    bool /*useLogScaling*/) {
     // Normalization is performed in the viewer layer; not implemented in SDK core.
 }
 
 aditof::Status CameraItof::normalizeABFrame(aditof::Frame * /*frame*/,
-                                             bool /*advanceScaling*/,
-                                             bool /*useLogScaling*/) {
+                                            bool /*advanceScaling*/,
+                                            bool /*useLogScaling*/) {
     // Normalization is performed in the viewer layer; not implemented in SDK core.
     return aditof::Status::UNAVAILABLE;
 }

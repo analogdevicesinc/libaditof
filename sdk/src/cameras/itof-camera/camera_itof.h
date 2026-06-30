@@ -218,7 +218,8 @@ class CameraItof : public aditof::Camera {
                            bool useLogScaling) override;
     aditof::Status normalizeABFrame(aditof::Frame *frame, bool advanceScaling,
                                     bool useLogScaling) override;
-    aditof::Status setSensorConfiguration(const std::string &sensorConf) override;
+    aditof::Status
+    setSensorConfiguration(const std::string &sensorConf) override;
 
     aditof::Status setPlaybackFile(std::string &filePath) override;
     void UpdateDepthParamsMap(bool update, const char *index,
