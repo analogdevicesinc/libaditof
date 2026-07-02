@@ -142,10 +142,13 @@ Status SensorConfigHelper::configureModeDetails(
                 auto rgbIt = globalIniParams.find("rgbCameraEnable");
                 bool rgbOn =
                     (rgbIt != globalIniParams.end() && rgbIt->second == "1");
-                if (rgbOn) {
-                    // AB disabled for RGB mode. Must still call setControl("abBits","0")
-                    // so that m_controls["abBits"]="0" is set in the mode selector before
-                    // setMode() calls updateConfigurationTable() (which stoi's the value).
+                // QMP modes (512x512) require AB in the MIPI stream — the ISP
+                // does not support ab_bits=0 for QMP and will hang if set.
+                // Keep abBits at the sensor value so the V4L2 format is
+                // computed correctly (2560x512 instead of 1536x512).
+                // The AB output slot is overwritten by RGB data downstream.
+                bool isQMPMode = (modeDetailsCache.baseResolutionWidth == 512);
+                if (rgbOn && !isQMPMode) {
                     abEnabled = false;
                     abBitsPerPixel = 0;
                     m_depthSensor->setControl("abBits", "0");
