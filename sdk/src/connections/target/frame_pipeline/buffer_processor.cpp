@@ -1386,17 +1386,18 @@ void BufferProcessor::stopThreads() {
 
 #ifdef HAS_RGB_CAMERA
 aditof::Status BufferProcessor::setRGBSensor(aditof::RGBSensor *sensor) {
-    m_rgbSensor = sensor;
+    m_rgbSensor.store(sensor, std::memory_order_release);
     return aditof::Status::OK;
 }
 
 aditof::Status BufferProcessor::enableRGBCapture(bool enable) {
-    m_rgbCaptureEnabled = enable;
+    m_rgbCaptureEnabled.store(enable, std::memory_order_release);
     return aditof::Status::OK;
 }
 
 aditof::Status BufferProcessor::getLatestRGBFrame(aditof::RGBFrame &frame) {
-    if (!m_rgbCaptureEnabled || !m_rgbSensor) {
+    if (!m_rgbCaptureEnabled.load(std::memory_order_acquire) ||
+        !m_rgbSensor.load(std::memory_order_acquire)) {
         return aditof::Status::UNAVAILABLE;
     }
     if (m_rgb_frame_Q.pop(frame, std::chrono::milliseconds(100))) {
@@ -1409,7 +1410,12 @@ void BufferProcessor::captureRGBFrameThread() {
     LOG(INFO) << "captureRGBFrameThread: started";
     bool loggedWaiting = false;
     while (!stopThreadsFlag.load(std::memory_order_acquire)) {
-        if (!m_rgbSensor || !m_rgbCaptureEnabled) {
+        // Snapshot both atomics once per iteration so we use a consistent
+        // view and avoid TOCTOU between the null-check and the getFrame call.
+        aditof::RGBSensor *sensor =
+            m_rgbSensor.load(std::memory_order_acquire);
+        bool enabled = m_rgbCaptureEnabled.load(std::memory_order_acquire);
+        if (!sensor || !enabled) {
             if (!loggedWaiting) {
                 LOG(INFO) << "captureRGBFrameThread: waiting for sensor...";
                 loggedWaiting = true;
@@ -1417,8 +1423,9 @@ void BufferProcessor::captureRGBFrameThread() {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
             continue;
         }
+        loggedWaiting = false;
         aditof::RGBFrame nv12Frame;
-        aditof::Status status = m_rgbSensor->getFrame(nv12Frame, 200);
+        aditof::Status status = sensor->getFrame(nv12Frame, 200);
         if (status == aditof::Status::OK && nv12Frame.isValid()) {
             // Convert NV12 to BGR (3 bytes/pixel) before queuing
             aditof::RGBFrame bgrFrame;
