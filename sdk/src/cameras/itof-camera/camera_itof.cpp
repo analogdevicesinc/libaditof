@@ -551,7 +551,27 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             return Status::GENERIC_ERROR;
         }
         m_config->setIniKeyValPairs(iniKeyValPairs);
+
+        // Pre-populate modeDetailsCache resolution before configureSensorModeDetails() so
+        // it can correctly identify QMP (512x512) vs MP (1024x1024) modes on the very
+        // first launch AND when switching from MP→QMP or QMP→MP.  Without this, the
+        // stale width from the previous mode causes isQMPMode to evaluate incorrectly,
+        // setting abBits=0 for QMP modes and producing a wrong 1536x512 V4L2 format.
+        m_modeDetailsCache.baseResolutionWidth = modeIt->baseResolutionWidth;
+        m_modeDetailsCache.baseResolutionHeight = modeIt->baseResolutionHeight;
+
         configureSensorModeDetails();
+
+#ifdef HAS_RGB_CAMERA
+        // MP+RGB: zero AB bits so the MIPI slot is freed for RGB data.
+        // QMP modes (512×512) must retain AB bits in the MIPI stream — the ISP
+        // will stall without AB present in the QMP MIPI stream.
+        if (m_rgbEnabled && modeIt->baseResolutionWidth != 512) {
+            m_abEnabled = false;
+            m_abBitsPerPixel = 0;
+            m_depthSensor->setControl("abBits", "0");
+        }
+#endif
 
         // Apply raw bypass mode setting before configuring V4L2 driver
         // Raw bypass is enabled when lensScatterCompensationEnabled is set to "1"
@@ -679,6 +699,28 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         setDepthIniParams(m_config->getIniKeyValPairs(), false);
         configureSensorModeDetails();
+
+#ifdef HAS_RGB_CAMERA
+        if (m_rgbEnabled) {
+            bool isQMP = (m_modeDetailsCache.baseResolutionWidth == 512);
+            if (!isQMP) {
+                // MP+RGB: zero AB bits — ISP outputs no AB in the MIPI stream;
+                // the AB slot in the output frame is replaced by RGB data.
+                m_abEnabled = false;
+                m_abBitsPerPixel = 0;
+                m_depthSensor->setControl("abBits", "0");
+                auto &fc = m_modeDetailsCache.frameContent;
+                fc.erase(std::remove(fc.begin(), fc.end(), std::string("ab")),
+                         fc.end());
+            }
+            // Insert "rgb" before "metadata" (always last in frameContent)
+            auto &fc = m_modeDetailsCache.frameContent;
+            auto metaIt =
+                std::find(fc.begin(), fc.end(), std::string("metadata"));
+            fc.insert(metaIt, "rgb");
+        }
+#endif
+
         m_details.mode = mode;
 
         const auto &paramsForLogging = m_config->getIniKeyValPairs();
