@@ -403,9 +403,29 @@ aditof::Status CameraItof::stop() {
         }
     }
 
+#ifdef HAS_RGB_CAMERA
+    // Disable RGB capture in the BufferProcessor before any teardown so that
+    // captureRGBFrameThread gates itself immediately if it is restarted by a
+    // subsequent setMode() call before start() re-enables it.  Without this,
+    // the thread restarts with m_rgbCaptureEnabled=true and calls getFrame()
+    // against an already-stopped GStreamer pipeline → "AR0234Sensor not
+    // capturing" error.
+    {
+        auto adsd3500Sensor =
+            std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+        if (adsd3500Sensor) {
+            auto *bufProc = dynamic_cast<BufferProcessor *>(
+                adsd3500Sensor->getBufferProcessor());
+            if (bufProc) {
+                bufProc->enableRGBCapture(false);
+            }
+        }
+    }
+#endif
+
     // Stop depth sensor first — this calls stopThreads() which joins the RGB
     // capture thread, ensuring captureRGBFrameThread has exited before we stop
-    // the RGB sensor (avoids "AR0234Sensor not capturing" error on getFrame).
+    // the RGB sensor.
     status = m_depthSensor->stop();
     if (status != aditof::Status::OK) {
         LOG(INFO) << "Failed to stop camera!";
