@@ -141,6 +141,18 @@ Status RGBSensor::start() {
         return Status::BUSY;
     }
 
+    // Recreate the GStreamer pipeline before each start.  The pipeline is
+    // created during open() but only started here — possibly seconds later.
+    // nvarguscamerasrc can hold a stale Argus session during that gap, and on
+    // stop/start cycles the Argus daemon needs time to release resources
+    // before the NULL-state pipeline can be reused.  Recreating ensures a
+    // fresh Argus connection and eliminates the intermittent segfault in
+    // "GST_ARGUS: Creating output stream".
+    if (!m_backend->initialize(m_config)) {
+        LOG(ERROR) << "Failed to reinitialize AR0234 sensor backend";
+        return Status::GENERIC_ERROR;
+    }
+
     if (!m_backend->start()) {
         LOG(ERROR) << "Failed to start AR0234 sensor capture";
         return Status::GENERIC_ERROR;
