@@ -23,7 +23,10 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <thread>
 #include <sstream>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #ifdef USE_GLOG
 #include <glog/logging.h>
@@ -56,7 +59,7 @@ static std::unique_ptr<RGBBackend_Internal> createBackend() {
 // AR0234Sensor Implementation
 // ============================================================================
 
-RGBSensor::RGBSensor() : m_backend(nullptr), m_isOpen(false), m_frameCount(0) {
+RGBSensor::RGBSensor() : m_backend(nullptr), m_isOpen(false), m_argusProbeOk(false), m_frameCount(0) {
     LOG(INFO) << "RGBSensor created";
 }
 
@@ -75,32 +78,23 @@ Status RGBSensor::open(const RGBSensorConfig &config) {
 
     m_config = config;
 
-    // Use device path from config or default
     if (m_config.devicePath.empty()) {
-        m_config.devicePath = "/dev/video0"; // Default fallback
+        m_config.devicePath = "/dev/video0";
         LOG(INFO) << "Using default RGB device path: " << m_config.devicePath;
     } else {
         LOG(INFO) << "Using RGB device path from config: "
                   << m_config.devicePath;
     }
 
-    // Create backend using internal factory function
     m_backend = createBackend();
     if (!m_backend) {
-        LOG(ERROR)
-            << "Failed to create RGB camera backend - no backend available";
+        LOG(ERROR) << "Failed to create RGB camera backend";
         return Status::GENERIC_ERROR;
     }
 
-    LOG(INFO) << "AR0234Sensor using backend: " << m_backend->getBackendName();
-
-    // Initialize backend directly with AR0234 config
-    if (!m_backend->initialize(m_config)) {
-        LOG(ERROR) << "Failed to initialize AR0234 sensor backend";
-        m_backend.reset();
-        return Status::GENERIC_ERROR;
-    }
-
+    // Pipeline creation is deferred to start() so the Argus probe subprocess
+    // runs before any CameraProvider is open in this process, avoiding a
+    // conflict where the probe child and parent both access the same sensor.
     m_isOpen = true;
     m_frameCount = 0;
 
@@ -141,19 +135,67 @@ Status RGBSensor::start() {
         return Status::BUSY;
     }
 
-    // Recreate the GStreamer pipeline before each start.  The pipeline is
-    // created during open() but only started here — possibly seconds later.
-    // nvarguscamerasrc can hold a stale Argus session during that gap, and on
-    // stop/start cycles the Argus daemon needs time to release resources
-    // before the NULL-state pipeline can be reused.  Recreating ensures a
-    // fresh Argus connection and eliminates the intermittent segfault in
-    // "GST_ARGUS: Creating output stream".
+    // -----------------------------------------------------------------------
+    // Step 1: Argus availability probe (first start only).
+    //
+    // The probe runs in a subprocess so any Argus SIGSEGV only kills the child.
+    // On subsequent start() calls (stop→start cycles) we skip the probe —
+    // Argus is known healthy and the 3-second overhead is wasteful.
+    if (!m_argusProbeOk) {
+        // timeout 3: healthy Argus initialises in ~3s (exit 124 = timeout = OK);
+        // broken Argus exits with error before the timeout fires.
+        std::string probeCmd =
+            "timeout 3 gst-launch-1.0 --eos-on-shutdown "
+            "nvarguscamerasrc num-buffers=1 sensor-id=" +
+            std::to_string(m_config.sensorId) +
+            " ! fakesink silent=true >/dev/null 2>&1";
+
+        pid_t probePid = fork();
+        if (probePid == 0) {
+            execl("/bin/sh", "sh", "-c", probeCmd.c_str(), nullptr);
+            _exit(127);
+        } else if (probePid > 0) {
+            int wstatus = 0;
+            waitpid(probePid, &wstatus, 0);
+            int exitCode = WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1;
+            int sigNum   = WIFSIGNALED(wstatus) ? WTERMSIG(wstatus) : 0;
+            bool probeOk = (exitCode == 0 || exitCode == 124);
+            if (!probeOk) {
+                LOG(WARNING) << "Argus probe failed (exit=" << exitCode
+                             << " sig=" << sigNum
+                             << ") \xe2\x80\x94 RGB capture unavailable; "
+                                "continuing in depth-only mode.";
+                return Status::GENERIC_ERROR;
+            }
+            LOG(INFO) << "Argus probe OK (exit=" << exitCode
+                      << "), creating pipeline.";
+            m_argusProbeOk = true;
+        } else {
+            LOG(WARNING) << "fork() failed for Argus probe, skipping RGB.";
+            return Status::GENERIC_ERROR;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 2: Create the GStreamer pipeline and start it on a fresh thread.
+    //
+    // initialize() builds the nvarguscamerasrc pipeline (NULL state).
+    // Running startPipeline() (NULL→PAUSED→PLAYING) on a fresh std::thread
+    // avoids the EGL API binding conflict when the caller is the tof-viewer
+    // main thread (eglBindAPI EGL_OPENGL_API vs nvarguscamerasrc's ES API).
+    LOG(INFO) << "AR0234Sensor using backend: " << m_backend->getBackendName();
     if (!m_backend->initialize(m_config)) {
-        LOG(ERROR) << "Failed to reinitialize AR0234 sensor backend";
+        LOG(ERROR) << "Failed to initialize AR0234 sensor backend";
         return Status::GENERIC_ERROR;
     }
 
-    if (!m_backend->start()) {
+    bool startResult = false;
+    std::thread startThread([this, &startResult]() {
+        startResult = m_backend->start();
+    });
+    startThread.join();
+
+    if (!startResult) {
         LOG(ERROR) << "Failed to start AR0234 sensor capture";
         return Status::GENERIC_ERROR;
     }
