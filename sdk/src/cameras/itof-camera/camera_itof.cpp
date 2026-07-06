@@ -704,17 +704,18 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         if (m_rgbEnabled) {
             bool isQMP = (m_modeDetailsCache.baseResolutionWidth == 512);
             if (!isQMP) {
-                // MP+RGB: zero AB bits — ISP outputs no AB in the MIPI stream;
-                // the AB slot in the output frame is replaced by RGB data.
+                // MP+RGB: zero AB bits so ISP outputs no AB in the MIPI stream.
                 m_abEnabled = false;
                 m_abBitsPerPixel = 0;
                 m_depthSensor->setControl("abBits", "0");
-                auto &fc = m_modeDetailsCache.frameContent;
-                fc.erase(std::remove(fc.begin(), fc.end(), std::string("ab")),
-                         fc.end());
             }
-            // Insert "rgb" before "metadata" (always last in frameContent)
+            // Both MP and QMP: remove "ab" from the output frameContent.
+            // For QMP the ISP still outputs AB in the MIPI stream (hardware
+            // constraint) but the AB output slot is replaced by RGB data.
             auto &fc = m_modeDetailsCache.frameContent;
+            fc.erase(std::remove(fc.begin(), fc.end(), std::string("ab")),
+                     fc.end());
+            // Insert "rgb" before "metadata" (always last in frameContent)
             auto metaIt =
                 std::find(fc.begin(), fc.end(), std::string("metadata"));
             fc.insert(metaIt, "rgb");
