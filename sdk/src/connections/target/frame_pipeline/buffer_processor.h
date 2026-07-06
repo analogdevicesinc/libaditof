@@ -231,8 +231,10 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
 
 #ifdef HAS_RGB_CAMERA
     // RGB sensor integration
-    aditof::RGBSensor *m_rgbSensor;
-    bool m_rgbCaptureEnabled;
+    // Both accessed from captureRGBFrameThread AND the main thread — must be
+    // atomic to prevent data races and undefined behaviour on concurrent reads.
+    std::atomic<aditof::RGBSensor *> m_rgbSensor{nullptr};
+    std::atomic<bool> m_rgbCaptureEnabled{false};
     std::atomic<uint64_t> m_totalRGBCaptured;
     std::atomic<uint64_t> m_totalRGBFailures;
     ThreadSafeQueue<aditof::RGBFrame> m_rgb_frame_Q;
