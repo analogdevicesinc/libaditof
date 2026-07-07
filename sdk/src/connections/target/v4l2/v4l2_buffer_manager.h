@@ -120,6 +120,18 @@ class V4L2BufferManager {
      */
     aditof::Status cleanupBuffers(struct VideoDev *dev = nullptr);
 
+    /**
+     * @brief Updates the internal video device pointer after reallocation.
+     *
+     * Must be called whenever m_implData->videoDevs is reallocated (e.g. on
+     * mode switch) so that getDeviceFileDescriptor() and other methods that
+     * use m_videoDevs[0] directly do not dereference a stale/freed pointer.
+     *
+     * @param videoDevs   Pointer to the newly allocated video device array
+     * @param numVideoDevs Number of devices in the array
+     */
+    void updateVideoDevices(struct VideoDev *videoDevs, uint8_t numVideoDevs);
+
   private:
     struct VideoDev *m_videoDevs; ///< Pointer to V4L2 video device array
     uint8_t m_numVideoDevs;       ///< Number of video devices
