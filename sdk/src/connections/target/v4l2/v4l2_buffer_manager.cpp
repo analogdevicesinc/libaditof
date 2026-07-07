@@ -210,3 +210,9 @@ aditof::Status V4L2BufferManager::cleanupBuffers(struct VideoDev *dev) {
     LOG(INFO) << "Cleaned up video buffers for device";
     return Status::OK;
 }
+
+void V4L2BufferManager::updateVideoDevices(struct VideoDev *videoDevs,
+                                           uint8_t numVideoDevs) {
+    m_videoDevs = videoDevs;
+    m_numVideoDevs = numVideoDevs;
+}
