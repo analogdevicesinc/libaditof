@@ -395,6 +395,10 @@ aditof::Status Adsd3500Sensor::open() {
         if (!m_protocolManager) {
             m_protocolManager = std::make_unique<Adsd3500ProtocolManager>(
                 m_implData->videoDevs, m_implData->ctrlBuf, m_adsd3500_mutex);
+        } else {
+            // videoDevs was reallocated; update the protocol manager's pointer
+            // so it uses the current file descriptors instead of stale ones.
+            m_protocolManager->updateVideoDevices(m_implData->videoDevs);
         }
 
         // Initialize interrupt manager BEFORE reset (required for callback registration)
@@ -520,6 +524,11 @@ aditof::Status Adsd3500Sensor::open() {
     if (!m_bufferManager) {
         m_bufferManager = std::make_unique<V4L2BufferManager>(
             m_implData->videoDevs, m_implData->numVideoDevs);
+    } else {
+        // videoDevs was reallocated; update the buffer manager's pointer
+        // to prevent stale-pointer UB on getDeviceFileDescriptor().
+        m_bufferManager->updateVideoDevices(m_implData->videoDevs,
+                                            m_implData->numVideoDevs);
     }
 
     // Initialize INI configuration manager
