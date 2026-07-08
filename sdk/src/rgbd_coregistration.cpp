@@ -255,6 +255,153 @@ RGBDCoregistration::loadCalibrationFromJson(const std::string &jsonPath) {
 }
 
 // ---------------------------------------------------------------------------
+// Load from the 160-byte (40-float) GET_RGBD_CALIBRATION_DATA (0x30) response.
+//
+// Layout (all IEEE-754 LE float32, matching firmware doc):
+//   [0 –13] ToF intrinsics   (firmware, per-mode)
+//   [14–27] RGB intrinsics   (flash chunk 0x61)
+//   [28–39] Extrinsics rgb2tof: r11..r33, t1..t3  (translation in metres)
+// ---------------------------------------------------------------------------
+Status RGBDCoregistration::loadCalibrationFrom160Bytes(const uint8_t *data,
+                                                       std::size_t size) {
+    static constexpr std::size_t EXPECTED = 160u;
+    if (!data || size < EXPECTED) {
+        LOG(ERROR) << "RGBD 0x30 response too small: expected " << EXPECTED
+                   << " bytes, got " << size;
+        return Status::INVALID_ARGUMENT;
+    }
+
+    // Decode 40 little-endian float32 values
+    float f[40];
+    for (int i = 0; i < 40; ++i) {
+        std::memcpy(&f[i], data + i * 4, 4);
+    }
+
+    // Floats 0-13: ToF intrinsics (supplied by firmware for the active mode)
+    m_calib.tof.fx = f[0];
+    m_calib.tof.fy = f[1];
+    m_calib.tof.cx = f[2];
+    m_calib.tof.cy = f[3];
+    m_calib.tof.codx = f[4];
+    m_calib.tof.cody = f[5];
+    m_calib.tof.k1 = f[6];
+    m_calib.tof.k2 = f[7];
+    m_calib.tof.k3 = f[8];
+    m_calib.tof.k4 = f[9];
+    m_calib.tof.k5 = f[10];
+    m_calib.tof.k6 = f[11];
+    m_calib.tof.p2 = f[12];
+    m_calib.tof.p1 = f[13];
+
+    // Floats 14-27: RGB intrinsics (from flash)
+    m_calib.rgb.fx = f[14];
+    m_calib.rgb.fy = f[15];
+    m_calib.rgb.cx = f[16];
+    m_calib.rgb.cy = f[17];
+    m_calib.rgb.codx = f[18];
+    m_calib.rgb.cody = f[19];
+    m_calib.rgb.k1 = f[20];
+    m_calib.rgb.k2 = f[21];
+    m_calib.rgb.k3 = f[22];
+    m_calib.rgb.k4 = f[23];
+    m_calib.rgb.k5 = f[24];
+    m_calib.rgb.k6 = f[25];
+    m_calib.rgb.p2 = f[26];
+    m_calib.rgb.p1 = f[27];
+
+    // Floats 28-39: extrinsics rgb2tof — rotation (28-36) + translation (37-39) in metres
+    float R_src[9], t_src_mm[3];
+    for (int i = 0; i < 9; ++i)
+        R_src[i] = f[28 + i];
+    t_src_mm[0] = f[37] * METRES_TO_MM;
+    t_src_mm[1] = f[38] * METRES_TO_MM;
+    t_src_mm[2] = f[39] * METRES_TO_MM;
+
+    m_calib.extrinsics = invertRgb2Tof(R_src, t_src_mm);
+
+    m_calibLoaded = true;
+    LOG(INFO) << "RGBD calibration loaded from chip (0x30 response)"
+              << "  ToF fx=" << m_calib.tof.fx << "  RGB fx=" << m_calib.rgb.fx;
+    return Status::OK;
+}
+
+// ---------------------------------------------------------------------------
+// Save RGB intrinsics + extrinsics to a JSON file in the sample_calibration
+// schema.  The stored tof2rgb extrinsics (mm) are inverted back to rgb2tof
+// (m) so the output is directly usable by RGBD_CALIB_UPDATE and the Python
+// coregistration example.
+// ---------------------------------------------------------------------------
+Status
+RGBDCoregistration::saveCalibrationToJson(const std::string &jsonPath) const {
+    if (!m_calibLoaded) {
+        LOG(ERROR) << "saveCalibrationToJson: no calibration loaded";
+        return Status::UNAVAILABLE;
+    }
+
+    // Invert stored tof2rgb → rgb2tof (same math as loading: invertRgb2Tof is self-inverse)
+    StereoExtrinsics rgb2tof =
+        invertRgb2Tof(m_calib.extrinsics.R, m_calib.extrinsics.t);
+    // Translation: stored in mm → JSON in metres
+    constexpr float MM_TO_METRES = 1.0f / METRES_TO_MM;
+
+    // Build JSON object
+    json_object *root = json_object_new_object();
+    json_object *rgbd = json_object_new_object();
+    json_object *rgb_intr = json_object_new_object();
+    json_object *extr = json_object_new_object();
+
+    auto addD = [](json_object *obj, const char *k, double v) {
+        json_object_object_add(obj, k, json_object_new_double(v));
+    };
+
+    const auto &r = m_calib.rgb;
+    addD(rgb_intr, "fx", r.fx);
+    addD(rgb_intr, "fy", r.fy);
+    addD(rgb_intr, "cx", r.cx);
+    addD(rgb_intr, "cy", r.cy);
+    addD(rgb_intr, "codx", r.codx);
+    addD(rgb_intr, "cody", r.cody);
+    addD(rgb_intr, "k1", r.k1);
+    addD(rgb_intr, "k2", r.k2);
+    addD(rgb_intr, "k3", r.k3);
+    addD(rgb_intr, "k4", r.k4);
+    addD(rgb_intr, "k5", r.k5);
+    addD(rgb_intr, "k6", r.k6);
+    addD(rgb_intr, "p2", r.p2);
+    addD(rgb_intr, "p1", r.p1);
+
+    const float *R = rgb2tof.R;
+    addD(extr, "r11", R[0]);
+    addD(extr, "r12", R[1]);
+    addD(extr, "r13", R[2]);
+    addD(extr, "r21", R[3]);
+    addD(extr, "r22", R[4]);
+    addD(extr, "r23", R[5]);
+    addD(extr, "r31", R[6]);
+    addD(extr, "r32", R[7]);
+    addD(extr, "r33", R[8]);
+    addD(extr, "t1", rgb2tof.t[0] * MM_TO_METRES);
+    addD(extr, "t2", rgb2tof.t[1] * MM_TO_METRES);
+    addD(extr, "t3", rgb2tof.t[2] * MM_TO_METRES);
+
+    json_object_object_add(rgbd, "camera_intrinsics_rgb", rgb_intr);
+    json_object_object_add(rgbd, "camera_extrinsics_rgb2tof", extr);
+    json_object_object_add(root, "rgbd_calibration", rgbd);
+
+    std::ofstream ofs(jsonPath);
+    if (!ofs.good()) {
+        json_object_put(root);
+        LOG(ERROR) << "saveCalibrationToJson: cannot open " << jsonPath;
+        return Status::GENERIC_ERROR;
+    }
+    ofs << json_object_to_json_string_ext(root, JSON_C_TO_STRING_PRETTY);
+    json_object_put(root);
+
+    LOG(INFO) << "RGBD calibration saved to: " << jsonPath;
+    return Status::OK;
+}
+
+// ---------------------------------------------------------------------------
 // Undistort a normalised ToF image point using the rational Brown-Conrady
 // model (same convention as OpenCV):
 //

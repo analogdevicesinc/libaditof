@@ -16,3 +16,7 @@ buffer.pb.cc
 buffer.pb.h
 usb_buffer.pb.cc
 usb_buffer.pb.h
+cppzmq/
+glog/
+libzmq/
+protobuf/
