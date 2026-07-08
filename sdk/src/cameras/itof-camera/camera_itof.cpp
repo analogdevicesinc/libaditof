@@ -645,6 +645,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_details.frameType.width = reportedWidth;
         m_details.frameType.height = reportedHeight;
         m_details.frameType.totalCaptures = 1;
+        m_details.frameType.cameraMode = std::to_string(mode);
         m_details.frameType.dataDetails.clear();
         for (const auto &item : m_modeDetailsCache.frameContent) {
             if (item == "xyz" && !m_xyzEnabled) {
@@ -677,6 +678,19 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                                       fDataDetails.subelementsPerElement;
 
             m_details.frameType.dataDetails.emplace_back(fDataDetails);
+        }
+
+        // Build frameType.type as "_"-joined channel names (e.g. "depth_conf_xyz")
+        // so callers can identify active channels from getDetails() without
+        // iterating dataDetails.
+        {
+            std::string ftype;
+            for (const auto &d : m_details.frameType.dataDetails) {
+                if (d.type == "metadata") continue;
+                if (!ftype.empty()) ftype += '_';
+                ftype += d.type;
+            }
+            m_details.frameType.type = ftype;
         }
 
         // We want computed frames (Depth & AB). Tell target to initialize depth compute
