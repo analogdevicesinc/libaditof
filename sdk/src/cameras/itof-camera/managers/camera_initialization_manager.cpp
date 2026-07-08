@@ -265,6 +265,7 @@ Status CameraInitializationManager::initializeOnlineMode(
     status = readSerialNumber(serialNumber);
     if (status == Status::OK) {
         LOG(INFO) << "Module serial number: " << serialNumber;
+        cameraDetails.serialNumber = serialNumber;
     } else if (status == Status::UNAVAILABLE) {
         LOG(INFO) << "Serial read is not supported in this firmware!";
     } else {
