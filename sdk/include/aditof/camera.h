@@ -659,6 +659,24 @@ class SDK_API Camera {
      * @return Status
      */
     virtual aditof::Status setRotationEnabled(bool enable) = 0;
+
+    /**
+     * @brief Read the RGBD calibration stored in flash (command 0x30).
+     *
+     * Issues the GET_RGBD_CALIBRATION_DATA burst command (0x30) to the
+     * ADSD3500 and returns the 160-byte response.  The response contains
+     * 40 IEEE-754 LE float32 values:
+     *   [0 –13] ToF intrinsics  (firmware, per-mode)
+     *   [14–27] RGB intrinsics  (flash chunk 0x61)
+     *   [28–39] Extrinsics rgb2tof — rotation then translation (metres)
+     *
+     * Pass the result to RGBDCoregistration::loadCalibrationFrom160Bytes().
+     *
+     * @param[out] data  160-byte buffer populated on success.
+     * @return Status::OK on success; Status::UNAVAILABLE if the chip has
+     *         not been provisioned (status 0x2E/0x2F/0x30 from firmware).
+     */
+    virtual aditof::Status readRGBDCalibrationFromChip(uint8_t data[160]) = 0;
 };
 
 } // namespace aditof

@@ -178,6 +178,27 @@ class SDK_API RGBDCoregistration {
     Status loadCalibrationFromBin(const std::string &binPath);
 
     /**
+     * @brief Load calibration from the 160-byte GET_RGBD_CALIBRATION_DATA
+     *        (command 0x30) chip response.
+     *
+     * Layout: 40 × 4-byte LE float32
+     *   [0 –13] ToF intrinsics  (from firmware, per active mode)
+     *   [14–27] RGB intrinsics  (from flash chunk 0x61)
+     *   [28–39] Extrinsics rgb2tof — rotation (row-major) then translation (m)
+     *
+     * Both the ToF and RGB intrinsics are stored; the separate
+     * setToFIntrinsics() call is therefore NOT needed after this.
+     * Translation is converted internally from metres to mm and the
+     * rgb2tof extrinsic is inverted to tof2rgb.
+     *
+     * @param data  Pointer to the 160-byte response buffer.
+     * @param size  Must be >= 160.
+     * @return Status::OK on success; Status::INVALID_ARGUMENT if data is
+     *         null or size < 160.
+     */
+    Status loadCalibrationFrom160Bytes(const uint8_t *data, std::size_t size);
+
+    /**
      * @brief Load RGB intrinsics + extrinsics from a JSON file on disk.
      *
      * Expected schema — see header comment for full structure.
@@ -232,6 +253,21 @@ class SDK_API RGBDCoregistration {
 
     /** @return Reference to the active calibration (valid after load). */
     const RGBDCalibration &getCalibration() const { return m_calib; }
+
+    /**
+     * @brief Save the loaded calibration to a JSON file.
+     *
+     * Writes the RGB intrinsics and extrinsics in the sample_calibration.json
+     * schema (camera_intrinsics_rgb + camera_extrinsics_rgb2tof, translation
+     * in metres).  The stored tof2rgb extrinsics are inverted back to rgb2tof
+     * before writing so the file is usable directly with RGBD_CALIB_UPDATE
+     * and the Python coregistration example.
+     *
+     * @param jsonPath Path to write (created or overwritten).
+     * @return Status::OK on success; Status::UNAVAILABLE if no calibration
+     *         is loaded; Status::GENERIC_ERROR if the file cannot be written.
+     */
+    Status saveCalibrationToJson(const std::string &jsonPath) const;
 
   private:
     /**

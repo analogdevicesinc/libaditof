@@ -201,6 +201,7 @@ class CameraItof : public aditof::Camera {
      * @return Status
      */
     aditof::Status setRotationEnabled(bool enable) override;
+    aditof::Status readRGBDCalibrationFromChip(uint8_t data[160]) override;
 
     /**
      * Configure ADSD3500 with ini parameters
@@ -266,6 +267,10 @@ class CameraItof : public aditof::Camera {
     bool m_adsd3500_master;
     bool m_isOffline;
     std::string m_netLinkTest;
+
+    /// 160-byte RGBD calibration pre-fetched at initialize() before streaming.
+    /// Empty if chip is not provisioned.  Returned by readRGBDCalibrationFromChip().
+    std::vector<uint8_t> m_rgbdCalibBuf;
 
     uint8_t m_depthBitsPerPixel;
     uint8_t m_abBitsPerPixel;

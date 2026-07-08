@@ -1493,6 +1493,41 @@ aditof::Status CameraItof::readSerialNumber(std::string &serialNumber,
     return status;
 }
 
+aditof::Status CameraItof::readRGBDCalibrationFromChip(uint8_t data[160]) {
+    using namespace aditof;
+
+    if (m_isOffline) {
+        LOG(WARNING)
+            << "readRGBDCalibrationFromChip: not available in offline mode";
+        return Status::UNAVAILABLE;
+    }
+
+    // Return cached buffer if already read this session.
+    if (m_rgbdCalibBuf.size() == 160) {
+        std::memcpy(data, m_rgbdCalibBuf.data(), 160);
+        LOG(INFO)
+            << "readRGBDCalibrationFromChip: returning cached calibration";
+        return Status::OK;
+    }
+
+    // Issue GET_RGBD_CALIBRATION_DATA (0x30) burst read.
+    // MUST be called AFTER setMode() and BEFORE start() (STREAMON):
+    //   - Before setMode: firmware needs a valid mode; failure leaves chip in
+    //     burst mode, breaking all subsequent commands (errno=5 cascade).
+    //   - During streaming: SWITCH_TO_BURST_MODE halts frame output (drops).
+    Status status =
+        m_adsd3500Hardware->adsd3500_read_payload_cmd(0x30, data, 160);
+    if (status != Status::OK) {
+        LOG(INFO) << "readRGBDCalibrationFromChip: chip not provisioned "
+                     "(use loadCalibrationFromJson/Bin instead)";
+        return Status::UNAVAILABLE;
+    }
+
+    m_rgbdCalibBuf.assign(data, data + 160);
+    LOG(INFO) << "readRGBDCalibrationFromChip: 160 bytes read from chip";
+    return Status::OK;
+}
+
 /**
  * @brief Saves the ADSD3500 CCB (Configuration Calibration Block) to a file.
  *
