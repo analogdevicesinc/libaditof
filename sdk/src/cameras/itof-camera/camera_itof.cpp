@@ -370,6 +370,25 @@ aditof::Status CameraItof::stop() {
 
     m_devStreaming = false;
 
+    // After stopping the stream, perform a chip GPIO reset and re-apply
+    // hardware configuration (MIPI output speed, deskew).  The ADSD3500
+    // clears these transport registers during its internal ISP reset on
+    // mode switch.  Resetting here leaves the chip in the same clean state
+    // as after initialize(), so the next setMode() + start() sequence
+    // mirrors the first-run path and delivers frames correctly.
+    if (!m_isOffline && m_adsd3500Hardware) {
+        aditof::Status resetStatus = m_adsd3500Hardware->adsd3500_reset();
+        if (resetStatus != aditof::Status::OK) {
+            LOG(WARNING) << "stop: chip GPIO reset failed (non-fatal)";
+        } else {
+            resetStatus = m_initManager->applyHardwareConfiguration();
+            if (resetStatus != aditof::Status::OK) {
+                LOG(WARNING) << "stop: failed to re-apply hardware config "
+                                "after reset (non-fatal)";
+            }
+        }
+    }
+
     return status;
 }
 
@@ -446,6 +465,19 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         configureSensorModeDetails();
 
     } else {
+
+        // Ensure the camera is stopped before reconfiguring the chip.
+        // sensor::setMode() would call sensor::stop() internally, but
+        // camera_itof::stop() must run first so the GPIO reset and
+        // hardware configuration re-application happen before CTRL_SET_MODE.
+        if (m_devStreaming) {
+            status = stop();
+            if (status != Status::OK) {
+                LOG(ERROR)
+                    << "setMode: failed to stop camera before mode switch";
+                return status;
+            }
+        }
 
         auto modeIt = std::find_if(m_availableSensorModeDetails.begin(),
                                    m_availableSensorModeDetails.end(),
@@ -686,8 +718,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         {
             std::string ftype;
             for (const auto &d : m_details.frameType.dataDetails) {
-                if (d.type == "metadata") continue;
-                if (!ftype.empty()) ftype += '_';
+                if (d.type == "metadata")
+                    continue;
+                if (!ftype.empty())
+                    ftype += '_';
                 ftype += d.type;
             }
             m_details.frameType.type = ftype;

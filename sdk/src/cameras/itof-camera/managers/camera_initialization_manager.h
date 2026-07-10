@@ -122,6 +122,19 @@ class CameraInitializationManager {
      */
     aditof::Status initializeOfflineMode();
 
+    /**
+     * @brief Re-applies hardware configuration (MIPI, deskew, etc.) to the chip.
+     *
+     * The ADSD3500 resets its transport registers (MIPI output speed, deskew)
+     * during internal ISP reconfiguration on mode switch.  Call this after a
+     * chip GPIO reset and before CTRL_SET_MODE to restore settings to the same
+     * state as after initialize().
+     *
+     * @return Status::OK if all configurations applied successfully
+     * @return Status::GENERIC_ERROR on configuration failure
+     */
+    aditof::Status applyHardwareConfiguration();
+
   private:
     /**
      * @brief Opens the depth sensor hardware interface.
@@ -190,21 +203,6 @@ class CameraInitializationManager {
      * @return Status::GENERIC_ERROR on CCB read failure (warning only, continues init)
      */
     aditof::Status loadCCBDataIfNeeded(const std::vector<uint8_t> &modes);
-
-    /**
-     * @brief Configures hardware settings (FSYNC, MIPI, deskew, temp compensation).
-     *
-     * Applies configuration values from JSON or platform defaults:
-     * - FSYNC toggle mode
-     * - MIPI output speed
-     * - Deskew enable/disable
-     * - Temperature compensation
-     * - Edge confidence
-     *
-     * @return Status::OK if all configurations applied successfully
-     * @return Status::GENERIC_ERROR on configuration failure
-     */
-    aditof::Status applyHardwareConfiguration();
 
     /**
      * @brief Reads firmware version from ADSD3500.
