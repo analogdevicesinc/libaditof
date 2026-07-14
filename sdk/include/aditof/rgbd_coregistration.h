@@ -248,6 +248,32 @@ class SDK_API RGBDCoregistration {
                               uint32_t tofHeight, uint16_t *registered_depth,
                               uint32_t rgbWidth, uint32_t rgbHeight) const;
 
+    /**
+     * @brief Build a per-ToF-pixel lookup table mapping each ToF pixel to its
+     *        corresponding (u, v) coordinate in the RGB image plane.
+     *
+     * For each ToF pixel (col, row) with depth d > 0, applies the full
+     * tof→rgb geometric transform and writes the projected RGB pixel
+     * coordinates into rgb_u and rgb_v.  Pixels that are invalid (d == 0),
+     * behind the RGB camera, or project outside [0, rgbWidth) × [0, rgbHeight)
+     * are written as -1.
+     *
+     * Output arrays must be pre-allocated to tofWidth × tofHeight elements.
+     *
+     * @param depth_mm   ToF depth image, row-major, uint16 mm (0 = invalid).
+     * @param tofWidth   Width of the ToF frame.
+     * @param tofHeight  Height of the ToF frame.
+     * @param rgb_u      Output u (column) in RGB space per ToF pixel, or -1.
+     * @param rgb_v      Output v (row)    in RGB space per ToF pixel, or -1.
+     * @param rgbWidth   Width of the RGB frame.
+     * @param rgbHeight  Height of the RGB frame.
+     * @return Status::OK on success; Status::UNAVAILABLE if calibration not
+     *         loaded; Status::INVALID_ARGUMENT if any pointer is null.
+     */
+    Status buildToFToRGBMap(const uint16_t *depth_mm, uint32_t tofWidth,
+                            uint32_t tofHeight, int32_t *rgb_u, int32_t *rgb_v,
+                            uint32_t rgbWidth, uint32_t rgbHeight) const;
+
     /** @return true once a calibration has been successfully loaded. */
     bool isCalibrationLoaded() const { return m_calibLoaded; }
 

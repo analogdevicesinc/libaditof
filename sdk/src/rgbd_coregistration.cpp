@@ -538,4 +538,66 @@ Status RGBDCoregistration::registerDepthToRGB(
     return Status::OK;
 }
 
+Status RGBDCoregistration::buildToFToRGBMap(
+    const uint16_t *depth_mm, uint32_t tofWidth, uint32_t tofHeight,
+    int32_t *rgb_u, int32_t *rgb_v, uint32_t rgbWidth,
+    uint32_t rgbHeight) const {
+
+    if (!m_calibLoaded) {
+        LOG(ERROR) << "RGBDCoregistration: calibration not loaded";
+        return Status::UNAVAILABLE;
+    }
+    if (!depth_mm || !rgb_u || !rgb_v) {
+        return Status::INVALID_ARGUMENT;
+    }
+
+    const std::size_t nPixels =
+        static_cast<std::size_t>(tofWidth) * tofHeight;
+    std::fill(rgb_u, rgb_u + nPixels, -1);
+    std::fill(rgb_v, rgb_v + nPixels, -1);
+
+    const auto &tofK = m_calib.tof;
+    const float *R   = m_calib.extrinsics.R;
+    const float *t   = m_calib.extrinsics.t;
+    const int iRgbW  = static_cast<int>(rgbWidth);
+    const int iRgbH  = static_cast<int>(rgbHeight);
+
+    for (uint32_t row = 0; row < tofHeight; ++row) {
+        for (uint32_t col = 0; col < tofWidth; ++col) {
+            const uint32_t idx = row * tofWidth + col;
+            const uint16_t d   = depth_mm[idx];
+            if (d == 0) continue;
+
+            float x_norm = (static_cast<float>(col) - tofK.cx) / tofK.fx;
+            float y_norm = (static_cast<float>(row) - tofK.cy) / tofK.fy;
+
+            float x_u, y_u;
+            undistortToFPoint(x_norm, y_norm, x_u, y_u);
+
+            float Zf = static_cast<float>(d);
+            float Xf = x_u * Zf;
+            float Yf = y_u * Zf;
+
+            float Xr = R[0]*Xf + R[1]*Yf + R[2]*Zf + t[0];
+            float Yr = R[3]*Xf + R[4]*Yf + R[5]*Zf + t[1];
+            float Zr = R[6]*Xf + R[7]*Yf + R[8]*Zf + t[2];
+
+            if (Zr <= 0.0f) continue;
+
+            float u_px, v_px;
+            projectToRGB(Xr / Zr, Yr / Zr, u_px, v_px);
+
+            int u = static_cast<int>(u_px + 0.5f);
+            int v = static_cast<int>(v_px + 0.5f);
+
+            if (u < 0 || u >= iRgbW || v < 0 || v >= iRgbH) continue;
+
+            rgb_u[idx] = u;
+            rgb_v[idx] = v;
+        }
+    }
+
+    return Status::OK;
+}
+
 } // namespace aditof

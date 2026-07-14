@@ -30,6 +30,7 @@
 #include <aditof/adsd3500_hardware_interface.h>
 #include <aditof/playback_interface.h>
 #include <aditof/recordable_interface.h>
+#include <aditof/rgbd_coregistration.h>
 #include <aditof/version-kit.h>
 #if defined(_MSC_VER)
 #include <BaseTsd.h>
@@ -1055,6 +1056,92 @@ PYBIND11_MODULE(aditofpython, m) {
             py::arg("baseFileName"), py::arg("frame"),
             py::arg("ab").none(true) = py::none(),
             py::arg("depth").none(true) = py::none());
+
+    // RGBDCoregistration
+    py::class_<aditof::RGBDCoregistration>(m, "RGBDCoregistration")
+        .def(py::init<>())
+        .def("loadCalibrationFromJson",
+             &aditof::RGBDCoregistration::loadCalibrationFromJson,
+             py::arg("jsonPath"))
+        .def("loadCalibrationFromBin",
+             &aditof::RGBDCoregistration::loadCalibrationFromBin,
+             py::arg("binPath"))
+        .def(
+            "setToFIntrinsics",
+            [](aditof::RGBDCoregistration &coreg,
+               const aditof::IntrinsicParameters &intr) {
+                aditof::CameraIntrinsicsCalib calib;
+                calib.fx = intr.fx;
+                calib.fy = intr.fy;
+                calib.cx = intr.cx;
+                calib.cy = intr.cy;
+                calib.codx = intr.codx;
+                calib.cody = intr.cody;
+                calib.k1 = intr.k1;
+                calib.k2 = intr.k2;
+                calib.k3 = intr.k3;
+                calib.k4 = intr.k4;
+                calib.k5 = intr.k5;
+                calib.k6 = intr.k6;
+                calib.p1 = intr.p1;
+                calib.p2 = intr.p2;
+                coreg.setToFIntrinsics(calib);
+            },
+            py::arg("intrinsics"),
+            "Set ToF intrinsics from an IntrinsicParameters object.")
+        .def(
+            "setToFIntrinsicsFromCamera",
+            [](aditof::RGBDCoregistration &coreg, aditof::Camera &cam) {
+                aditof::CameraDetails details;
+                aditof::Status status = cam.getDetails(details);
+                if (status != aditof::Status::OK)
+                    return status;
+                aditof::CameraIntrinsicsCalib calib;
+                calib.fx = details.intrinsics.fx;
+                calib.fy = details.intrinsics.fy;
+                calib.cx = details.intrinsics.cx;
+                calib.cy = details.intrinsics.cy;
+                calib.codx = details.intrinsics.codx;
+                calib.cody = details.intrinsics.cody;
+                calib.k1 = details.intrinsics.k1;
+                calib.k2 = details.intrinsics.k2;
+                calib.k3 = details.intrinsics.k3;
+                calib.k4 = details.intrinsics.k4;
+                calib.k5 = details.intrinsics.k5;
+                calib.k6 = details.intrinsics.k6;
+                calib.p1 = details.intrinsics.p1;
+                calib.p2 = details.intrinsics.p2;
+                coreg.setToFIntrinsics(calib);
+                return aditof::Status::OK;
+            },
+            py::arg("camera"),
+            "Read ToF intrinsics directly from a live camera (getDetails).")
+        .def(
+            "registerDepthToRGB",
+            [](aditof::RGBDCoregistration &coreg,
+               py::array_t<uint16_t> depth_in,
+               uint32_t tofWidth, uint32_t tofHeight, uint32_t rgbWidth,
+               uint32_t rgbHeight) {
+                py::buffer_info info = depth_in.request();
+                const uint16_t *depth_ptr =
+                    static_cast<const uint16_t *>(info.ptr);
+
+                auto result =
+                    py::array_t<uint16_t>({static_cast<py::ssize_t>(rgbHeight),
+                                           static_cast<py::ssize_t>(rgbWidth)});
+                py::buffer_info res_info = result.request();
+                uint16_t *out_ptr = static_cast<uint16_t *>(res_info.ptr);
+
+                coreg.registerDepthToRGB(depth_ptr, tofWidth, tofHeight,
+                                         out_ptr, rgbWidth, rgbHeight);
+                return result;
+            },
+            py::arg("depth"), py::arg("tof_width"), py::arg("tof_height"),
+            py::arg("rgb_width"), py::arg("rgb_height"),
+            "Project ToF depth (H×W uint16 mm) into RGB plane. "
+            "Returns (rgb_height × rgb_width) uint16 registered depth.")
+        .def("isCalibrationLoaded",
+             &aditof::RGBDCoregistration::isCalibrationLoaded);
 
     //SDK version
     m.def("getKitVersion", &aditof::getKitVersion);
