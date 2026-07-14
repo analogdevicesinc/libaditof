@@ -144,10 +144,11 @@ Status RGBSensor::start() {
     // On subsequent start() calls (stop→start cycles) we skip the probe —
     // Argus is known healthy and the 3-second overhead is wasteful.
     if (!m_argusProbeOk) {
-        // timeout 3: healthy Argus initialises in ~3s (exit 124 = timeout = OK);
-        // broken Argus exits with error before the timeout fires.
-        std::string probeCmd = "timeout 3 gst-launch-1.0 --eos-on-shutdown "
-                               "nvarguscamerasrc num-buffers=1 sensor-id=" +
+        // num-buffers=0: pipeline runs indefinitely — we only need Argus to
+        // reach PLAYING (no frame delivery required).  timeout kills it after
+        // 5 s → exit 124 = Argus OK.  Immediate error exit = Argus absent.
+        std::string probeCmd = "timeout 5 gst-launch-1.0 --eos-on-shutdown "
+                               "nvarguscamerasrc num-buffers=0 sensor-id=" +
                                std::to_string(m_config.sensorId) +
                                " ! fakesink silent=true >/dev/null 2>&1";
 
