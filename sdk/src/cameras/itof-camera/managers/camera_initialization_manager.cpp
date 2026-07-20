@@ -542,7 +542,7 @@ CameraInitializationManager::readSerialNumber(std::string &serialNumber) {
         m_adsd3500Hardware->adsd3500_read_payload_cmd(0x19, serial, 32);
     if (status != Status::OK) {
         LOG(ERROR) << "Failed to read serial number from sensor";
-        return status;
+        return Status::UNAVAILABLE;
     }
 
     // Convert byte array to string

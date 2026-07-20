@@ -30,7 +30,7 @@ elseif(NXP)
     set(PLATFORM_CAPTURE_DEVICE "mxc")
     set(PLATFORM_VIDEO_PREFIX "mxc_isi")
     set(PLATFORM_MEDIA_CONTROLLER "/dev/media")
-    set(PLATFORM_RESET_GPIO "gpio64") 
+    set(PLATFORM_RESET_GPIO "122") 
     set(PLATFORM_RESET_GPIO_PIN 0)    # Not used for NXP
     set(PLATFORM_RESET_PULSE_US 1000000) # 1s low pulse
     set(PLATFORM_RESET_DELAY_US 7000000) # 7s default delay
