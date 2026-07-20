@@ -57,7 +57,7 @@ static std::map<std::string, std::string> adsd3100_partialDepth = {
     {"partialDepthEnable", "1"},
     {"interleavingEnable", "0"},
     {"bitsInPhaseOrDepth", "12"},
-    {"dualPulsatrixSystemEnabled", "1"},
+    {"dualPulsatrixSystemEnabled", "0"},
     {"bitsInConf", "0"},
     {"bitsInAB", "16"},
     {"abAveraging", "0"},
