@@ -144,6 +144,15 @@ class Adsd3500ProtocolManager {
     void updateVideoDevices(struct VideoDev *videoDevs);
 
   private:
+    /**
+     * @brief Sends the burst-mode exit packet to return chip to standard mode.
+     *
+     * Called from error paths in adsd3500_read_payload_cmd and
+     * adsd3500_write_payload_cmd to prevent leaving the chip in burst mode
+     * after a failed burst transaction. Failures are logged but ignored.
+     */
+    void exitBurstMode();
+
     struct VideoDev *m_videoDevs; ///< Pointer to V4L2 video device array
     std::array<uint8_t, ADSD3500_CTRL_PACKET_SIZE>
         &m_ctrlBuf; ///< Reference to control buffer
