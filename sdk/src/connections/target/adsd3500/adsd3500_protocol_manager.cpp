@@ -96,6 +96,49 @@ Adsd3500ProtocolManager::Adsd3500ProtocolManager(
     std::recursive_mutex &mutex)
     : m_videoDevs(videoDevs), m_ctrlBuf(ctrlBuf), m_mutex(mutex) {}
 
+void Adsd3500ProtocolManager::exitBurstMode() {
+    struct VideoDev *dev = &m_videoDevs[0];
+    struct v4l2_ext_control extCtrl;
+    struct v4l2_ext_controls extCtrls;
+    uint8_t *buf = m_ctrlBuf.data();
+
+    // Standard-mode exit packet: same packet used at end of successful
+    // adsd3500_read_payload_cmd / adsd3500_write_payload_cmd
+    static const uint8_t switchBuf[] = {0x01,
+                                        0x00,
+                                        ADSD3500_PROTOCOL_MARKER,
+                                        0xAD,
+                                        0x00,
+                                        0x00,
+                                        ADSD3500_PROTOCOL_MARKER,
+                                        0x00,
+                                        0x00,
+                                        0x00,
+                                        0x00,
+                                        ADSD3500_PROTOCOL_MARKER,
+                                        0x00,
+                                        0x00,
+                                        0x00,
+                                        0x00,
+                                        0x00,
+                                        0x00,
+                                        0x00};
+    memcpy(buf, switchBuf, 19);
+
+    memset(&extCtrl, 0, sizeof(extCtrl));
+    extCtrl.size = ADSD3500_CTRL_PACKET_SIZE;
+    extCtrl.id = V4L2_CID_AD_DEV_CHIP_CONFIG;
+    extCtrl.p_u8 = buf;
+    memset(&extCtrls, 0, sizeof(extCtrls));
+    extCtrls.controls = &extCtrl;
+    extCtrls.count = 1;
+
+    if (xioctl(dev->sfd, VIDIOC_S_EXT_CTRLS, &extCtrls) == -1) {
+        LOG(WARNING) << "exitBurstMode: failed to exit burst mode"
+                     << " (errno=" << errno << " " << strerror(errno) << ")";
+    }
+}
+
 aditof::Status
 Adsd3500ProtocolManager::adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
                                            unsigned int usDelay) {
@@ -259,6 +302,7 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
         LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
                      << " with command: 0x" << std::hex << cmd
                      << ". Reason: " << strerror(errno) << "(" << errno << ")";
+        exitBurstMode(); // chip entered burst mode above; try to recover
         return Status::GENERIC_ERROR;
     }
 
@@ -281,6 +325,7 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
         LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
                      << " with command: 0x" << std::hex << cmd
                      << ". Reason: " << strerror(errno) << "(" << errno << ")";
+        exitBurstMode(); // chip is in burst mode; try to recover
         return Status::GENERIC_ERROR;
     }
 
@@ -288,6 +333,7 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
         LOG(WARNING) << "Could not get control: 0x" << std::hex << extCtrl.id
                      << " with command: 0x" << std::hex << cmd
                      << ". Reason: " << strerror(errno) << "(" << errno << ")";
+        exitBurstMode(); // chip is in burst mode; try to recover
         return Status::GENERIC_ERROR;
     }
 
@@ -460,6 +506,7 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_write_payload_cmd(
         LOG(WARNING) << "Could not set control: 0x" << std::hex << extCtrl.id
                      << " with command: 0x" << std::hex << cmd
                      << ". Reason: " << strerror(errno) << "(" << errno << ")";
+        exitBurstMode(); // chip is in burst mode; try to recover
         return Status::GENERIC_ERROR;
     }
 
