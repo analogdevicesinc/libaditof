@@ -191,7 +191,11 @@ class SDK_API Camera {
      * @param[in] fwFilePath - A path to a file (including file name and extension)
      *                         where the firmware for adsd3500 is stored.
      * @return Status
+     * @deprecated Use tools/nvm_tools/adsd3500_fw_update standalone tool instead.
+     *             To be removed in a future release.
      */
+    [[deprecated("Use tools/nvm_tools/adsd3500_fw_update standalone tool instead. "
+                 "To be removed in a future release.")]]
     virtual Status adsd3500UpdateFirmware(const std::string &fwFilePath) = 0;
 
     /**
