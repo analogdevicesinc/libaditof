@@ -39,7 +39,7 @@
 // The GPIO toggle interrupt typically arrives within a few ms of the reset.
 // If no interrupt has arrived within this window, the skip is expired and
 // the next interrupt (the real reset-complete) is processed normally.
-#define ADSD3500_SKIP_INTERRUPT_WINDOW_MS 500
+#define ADSD3500_SKIP_INTERRUPT_WINDOW_MS 1000
 
 Adsd3500InterruptManager::Adsd3500InterruptManager(
     Adsd3500ProtocolManager *protocolManager, int &chipStatus,
@@ -83,7 +83,6 @@ Adsd3500InterruptManager::adsd3500InterruptHandler(int signalValue) {
             LOG(INFO) << "Skipping status register read for expected GPIO "
                          "toggle interrupt (elapsed: "
                       << elapsedMs << " ms).";
-            m_skipNextInterrupt = false;
             return status;
         } else {
             // Skip window expired — this is the real reset-complete interrupt;
