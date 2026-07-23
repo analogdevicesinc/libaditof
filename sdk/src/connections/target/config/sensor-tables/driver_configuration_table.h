@@ -163,19 +163,22 @@ const std::vector<DepthSensorModeDetails> adtf3080_standardModes = {
 
 /**
  * @brief Standard mode configurations for ADTF3066 imager.
- * 
- * Defines 9 operating modes (0-9) cloned from ADTF3080 configuration.
- * Each mode specifies resolution, phase count, and driver parameters.
+ *
+ * Modes 0,1,3,6 — short-range (SR): 512×640 or 256×320, 2–3 frequencies
+ * Modes 7,8     — long-range (LR):  512×640 or 256×320, 3 frequencies
+ * Mode 4 (PCM)  — single-capture passive mode
+ * Note: CCBM-enabled targets read numberOfFrequencies/numberOfPhases from NVM;
+ *       these entries are the non-CCBM fallback.
  */
 const std::vector<DepthSensorModeDetails> adtf3066_standardModes = {
     {0, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
     {1, {}, 3, 3, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
-    {4, {}, 3, 1, 0, 0, 0, 512, 640, 128, 1, 0, DriverConfiguration()},
-    {7, {}, 3, 2, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
+    {4, {}, 1, 1, 0, 0, 0, 512, 640, 128, 1, 0, DriverConfiguration()},
+    {7, {}, 3, 3, 0, 0, 0, 512, 640, 128, 0, 0, DriverConfiguration()},
     {3, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
     {6, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
     {5, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
-    {8, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
+    {8, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
     {9, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()}};
 
 /**
