@@ -92,9 +92,10 @@ class CameraItof : public aditof::Camera {
     aditof::Status saveModuleCFG(const std::string &filepath) const override;
     aditof::Status saveModuleCCB(const std::string &filepath) override;
     aditof::Status enableDepthCompute(bool enable) override;
-    [[deprecated("Use tools/nvm_tools/adsd3500_fw_update standalone tool instead. "
-                 "To be removed in a future release.")]]
-    aditof::Status adsd3500UpdateFirmware(const std::string &filePath) override;
+    [[deprecated(
+        "Use tools/nvm_tools/adsd3500_fw_update standalone tool instead. "
+        "To be removed in a future release.")]] aditof::Status
+    adsd3500UpdateFirmware(const std::string &filePath) override;
     aditof::Status adsd3500SetToggleMode(int mode) override;
     aditof::Status adsd3500ToggleFsync() override;
     aditof::Status adsd3500SetABinvalidationThreshold(int threshold) override;
