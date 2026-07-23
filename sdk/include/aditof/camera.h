@@ -194,9 +194,10 @@ class SDK_API Camera {
      * @deprecated Use tools/nvm_tools/adsd3500_fw_update standalone tool instead.
      *             To be removed in a future release.
      */
-    [[deprecated("Use tools/nvm_tools/adsd3500_fw_update standalone tool instead. "
-                 "To be removed in a future release.")]]
-    virtual Status adsd3500UpdateFirmware(const std::string &fwFilePath) = 0;
+    [[deprecated(
+        "Use tools/nvm_tools/adsd3500_fw_update standalone tool instead. "
+        "To be removed in a future release.")]] virtual Status
+    adsd3500UpdateFirmware(const std::string &fwFilePath) = 0;
 
     /**
      * @brief Enables or disables FSYNC toggle for ADSD3500
