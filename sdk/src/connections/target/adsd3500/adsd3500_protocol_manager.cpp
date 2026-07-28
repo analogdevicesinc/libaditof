@@ -36,12 +36,17 @@
 #define ADSD3500_STATUS_READ_DELAY_US 2000
 #define ADSD3500_BURST_CMD_SHORT_DELAY_US 1000
 #define ADSD3500_BURST_CMD_LONG_DELAY_US 5000
+// GET_RGBD_CALIBRATION_DATA fetches 160 bytes from flash chunk 0x61; the chip
+// needs a longer settle time than a normal register read before the response
+// can be read back (the on-target burst tool uses 110 ms).
+#define ADSD3500_BURST_CMD_RGBD_DELAY_US 110000
 #define ADSD3500_PAYLOAD_READ_DELAY_US 30000
 #define ADSD3500_PAYLOAD_WRITE_DELAY_US 100000
 
 // Protocol command codes
 #define ADSD3500_CMD_BURST_MODE 0x0019
 #define ADSD3500_CMD_READ_CCB 0x0013
+#define ADSD3500_CMD_GET_RGBD 0x0030
 
 // Protocol packet markers
 #define ADSD3500_PROTOCOL_MARKER 0x10
@@ -226,6 +231,8 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
     buf[2] = ADSD3500_PROTOCOL_MARKER;
 
     buf[3] = 0xAD;
+    buf[4] = uint8_t(payload_len >> 8);
+    buf[5] = uint8_t(payload_len & 0xFF);
     buf[6] = uint8_t(cmd & 0xFF);
 
     uint32_t checksum = 0;
@@ -266,6 +273,8 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
         usleep(ADSD3500_BURST_CMD_SHORT_DELAY_US);
     else if (cmd == ADSD3500_CMD_BURST_MODE)
         usleep(ADSD3500_BURST_CMD_LONG_DELAY_US);
+    else if (cmd == ADSD3500_CMD_GET_RGBD)
+        usleep(ADSD3500_BURST_CMD_RGBD_DELAY_US);
 
     memset(&extCtrls, 0, sizeof(struct v4l2_ext_controls));
     extCtrls.controls = &extCtrl;
@@ -283,6 +292,11 @@ aditof::Status Adsd3500ProtocolManager::adsd3500_read_payload_cmd(
                      << ". Reason: " << strerror(errno) << "(" << errno << ")";
         return Status::GENERIC_ERROR;
     }
+
+    // Large flash reads (e.g. 0x30 GET_RGBD, 160 bytes) need a settle delay
+    // after arming the read-back size before the data is available to GET.
+    if (cmd == ADSD3500_CMD_GET_RGBD)
+        usleep(ADSD3500_BURST_CMD_RGBD_DELAY_US);
 
     if (xioctl(dev->sfd, VIDIOC_G_EXT_CTRLS, &extCtrls) == -1) {
         LOG(WARNING) << "Could not get control: 0x" << std::hex << extCtrl.id
