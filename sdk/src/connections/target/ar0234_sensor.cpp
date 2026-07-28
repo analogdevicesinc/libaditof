@@ -21,6 +21,7 @@
 // #include "nvargus_frame_grabber.h"  // Future implementation
 #endif
 
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <sstream>
@@ -146,33 +147,59 @@ Status RGBSensor::start() {
     if (!m_argusProbeOk) {
         // timeout 3: healthy Argus initialises in ~3s (exit 124 = timeout = OK);
         // broken Argus exits with error before the timeout fires.
-        std::string probeCmd = "timeout 3 gst-launch-1.0 --eos-on-shutdown "
-                               "nvarguscamerasrc num-buffers=1 sensor-id=" +
-                               std::to_string(m_config.sensorId) +
-                               " ! fakesink silent=true >/dev/null 2>&1";
+        const std::string probeCmd =
+            "timeout 3 gst-launch-1.0 --eos-on-shutdown "
+            "nvarguscamerasrc num-buffers=1 sensor-id=" +
+            std::to_string(m_config.sensorId) +
+            " ! fakesink silent=true >/dev/null 2>&1";
 
-        pid_t probePid = fork();
-        if (probePid == 0) {
-            execl("/bin/sh", "sh", "-c", probeCmd.c_str(), nullptr);
-            _exit(127);
-        } else if (probePid > 0) {
+        // After a crash (SIGSEGV) the nvargus-daemon can still hold the dead
+        // process's CaptureSession, so the first probe often fails. The daemon
+        // reclaims the stale session once it notices the client socket closed,
+        // which can take a few seconds. Retry the probe with escalating backoff
+        // instead of giving up on the first failure (which would disable RGB
+        // for the entire session).
+        constexpr int kMaxProbeAttempts = 4;
+        for (int attempt = 1; !m_argusProbeOk && attempt <= kMaxProbeAttempts;
+             ++attempt) {
+            pid_t probePid = fork();
+            if (probePid == 0) {
+                execl("/bin/sh", "sh", "-c", probeCmd.c_str(), nullptr);
+                _exit(127);
+            } else if (probePid < 0) {
+                LOG(WARNING) << "fork() failed for Argus probe, skipping RGB.";
+                return Status::GENERIC_ERROR;
+            }
+
             int wstatus = 0;
             waitpid(probePid, &wstatus, 0);
             int exitCode = WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1;
             int sigNum = WIFSIGNALED(wstatus) ? WTERMSIG(wstatus) : 0;
             bool probeOk = (exitCode == 0 || exitCode == 124);
-            if (!probeOk) {
-                LOG(WARNING) << "Argus probe failed (exit=" << exitCode
-                             << " sig=" << sigNum
-                             << ") \xe2\x80\x94 RGB capture unavailable; "
-                                "continuing in depth-only mode.";
-                return Status::GENERIC_ERROR;
+
+            if (probeOk) {
+                LOG(INFO) << "Argus probe OK (exit=" << exitCode << ", attempt "
+                          << attempt << "), creating pipeline.";
+                m_argusProbeOk = true;
+                break;
             }
-            LOG(INFO) << "Argus probe OK (exit=" << exitCode
-                      << "), creating pipeline.";
-            m_argusProbeOk = true;
-        } else {
-            LOG(WARNING) << "fork() failed for Argus probe, skipping RGB.";
+
+            LOG(WARNING) << "Argus probe failed (exit=" << exitCode
+                         << " sig=" << sigNum << ", attempt " << attempt << "/"
+                         << kMaxProbeAttempts << ")";
+
+            if (attempt < kMaxProbeAttempts) {
+                // Escalating settle time (1s, 2s, 3s) lets the daemon reclaim a
+                // stale post-crash CaptureSession before the next probe.
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(1000 * attempt));
+            }
+        }
+
+        if (!m_argusProbeOk) {
+            LOG(WARNING) << "Argus probe failed after " << kMaxProbeAttempts
+                         << " attempts \xe2\x80\x94 RGB capture unavailable; "
+                            "continuing in depth-only mode.";
             return Status::GENERIC_ERROR;
         }
     }
@@ -185,24 +212,49 @@ Status RGBSensor::start() {
     // avoids the EGL API binding conflict when the caller is the tof-viewer
     // main thread (eglBindAPI EGL_OPENGL_API vs nvarguscamerasrc's ES API).
     LOG(INFO) << "AR0234Sensor using backend: " << m_backend->getBackendName();
-    if (!m_backend->initialize(m_config)) {
-        LOG(ERROR) << "Failed to initialize AR0234 sensor backend";
-        return Status::GENERIC_ERROR;
+
+    // Retry the initialize()+start() sequence a few times. When the viewer is
+    // closed and reopened, the nvargus-daemon occasionally still holds a stale
+    // CaptureSession from the previous process, so the first pipeline start can
+    // fail. A full teardown (m_backend->stop() destroys the pipeline) followed
+    // by a short settle lets the daemon release the session before we retry.
+    constexpr int kMaxStartAttempts = 3;
+    for (int attempt = 1; attempt <= kMaxStartAttempts; ++attempt) {
+        bool startResult = false;
+
+        // initialize() builds the nvarguscamerasrc pipeline (NULL state).
+        // Running startPipeline() (NULL→PAUSED→PLAYING) on a fresh std::thread
+        // avoids the EGL API binding conflict when the caller is the tof-viewer
+        // main thread (eglBindAPI EGL_OPENGL_API vs nvarguscamerasrc's ES API).
+        if (m_backend->initialize(m_config)) {
+            std::thread startThread(
+                [this, &startResult]() { startResult = m_backend->start(); });
+            startThread.join();
+        } else {
+            LOG(ERROR) << "Failed to initialize AR0234 sensor backend (attempt "
+                       << attempt << "/" << kMaxStartAttempts << ")";
+        }
+
+        if (startResult) {
+            LOG(INFO) << "AR0234Sensor started capturing"
+                      << (attempt > 1 ? " (after retry)" : "");
+            return Status::OK;
+        }
+
+        // Tear down completely so the Argus session is released, then let the
+        // daemon settle before the next attempt.
+        m_backend->stop();
+        if (attempt < kMaxStartAttempts) {
+            LOG(WARNING) << "RGB start failed (attempt " << attempt << "/"
+                         << kMaxStartAttempts
+                         << "), retrying after Argus settle...";
+            std::this_thread::sleep_for(std::chrono::milliseconds(700));
+        }
     }
 
-    bool startResult = false;
-    std::thread startThread(
-        [this, &startResult]() { startResult = m_backend->start(); });
-    startThread.join();
-
-    if (!startResult) {
-        LOG(ERROR) << "Failed to start AR0234 sensor capture";
-        return Status::GENERIC_ERROR;
-    }
-
-    LOG(INFO) << "AR0234Sensor started capturing";
-
-    return Status::OK;
+    LOG(ERROR) << "Failed to start AR0234 sensor capture after "
+               << kMaxStartAttempts << " attempts";
+    return Status::GENERIC_ERROR;
 }
 
 Status RGBSensor::stop() {

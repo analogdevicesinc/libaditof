@@ -197,18 +197,25 @@ Status GStreamerFrameGrabber::startPipeline() {
 }
 
 Status GStreamerFrameGrabber::stopPipeline() {
-    if (!m_isRunning) {
+    // Nothing to do only when there is neither a running pipeline nor a
+    // lingering pipeline object. A pipeline that was created but failed to
+    // reach PLAYING (m_isRunning == false) must still be destroyed so its
+    // Argus CaptureSession is released.
+    if (!m_isRunning && !m_pipeline) {
         return Status::OK;
     }
 
-    LOG(INFO) << "Stopping GStreamer pipeline gracefully...";
-
     m_shouldExit = true;
 
-    // Stop the pipeline gracefully: PLAYING → PAUSED → READY → NULL
-    if (m_pipeline) {
-        // Set timeout for state changes (1 second)
-        GstClockTime timeout = 1 * GST_SECOND;
+    // Only walk the graceful state ladder when the pipeline actually reached
+    // PLAYING. Setting PAUSED on a NULL-state pipeline would instead try to
+    // start it, so guard the transitions with m_isRunning.
+    if (m_pipeline && m_isRunning) {
+        LOG(INFO) << "Stopping GStreamer pipeline gracefully...";
+
+        // Generous timeout for state changes: Argus/nvarguscamerasrc teardown
+        // can be slow, and a premature return leaves the CaptureSession alive.
+        GstClockTime timeout = 3 * GST_SECOND;
 
         // PLAYING → PAUSED
         GstStateChangeReturn ret =
@@ -242,6 +249,14 @@ Status GStreamerFrameGrabber::stopPipeline() {
     }
 
     m_isRunning = false;
+
+    // Fully release the pipeline (and with it the Argus CaptureSession + EGL
+    // stream) on every stop instead of deferring teardown to the next
+    // createPipeline(). Leaving the pipeline alive across a stop is the cause
+    // of the intermittent "Argus not cleared / Producer not connected" failure
+    // when streaming is restarted. destroyPipeline() performs the safe
+    // NULL-state-wait-then-unref sequence.
+    destroyPipeline();
 
     //LOG(INFO) << "GStreamer pipeline stopped. Total frames: " << m_frameCount.load();
 
