@@ -23,9 +23,9 @@
 
 #include <cstdlib>
 #include <iostream>
-#include <thread>
 #include <sstream>
 #include <sys/wait.h>
+#include <thread>
 #include <unistd.h>
 
 #ifdef USE_GLOG
@@ -59,7 +59,9 @@ static std::unique_ptr<RGBBackend_Internal> createBackend() {
 // AR0234Sensor Implementation
 // ============================================================================
 
-RGBSensor::RGBSensor() : m_backend(nullptr), m_isOpen(false), m_argusProbeOk(false), m_frameCount(0) {
+RGBSensor::RGBSensor()
+    : m_backend(nullptr), m_isOpen(false), m_argusProbeOk(false),
+      m_frameCount(0) {
     LOG(INFO) << "RGBSensor created";
 }
 
@@ -144,11 +146,10 @@ Status RGBSensor::start() {
     if (!m_argusProbeOk) {
         // timeout 3: healthy Argus initialises in ~3s (exit 124 = timeout = OK);
         // broken Argus exits with error before the timeout fires.
-        std::string probeCmd =
-            "timeout 3 gst-launch-1.0 --eos-on-shutdown "
-            "nvarguscamerasrc num-buffers=1 sensor-id=" +
-            std::to_string(m_config.sensorId) +
-            " ! fakesink silent=true >/dev/null 2>&1";
+        std::string probeCmd = "timeout 3 gst-launch-1.0 --eos-on-shutdown "
+                               "nvarguscamerasrc num-buffers=1 sensor-id=" +
+                               std::to_string(m_config.sensorId) +
+                               " ! fakesink silent=true >/dev/null 2>&1";
 
         pid_t probePid = fork();
         if (probePid == 0) {
@@ -158,7 +159,7 @@ Status RGBSensor::start() {
             int wstatus = 0;
             waitpid(probePid, &wstatus, 0);
             int exitCode = WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1;
-            int sigNum   = WIFSIGNALED(wstatus) ? WTERMSIG(wstatus) : 0;
+            int sigNum = WIFSIGNALED(wstatus) ? WTERMSIG(wstatus) : 0;
             bool probeOk = (exitCode == 0 || exitCode == 124);
             if (!probeOk) {
                 LOG(WARNING) << "Argus probe failed (exit=" << exitCode
@@ -190,9 +191,8 @@ Status RGBSensor::start() {
     }
 
     bool startResult = false;
-    std::thread startThread([this, &startResult]() {
-        startResult = m_backend->start();
-    });
+    std::thread startThread(
+        [this, &startResult]() { startResult = m_backend->start(); });
     startThread.join();
 
     if (!startResult) {
