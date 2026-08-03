@@ -501,7 +501,9 @@ Status RGBDCoregistration::registerDepthToRGB(
             undistortToFPoint(x_norm, y_norm, x_u, y_u);
 
             // 3. Back-project to 3-D in ToF camera frame (depth in mm)
-            float Zf = static_cast<float>(d);
+            // d is radial depth (distance from camera centre), not Z-depth
+            float ray_len = std::sqrt(x_u * x_u + y_u * y_u + 1.0f);
+            float Zf = static_cast<float>(d) / ray_len;
             float Xf = x_u * Zf;
             float Yf = y_u * Zf;
 
@@ -574,7 +576,9 @@ Status RGBDCoregistration::buildToFToRGBMap(
             float x_u, y_u;
             undistortToFPoint(x_norm, y_norm, x_u, y_u);
 
-            float Zf = static_cast<float>(d);
+            // d is radial depth — convert to Z-depth before back-projection
+            float ray_len = std::sqrt(x_u * x_u + y_u * y_u + 1.0f);
+            float Zf = static_cast<float>(d) / ray_len;
             float Xf = x_u * Zf;
             float Yf = y_u * Zf;
 
