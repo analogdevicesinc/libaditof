@@ -262,8 +262,6 @@ class CameraItof : public aditof::Camera {
     // - m_depth_params_map, m_depth_params_map_reset
     // NOTE: Calibration data now managed by m_calibrationMgr:
     // - m_rawCCBData, m_xyz_dealias_data, m_xyzTable
-    // NOTE: Firmware update state now managed by m_firmwareManager:
-    // - m_fwUpdated, m_adsd3500Status
     std::pair<std::string, std::string> m_adsd3500FwGitHash;
     int m_adsd3500FwVersionInt;
     int m_modesVersion;
