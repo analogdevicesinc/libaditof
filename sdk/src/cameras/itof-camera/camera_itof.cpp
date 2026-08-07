@@ -190,8 +190,6 @@ CameraItof::CameraItof(
       m_initManager(std::make_unique<aditof::CameraInitializationManager>(
           depthSensor, m_calibrationMgr.get(), m_adsd3500Ctrl.get(),
           m_config.get())),
-      m_firmwareManager(
-          std::make_unique<aditof::CameraFirmwareManager>(depthSensor)),
       m_frameAcqManager(std::make_unique<aditof::CameraFrameAcquisitionManager>(
           depthSensor, m_calibrationMgr.get(), m_config.get())),
       m_depthSensor(depthSensor), m_adsd3500Hardware(nullptr),
@@ -1375,33 +1373,6 @@ aditof::Status CameraItof::enableXYZframe(bool enable) {
  */
 aditof::Status CameraItof::enableDepthCompute(bool enable) {
     return aditof::Status::UNAVAILABLE;
-}
-
-/**
- * @brief Updates the ADSD3500 firmware from a binary file.
- *
- * Delegates firmware update operation to CameraFirmwareManager, which handles:
- * - Firmware file validation and loading
- * - Mode switching (Standard → Burst → Standard)
- * - Chunked transmission with CRC validation
- * - Interrupt-based completion detection
- *
- * @param[in] fwFilePath Path to the firmware binary file (.bin).
- *
- * @return aditof::Status::OK if firmware updated successfully;
- *         aditof::Status::GENERIC_ERROR if update fails or times out.
- *
- * @note This function asserts that the camera is not in offline mode.
- * @note Timeout is 60 seconds for firmware reprogramming. Without interrupt
- *       support, the function waits 60 seconds unconditionally.
- * @note The chip is automatically switched back to standard mode after update.
- */
-aditof::Status
-CameraItof::adsd3500UpdateFirmware(const std::string &fwFilePath) {
-    using namespace aditof;
-    assert(!m_isOffline);
-
-    return m_firmwareManager->updateFirmware(fwFilePath);
 }
 
 /**
