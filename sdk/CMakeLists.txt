@@ -126,7 +126,7 @@ add_library(${PROJECT_NAME} SHARED
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE crc32)
-target_link_libraries(${PROJECT_NAME} PRIVATE cjson)
+target_link_libraries(${PROJECT_NAME} PRIVATE json-c)
 
 if(WITH_GLOG_DEPENDENCY)
     # Check if submodule exists, and build the library
@@ -196,6 +196,8 @@ target_include_directories(${PROJECT_NAME}
         ${GENERATED_PROTO_FILES_DIR}
         ${GENERATED_NET_PROTO_FILES_DIR}
         ${OPENSSL_INCLUDE_DIRS}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../dependencies/third-party/json-c
+        ${CMAKE_CURRENT_BINARY_DIR}/../dependencies/third-party/json-c
 )
 
 
