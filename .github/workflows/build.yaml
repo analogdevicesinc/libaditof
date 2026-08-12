@@ -1,0 +1,71 @@
+name: Build libaditof
+
+on:
+  pull_request:
+    branches:
+        - main
+
+permissions:
+  contents: read
+
+env:
+  NUM_JOBS: 4
+
+jobs:
+  build-default:
+    continue-on-error: true
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            type: linux
+            extra-cmake-flags: '-DWITH_SUBMODULES=1 -DWITH_PROTOBUF_DEPENDENCY=1 -DWITH_NETWORK=1'
+          - os: ubuntu-24.04
+            type: linux
+            extra-cmake-flags: '-DWITH_SUBMODULES=1 -DWITH_PROTOBUF_DEPENDENCY=1 -DWITH_NETWORK=1'
+          - os: ubuntu-22.04-arm
+            # docker-image: septimiuvana/arm64-ubuntu
+            type: linux
+            extra-cmake-flags: '-DNXP=1'
+          - os: ubuntu-22.04-arm
+            # docker-image: septimiuvana/arm64-ubuntu
+            type: linux
+            extra-cmake-flags: '-DNVIDIA=1'
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        shell: sh
+        run: |
+          ./.github/scripts/install-deps.sh
+        env:
+          BUILD_TYPE: ${{ matrix.type }}
+      - name: Build ${{ matrix.type }}
+        shell: sh
+        run: |
+          ./.github/scripts/build-tof.sh
+        env:
+          WORK_DIR: ${{ github.workspace }}
+          BUILD_DIR: ${{ github.workspace }}/build
+          BUILD_TYPE: ${{ matrix.type }}
+          DOCKER_IMAGE: ${{ matrix.docker-image || '' }}
+          EXTRA_CMAKE_FLAGS: ${{ matrix.extra-cmake-flags }}
+  build-windows:
+    continue-on-error: true
+    runs-on: windows-2022
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          ${{ github.workspace }}/.github/scripts/install-deps.ps1
+      - name: Build windows
+        shell: pwsh
+        run: |
+          ${{ github.workspace }}/.github/scripts/build-sdk.ps1
