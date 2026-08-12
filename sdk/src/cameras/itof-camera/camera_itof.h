@@ -77,7 +77,6 @@ class CameraItof : public aditof::Camera {
     aditof::Status saveModuleCFG(const std::string &filepath) const override;
     aditof::Status saveModuleCCB(const std::string &filepath) override;
     aditof::Status enableDepthCompute(bool enable) override;
-    aditof::Status adsd3500UpdateFirmware(const std::string &filePath) override;
     aditof::Status adsd3500SetToggleMode(int mode) override;
     aditof::Status adsd3500ToggleFsync() override;
     aditof::Status adsd3500SetABinvalidationThreshold(int threshold) override;
@@ -225,7 +224,6 @@ class CameraItof : public aditof::Camera {
     TofiXYZDealiasData m_xyz_dealias_data[MAX_N_MODES + 1];
     bool m_loadedConfigData;
 
-    std::string m_sensorFirmwareFile;
     std::string m_ccb_calibrationFile;
     std::string m_ini_depth;
     std::map<std::string, std::string> m_ini_depth_map;
@@ -252,8 +250,6 @@ class CameraItof : public aditof::Camera {
     std::pair<std::string, std::string> m_adsd3500FwGitHash;
     int m_adsd3500FwVersionInt;
     int m_modesVersion;
-    bool m_fwUpdated;
-    aditof::Adsd3500Status m_adsd3500Status;
     XYZTable m_xyzTable;
     bool m_enableDepthCompute;
     std::string m_initConfigFilePath;
