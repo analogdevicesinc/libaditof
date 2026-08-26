@@ -322,7 +322,7 @@ endif()
 
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(${PROJECT_NAME} PRIVATE
+    target_compile_options(${PROJECT_NAME} PUBLIC
             -Wall
             -Wno-unknown-pragmas
             -Werror=return-type
