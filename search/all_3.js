@@ -1,6 +1,7 @@
 var searchData=
 [
   ['datadetails',['dataDetails',['../structaditof_1_1_frame_details.html#a633d8f7eb3ff5d2b4e831784390d2879',1,'aditof::FrameDetails']]],
+  ['deprecated_20list',['Deprecated List',['../deprecated.html',1,'']]],
   ['depth_5fbits',['depth_bits',['../structaditof_1_1_bits_configuration.html#a965930baca2e7b71a7e7f84d8f80ac4c',1,'aditof::BitsConfiguration']]],
   ['depthbits',['depthBits',['../structaditof_1_1_driver_configuration.html#ac497b5371b810513973b7610b686e12e',1,'aditof::DriverConfiguration']]],
   ['depthsensorinterface',['DepthSensorInterface',['../classaditof_1_1_depth_sensor_interface.html',1,'aditof']]],
