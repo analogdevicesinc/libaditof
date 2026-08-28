@@ -302,6 +302,12 @@ Status CameraFrameAcquisitionManager::extractOrGenerateMetadata(
 
         // Clear metadata bytes from AB frame
         memset(abFrame, 0, sizeof(metadata));
+
+        // ISP encodes bit depths using internal sensor indices, not actual bit
+        // counts.  Always use SDK-configured values so bitsInAb is never 0.
+        metadata.bitsInDepth = depthBitsPerPixel;
+        metadata.bitsInAb = abBitsPerPixel;
+        metadata.bitsInConfidence = confBitsPerPixel;
     } else {
         // Generate metadata from current configuration
         memset(static_cast<void *>(&metadata), 0, sizeof(metadata));
