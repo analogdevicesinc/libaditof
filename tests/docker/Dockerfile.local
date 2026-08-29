@@ -10,12 +10,20 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
+    git \
     cmake \
     g++ \
     python3.10 \
     python3.10-dev \
     libv4l-dev \
     v4l-utils \
+    libopencv-dev \
+    libgl1-mesa-dev libglfw3-dev \
+    doxygen graphviz \
+    libxinerama-dev \
+    libxcursor-dev \
+    libxi-dev \
+    libxrandr-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -24,20 +32,22 @@ WORKDIR /workspace
 # Copy the local libs folder to the workspace
 COPY libs /workspace/libs
 
-# Copy local libaditof code (excluding build, libaditof/build, scripts)
-COPY local_code /workspace/libaditof
+# Copy local repo code (excluding build, reo/build, scripts)
+COPY local_code /workspace/repo
 
 # Set working directory to the local code
-WORKDIR /workspace/libaditof
+WORKDIR /workspace/repo
+
+RUN
 
 # Create build directory
 RUN mkdir -p build
 
 # Set working directory to build
-WORKDIR /workspace/libaditof/build
+WORKDIR /workspace/repo/build
 
 # Configure with CMake - output will be visible during docker build
-RUN cmake -DBUILD_TESTING=ON -DNVIDIA=1 -DWITH_NETWORK=OFF -DWITH_SUBMODULES=OFF ..
+RUN cmake -DBUILD_TESTING=ON -DNVIDIA=1 -DWITH_NETWORK=OFF -DWITH_SUBMODULES=OFF -DCMAKE_BUILD_TYPE=Release ..
 
 # Build the project with verbose output
 #RUN cmake --build . -j ${BUILD_JOBS} --verbose

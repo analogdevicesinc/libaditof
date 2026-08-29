@@ -21,4 +21,4 @@ services:
     privileged: true
     stdin_open: true
     tty: true
-    working_dir: /workspace/libaditof/build
+    working_dir: /workspace/repo/build
