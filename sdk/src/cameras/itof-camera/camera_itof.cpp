@@ -350,7 +350,10 @@ aditof::Status CameraItof::start() {
 aditof::Status CameraItof::stop() {
     aditof::Status status = aditof::Status::OK;
 
-    if (m_isOffline) {
+    // Only attempt to stop playback if start() actually opened it; otherwise
+    // the file stream was never open and stopPlayback() would just log a
+    // spurious error (e.g. when closing/reopening a file before streaming).
+    if (m_isOffline && m_devStreaming) {
         auto playbackInterface =
             std::dynamic_pointer_cast<aditof::PlaybackInterface>(m_depthSensor);
         if (playbackInterface) {
