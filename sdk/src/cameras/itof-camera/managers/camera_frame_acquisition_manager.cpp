@@ -112,7 +112,7 @@ Status CameraFrameAcquisitionManager::requestFrame(
     Metadata metadata;
     status = extractOrGenerateMetadata(
         frame, metadata, modeDetails, abEnabled, isPcmFrame, xyzEnabled,
-        depthBitsPerPixel, abBitsPerPixel, confBitsPerPixel);
+        depthBitsPerPixel, abBitsPerPixel, confBitsPerPixel, isOffline);
     if (status != Status::OK) {
         return status;
     }
@@ -281,7 +281,7 @@ Status CameraFrameAcquisitionManager::zeroABIfDisabled(
 Status CameraFrameAcquisitionManager::extractOrGenerateMetadata(
     Frame *frame, Metadata &metadata, const DepthSensorModeDetails &modeDetails,
     bool abEnabled, bool isPcmFrame, bool xyzEnabled, uint8_t depthBitsPerPixel,
-    uint8_t abBitsPerPixel, uint8_t confBitsPerPixel) {
+    uint8_t abBitsPerPixel, uint8_t confBitsPerPixel, bool isOffline) {
 
     // Try to extract metadata from AB frame header if enabled
     if (m_config->getMetadataInAB() && abEnabled && frame->haveDataType("ab")) {
@@ -303,11 +303,17 @@ Status CameraFrameAcquisitionManager::extractOrGenerateMetadata(
         // Clear metadata bytes from AB frame
         memset(abFrame, 0, sizeof(metadata));
 
-        // ISP encodes bit depths using internal sensor indices, not actual bit
-        // counts.  Always use SDK-configured values so bitsInAb is never 0.
-        metadata.bitsInDepth = depthBitsPerPixel;
-        metadata.bitsInAb = abBitsPerPixel;
-        metadata.bitsInConfidence = confBitsPerPixel;
+        // In playback, the embedded values already reflect what was recorded;
+        // depthBitsPerPixel/abBitsPerPixel/confBitsPerPixel are never
+        // configured for offline mode, so overwriting here would zero them out.
+        if (!isOffline) {
+            // ISP encodes bit depths using internal sensor indices, not actual
+            // bit counts. Always use SDK-configured values so bitsInAb is
+            // never 0.
+            metadata.bitsInDepth = depthBitsPerPixel;
+            metadata.bitsInAb = abBitsPerPixel;
+            metadata.bitsInConfidence = confBitsPerPixel;
+        }
     } else {
         // Generate metadata from current configuration
         memset(static_cast<void *>(&metadata), 0, sizeof(metadata));
