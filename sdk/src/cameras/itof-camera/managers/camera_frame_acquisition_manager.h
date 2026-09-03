@@ -209,6 +209,9 @@ class CameraFrameAcquisitionManager {
      * @param[in] depthBitsPerPixel Depth bit depth.
      * @param[in] abBitsPerPixel AB bit depth.
      * @param[in] confBitsPerPixel Confidence bit depth.
+     * @param[in] isOffline True if in offline/playback mode; when true, the
+     *            bit depths embedded in the recording are kept as-is instead
+     *            of being overwritten with the (unset) live capture values.
      *
      * @return Status::OK if metadata extracted/generated successfully.
      */
@@ -217,7 +220,7 @@ class CameraFrameAcquisitionManager {
                                      bool abEnabled, bool isPcmFrame,
                                      bool xyzEnabled, uint8_t depthBitsPerPixel,
                                      uint8_t abBitsPerPixel,
-                                     uint8_t confBitsPerPixel);
+                                     uint8_t confBitsPerPixel, bool isOffline);
 
     /**
      * @brief Writes metadata to frame buffer.
