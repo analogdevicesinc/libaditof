@@ -391,21 +391,48 @@ Status Adsd3500Controller::setDynamicModeSwitchingSequence(
     const std::vector<std::pair<uint8_t, uint8_t>> &sequence) {
     Status status = Status::OK;
 
-    // Maximum 12 pairs allowed by hardware
-    if (sequence.size() > 12) {
-        LOG(ERROR) << "Dynamic Mode Switching sequence too long (max 12 pairs)";
+    // Hardware packs one nibble per frame slot into 2 sequence registers +
+    // 2 repeat-count registers (4 slots each) -> 8 slots max, values 0-15.
+    // Unused sequence-composition slots must be left as 0xF (terminator
+    // sentinel); leaving them 0x0 makes the chip treat them as extra
+    // "mode 0" entries, corrupting the program. Unused repeat-count slots
+    // stay 0x0.
+    if (sequence.size() > 8) {
+        LOG(ERROR) << "Dynamic Mode Switching sequence too long (max 8 pairs)";
         return Status::INVALID_ARGUMENT;
     }
 
-    uint8_t payload[24] = {0};
+    uint16_t modeSeqReg[2] = {0xFFFF, 0xFFFF};
+    uint16_t repeatCountReg[2] = {0, 0};
     for (size_t i = 0; i < sequence.size(); i++) {
-        payload[i * 2] = sequence[i].first;      // mode
-        payload[i * 2 + 1] = sequence[i].second; // repeat count
+        if (sequence[i].first > 0xF || sequence[i].second > 0xF) {
+            LOG(ERROR) << "Dynamic Mode Switching mode/repeat value must fit "
+                          "in a nibble (0-15)";
+            return Status::INVALID_ARGUMENT;
+        }
+        size_t regIndex = i / 4;
+        unsigned int shift = static_cast<unsigned int>((i % 4) * 4);
+        modeSeqReg[regIndex] &= ~(static_cast<uint16_t>(0xF) << shift);
+        modeSeqReg[regIndex] |=
+            static_cast<uint16_t>(sequence[i].first & 0xF) << shift;
+        repeatCountReg[regIndex] |=
+            static_cast<uint16_t>(sequence[i].second & 0xF) << shift;
     }
 
-    status = m_adsd3500Hardware->adsd3500_write_payload_cmd(
-        ADSD3500_REG_DYNAMIC_MODE_SEQUENCE, payload,
-        static_cast<uint16_t>(sequence.size() * 2));
+    status = m_adsd3500Hardware->adsd3500_write_cmd(ADSD3500_REG_DMS_SEQUENCE_0,
+                                                    modeSeqReg[0]);
+    if (status == Status::OK) {
+        status = m_adsd3500Hardware->adsd3500_write_cmd(
+            ADSD3500_REG_DMS_SEQUENCE_1, modeSeqReg[1]);
+    }
+    if (status == Status::OK) {
+        status = m_adsd3500Hardware->adsd3500_write_cmd(
+            ADSD3500_REG_DMS_REPEAT_COUNT_0, repeatCountReg[0]);
+    }
+    if (status == Status::OK) {
+        status = m_adsd3500Hardware->adsd3500_write_cmd(
+            ADSD3500_REG_DMS_REPEAT_COUNT_1, repeatCountReg[1]);
+    }
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to set Dynamic Mode Switching sequence";
     }

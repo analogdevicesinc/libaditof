@@ -855,6 +855,20 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         // If a Dynamic Mode Switching sequences has been loaded from config file then configure ADSD3500
         const auto &dmsSequence = m_config->getDmsSequence();
         if (dmsSequence.size() > 0) {
+            // The mode-switch chip command above clears MIPI/deskew transport
+            // registers (same as a full reset); reapply them as done for
+            // normal frame capture before the DMS registers are touched.
+            status = m_initManager->applyHardwareConfiguration();
+            if (status != Status::OK) {
+                LOG(WARNING) << "Could not reapply hardware configuration "
+                                "before Dynamic Mode Switching setup";
+                return status;
+            }
+
+            // Chip bus needs to settle after the mode-switch reset above before
+            // it will reliably accept the DMS burst-payload command.
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
             status = this->adsd3500setEnableDynamicModeSwitching(true);
             if (status != Status::OK) {
                 LOG(WARNING) << "Could not enable 'Dynamic Mode Switching.";
@@ -2530,14 +2544,10 @@ aditof::Status CameraItof::getImagerType(aditof::ImagerType &imagerType) const {
 aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
 
     using namespace aditof;
-    Status status = Status::OK;
 
     assert(!m_isOffline);
 
-    status = m_adsd3500Hardware->adsd3500_write_cmd(
-        ADSD3500_REG_ENABLE_PHASE_INVALIDATION, en ? 0x0001 : 0x0000);
-
-    return status;
+    return m_adsd3500Ctrl->setEnableDynamicModeSwitching(en);
 }
 
 /**
@@ -2554,70 +2564,14 @@ aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
  *         aditof::Status error codes if sensor write fails at any step.
  *
  * @note This function asserts that the camera is not in offline mode.
- * @note Maximum 8 entries per sequence; excess entries are silently ignored with warning.
+ * @note Maximum 8 entries per sequence; each mode/repeat value must fit in a
+ *       nibble (0-15) per the ADSD3500 hardware protocol.
  */
 aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
     const std::vector<std::pair<uint8_t, uint8_t>> &sequence) {
     using namespace aditof;
 
-    Status status = Status::OK;
-
     assert(!m_isOffline);
 
-    uint32_t entireSequence = 0xFFFFFFFF;
-    uint32_t entireRepCount = 0x00000000;
-    uint8_t *bytePtrSq = reinterpret_cast<uint8_t *>(&entireSequence);
-    uint8_t *bytePtrRc = reinterpret_cast<uint8_t *>(&entireRepCount);
-
-    for (size_t i = 0; i < sequence.size(); ++i) {
-        if (i < 8) {
-            if (i % 2) {
-                *bytePtrSq = (*bytePtrSq & 0x0F) | (sequence[i].first << 4);
-                *bytePtrRc = (*bytePtrRc & 0x0F) | (sequence[i].second << 4);
-            } else {
-                *bytePtrSq = (*bytePtrSq & 0xF0) | (sequence[i].first << 0);
-                *bytePtrRc = (*bytePtrRc & 0xF0) | (sequence[i].second << 0);
-            }
-            bytePtrSq += i % 2;
-            bytePtrRc += i % 2;
-        } else {
-            LOG(WARNING) << "More than 8 entries have been provided. Ignoring "
-                            "all entries starting from the 9th.";
-            break;
-        }
-    }
-
-    uint16_t *sequence0 = reinterpret_cast<uint16_t *>(&entireSequence);
-    uint16_t *sequence1 = reinterpret_cast<uint16_t *>(&entireSequence) + 1;
-    status = m_adsd3500Hardware->adsd3500_write_cmd(ADSD3500_REG_DMS_SEQUENCE_0,
-                                                    *sequence0);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to set sequence 0 for the Dynamic Mode Switching";
-        return status;
-    }
-    status = m_adsd3500Hardware->adsd3500_write_cmd(ADSD3500_REG_DMS_SEQUENCE_1,
-                                                    *sequence1);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to set sequence 1 for the Dynamic Mode Switching";
-        return status;
-    }
-
-    uint16_t *repCount0 = reinterpret_cast<uint16_t *>(&entireRepCount);
-    uint16_t *repCount1 = reinterpret_cast<uint16_t *>(&entireRepCount) + 1;
-    status = m_adsd3500Hardware->adsd3500_write_cmd(
-        ADSD3500_REG_DMS_REPEAT_COUNT_0, *repCount0);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to set mode repeat count 0 for the Dynamic Mode "
-                      "Switching";
-        return status;
-    }
-    status = m_adsd3500Hardware->adsd3500_write_cmd(
-        ADSD3500_REG_DMS_REPEAT_COUNT_1, *repCount1);
-    if (status != Status::OK) {
-        LOG(ERROR) << "Failed to set mode repeat count 0 for the Dynamic Mode "
-                      "Switching";
-        return status;
-    }
-
-    return Status::OK;
+    return m_adsd3500Ctrl->setDynamicModeSwitchingSequence(sequence);
 }

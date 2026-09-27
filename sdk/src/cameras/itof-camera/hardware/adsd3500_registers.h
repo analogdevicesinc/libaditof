@@ -188,22 +188,22 @@
 // ============================================================================
 
 /** Enable dynamic mode switching - allows runtime mode changes */
-#define ADSD3500_REG_ENABLE_DYNAMIC_MODE_SWITCHING 0x00C9
+#define ADSD3500_REG_ENABLE_DYNAMIC_MODE_SWITCHING 0x0080
 
-/** Dynamic mode switching sequence payload command */
-#define ADSD3500_REG_DYNAMIC_MODE_SEQUENCE 0x00CA
-
-/** Dynamic mode switching - sequence 0 (lower 16 bits of 32-bit sequence) */
+/** Dynamic mode switching - sequence 0 (frame slots 0-3, one nibble per mode) */
 #define ADSD3500_REG_DMS_SEQUENCE_0 0x0081
 
-/** Dynamic mode switching - sequence 1 (upper 16 bits of 32-bit sequence) */
+/** Dynamic mode switching - sequence 1 (frame slots 4-7, one nibble per mode) */
 #define ADSD3500_REG_DMS_SEQUENCE_1 0x0082
 
-/** Dynamic mode switching - repeat count 0 (lower 16 bits) */
+/** Dynamic mode switching - repeat count 0 (frame slots 0-3, one nibble per count) */
 #define ADSD3500_REG_DMS_REPEAT_COUNT_0 0x0083
 
-/** Dynamic mode switching - repeat count 1 (upper 16 bits) */
+/** Dynamic mode switching - repeat count 1 (frame slots 4-7, one nibble per count) */
 #define ADSD3500_REG_DMS_REPEAT_COUNT_1 0x0084
+
+/** Dynamic mode switching - status/readback register */
+#define ADSD3500_REG_DMS_STATUS 0x0085
 
 // ============================================================================
 // Special Command Codes

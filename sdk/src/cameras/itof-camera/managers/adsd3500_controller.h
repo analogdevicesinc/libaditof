@@ -400,7 +400,8 @@ class Adsd3500Controller {
 
     /**
      * @brief Sets DMS sequence (mode, repeat_count pairs).
-     * @param[in] sequence Vector of (mode, repeat) pairs
+     * @param[in] sequence Vector of (mode, repeat) pairs; max 8 entries, each
+     *                     value must fit in a nibble (0-15) per hardware protocol.
      * @return Status::OK on success
      */
     Status setDynamicModeSwitchingSequence(
