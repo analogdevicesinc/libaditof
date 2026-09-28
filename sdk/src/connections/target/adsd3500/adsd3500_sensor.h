@@ -147,6 +147,12 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
         const std::map<std::string, std::string> &params) override;
     virtual aditof::Status
     getIniParamsArrayForMode(int mode, std::string &iniStr) override;
+    virtual aditof::Status enableDynamicModeSwitchingSupport(
+        uint8_t alternateMode, uint8_t *iniFile, uint16_t iniFileLength,
+        uint8_t *calData, uint32_t calDataLength, bool ispEnabled,
+        uint8_t repeatPrimary, uint8_t repeatAlternate) override;
+    virtual aditof::Status disableDynamicModeSwitchingSupport() override;
+    virtual aditof::Status getLastDeliveredFrameMode(uint8_t &mode) override;
 
   public: // implements Adsd3500HardwareInterface
     virtual aditof::Status adsd3500_read_cmd(uint16_t cmd, uint16_t *data,
