@@ -163,6 +163,14 @@ BufferProcessor::~BufferProcessor() {
         m_tofiConfig = NULL;
     }
 
+    // STEP 2b: Free the alternate DMS mode's compute context, if registered
+    if (m_altConfig.tofiComputeContext != nullptr) {
+        FreeTofiCompute(m_altConfig.tofiComputeContext);
+    }
+    if (m_altConfig.tofiConfig != nullptr) {
+        FreeTofiConfig(m_altConfig.tofiConfig);
+    }
+
     // STEP 3: Input device cleanup handled by caller (adsd3500_sensor)
 }
 
@@ -481,6 +489,10 @@ aditof::Status BufferProcessor::setProcessorProperties(
     uint32_t calDataLength, uint16_t mode, bool ispEnabled) {
 
     m_ispEnabled = ispEnabled;
+    m_modeFusionEnabled =
+        parseIniBoolFlag(iniFile, iniFileLength, "modeFusionEnabled", false);
+    m_isSRFrameFirst =
+        parseIniBoolFlag(iniFile, iniFileLength, "IsSRFrameFirst", false);
 
     // Log libtofi_compute version once per mode change.
     {
@@ -506,78 +518,130 @@ aditof::Status BufferProcessor::setProcessorProperties(
         m_tofiConfig = nullptr;
     }
 
+    return createModeTofiContext(iniFile, iniFileLength, calData,
+                                 calDataLength, mode, ispEnabled, m_tofiConfig,
+                                 m_tofiComputeContext);
+}
+
+/**
+ * @function BufferProcessor::parseIniBoolFlag
+ *
+ * Scans a raw "key=value\n"-style ini blob for a boolean flag. Used to pull
+ * modeFusionEnabled/IsSRFrameFirst out of the same ini text already handed
+ * to InitTofiConfig_isp(), instead of adding new parameters just for these.
+ */
+bool BufferProcessor::parseIniBoolFlag(uint8_t *iniFile, uint16_t iniFileLength,
+                                      const char *key, bool defaultValue) {
+    if (iniFile == nullptr || iniFileLength == 0) {
+        return defaultValue;
+    }
+
+    const std::string blob(reinterpret_cast<char *>(iniFile), iniFileLength);
+    const std::string needle = std::string(key) + "=";
+    size_t pos = blob.find(needle);
+    if (pos == std::string::npos) {
+        return defaultValue;
+    }
+
+    pos += needle.size();
+    if (pos >= blob.size()) {
+        return defaultValue;
+    }
+
+    return blob[pos] != '0';
+}
+
+/**
+ * @function BufferProcessor::createModeTofiContext
+ *
+ * Builds a standalone TofiConfig/TofiComputeContext pair for the given mode,
+ * without touching any single-mode member state. Used by both
+ * setProcessorProperties() (the primary active mode) and
+ * setAlternateModeConfiguration() (the DMS alternate mode), so the same
+ * proven initialization logic isn't duplicated.
+ */
+aditof::Status BufferProcessor::createModeTofiContext(
+    uint8_t *iniFile, uint16_t iniFileLength, uint8_t *calData,
+    uint32_t calDataLength, uint16_t mode, bool ispEnabled,
+    TofiConfig *&outConfig, TofiComputeContext *&outContext) {
+
+    outConfig = nullptr;
+    outContext = nullptr;
+
+    using GetIntrinsicsDataBuffer_t = int (*)(uint16_t);
+    auto fnGetIntrinsics = reinterpret_cast<GetIntrinsicsDataBuffer_t>(
+        dlsym(RTLD_DEFAULT, "GetIntrinsicsDataBuffer"));
+
     if (ispEnabled) {
         uint32_t status = ADI_TOFI_SUCCESS;
 
         // For ISP mode, calData is already parsed TofiXYZDealiasData (not raw CCB)
-        // Copy it directly to m_xyzDealiasData without calling GetXYZ_DealiasData
-        if (calData != nullptr &&
-            calDataLength >= sizeof(TofiXYZDealiasData) * 10) {
-            memcpy(m_xyzDealiasData, calData, sizeof(TofiXYZDealiasData) * 10);
-        } else {
-            LOG(ERROR) << "Invalid XYZ dealias data size for ISP mode: "
-                       << calDataLength << " (expected "
+        if (calData == nullptr ||
+            calDataLength < sizeof(TofiXYZDealiasData) * 10) {
+            LOG(ERROR) << "Invalid XYZ dealias data size for ISP mode "
+                       << mode << ": " << calDataLength << " (expected "
                        << sizeof(TofiXYZDealiasData) * 10 << ")";
             return aditof::Status::GENERIC_ERROR;
         }
+        // Local scratch copy so the primary and alternate mode contexts
+        // never clobber each other's dealias data.
+        TofiXYZDealiasData localDealiasData[10];
+        memcpy(localDealiasData, calData, sizeof(TofiXYZDealiasData) * 10);
 
         if (iniFile != nullptr) {
             ConfigFileData depth_ini = {iniFile, iniFileLength};
-
-            // Query libtofi_config.so at runtime for GetIntrinsicsDataBuffer;
-            using GetIntrinsicsDataBuffer_t = int (*)(uint16_t);
-            auto fnGetIntrinsics = reinterpret_cast<GetIntrinsicsDataBuffer_t>(
-                dlsym(RTLD_DEFAULT, "GetIntrinsicsDataBuffer"));
             int p0_mode = fnGetIntrinsics ? fnGetIntrinsics(mode)
                                           : static_cast<int>(mode);
-            if (p0_mode != -1) {
-                try {
-                    m_tofiConfig =
-                        InitTofiConfig_isp((ConfigFileData *)&depth_ini,
-                                           p0_mode, &status, m_xyzDealiasData);
-                } catch (...) {
-                    LOG(ERROR)
-                        << "Failed to initialize the Config: Please make "
-                           "sure calibration file corresponds to input data "
-                           "file";
-                    return aditof::Status::GENERIC_ERROR;
-                }
-            } else {
+            if (p0_mode == -1) {
+                LOG(ERROR) << "Failed to get the camera Intrinsics for mode "
+                           << mode;
+                return aditof::Status::GENERIC_ERROR;
+            }
+            try {
+                outConfig = InitTofiConfig_isp(
+                    &depth_ini, p0_mode, &status, localDealiasData);
+            } catch (...) {
                 LOG(ERROR)
-                    << "Failed to get the camera Intrinsics for the given data";
+                    << "Failed to initialize the Config for mode " << mode
+                    << ": Please make sure calibration file corresponds to "
+                       "input data file";
                 return aditof::Status::GENERIC_ERROR;
             }
         } else {
-            // No INI file provided - use default initialization
-            ConfigFileData calDataStruct = {(uint8_t *)m_xyzDealiasData,
+            ConfigFileData calDataStruct = {(uint8_t *)localDealiasData,
                                             sizeof(TofiXYZDealiasData) * 10};
-            m_tofiConfig =
+            outConfig =
                 InitTofiConfig(&calDataStruct, NULL, NULL, mode, &status);
         }
 
-        if ((m_tofiConfig == NULL) ||
-            (m_tofiConfig->p_tofi_cal_config == NULL) ||
+        if ((outConfig == NULL) || (outConfig->p_tofi_cal_config == NULL) ||
             (status != ADI_TOFI_SUCCESS)) {
-            LOG(ERROR) << "InitTofiConfig failed";
+            LOG(ERROR) << "InitTofiConfig failed for mode " << mode;
+            if (outConfig != NULL) {
+                FreeTofiConfig(outConfig);
+                outConfig = nullptr;
+            }
             return aditof::Status::GENERIC_ERROR;
         }
-        if (m_tofiComputeContext == NULL || status != ADI_TOFI_SUCCESS) {
-            m_tofiComputeContext =
-                InitTofiCompute(m_tofiConfig->p_tofi_cal_config, &status);
-            if (m_tofiComputeContext == NULL || status != ADI_TOFI_SUCCESS) {
-                LOG(ERROR) << "InitTofiCompute failed";
-                return aditof::Status::GENERIC_ERROR;
-            }
+
+        outContext = InitTofiCompute(outConfig->p_tofi_cal_config, &status);
+        if (outContext == NULL || status != ADI_TOFI_SUCCESS) {
+            LOG(ERROR) << "InitTofiCompute failed for mode " << mode;
+            FreeTofiConfig(outConfig);
+            outConfig = nullptr;
+            return aditof::Status::GENERIC_ERROR;
         }
+        LOG(INFO) << "createModeTofiContext: mode " << mode
+                  << " TofiConfig n_rows=" << outConfig->n_rows
+                  << " n_cols=" << outConfig->n_cols
+                  << " hdr_size=" << outConfig->hdr_size
+                  << " phases=" << outConfig->phases
+                  << " freqs=" << outConfig->freqs;
     } else {
         // ISP disabled - use standard depth compute initialization with full calibration
         uint32_t status = ADI_TOFI_SUCCESS;
         ConfigFileData calDataStruct = {calData, calDataLength};
 
-        // Query libtofi_config.so at runtime for GetIntrinsicsDataBuffer;
-        using GetIntrinsicsDataBuffer_t = int (*)(uint16_t);
-        auto fnGetIntrinsics = reinterpret_cast<GetIntrinsicsDataBuffer_t>(
-            dlsym(RTLD_DEFAULT, "GetIntrinsicsDataBuffer"));
         int ccb_mode =
             fnGetIntrinsics ? fnGetIntrinsics(mode) : static_cast<int>(mode);
         if (ccb_mode == -1) {
@@ -590,38 +654,312 @@ aditof::Status BufferProcessor::setProcessorProperties(
             ConfigFileData depth_ini = {iniFile, iniFileLength};
             try {
                 // Use CCB mode instead of requested mode to avoid crash
-                m_tofiConfig = InitTofiConfig(&calDataStruct, NULL, &depth_ini,
-                                              ccb_mode, &status);
+                outConfig = InitTofiConfig(&calDataStruct, NULL, &depth_ini,
+                                          ccb_mode, &status);
             } catch (...) {
                 LOG(ERROR)
-                    << "Failed to initialize the Config: Please make "
-                       "sure calibration file corresponds to input data file";
+                    << "Failed to initialize the Config for mode " << mode
+                    << ": Please make sure calibration file corresponds to "
+                       "input data file";
                 return aditof::Status::GENERIC_ERROR;
             }
         } else {
-            m_tofiConfig =
+            outConfig =
                 InitTofiConfig(&calDataStruct, NULL, NULL, ccb_mode, &status);
         }
 
-        if ((m_tofiConfig == NULL) ||
-            (m_tofiConfig->p_tofi_cal_config == NULL) ||
+        if ((outConfig == NULL) || (outConfig->p_tofi_cal_config == NULL) ||
             (status != ADI_TOFI_SUCCESS)) {
-            LOG(ERROR) << "InitTofiConfig failed, status=" << status;
+            LOG(ERROR) << "InitTofiConfig failed for mode " << mode
+                       << ", status=" << status;
+            if (outConfig != NULL) {
+                FreeTofiConfig(outConfig);
+                outConfig = nullptr;
+            }
             return aditof::Status::GENERIC_ERROR;
         }
 
-        if (m_tofiComputeContext == NULL || status != ADI_TOFI_SUCCESS) {
-            m_tofiComputeContext =
-                InitTofiCompute(m_tofiConfig->p_tofi_cal_config, &status);
-            if (m_tofiComputeContext == NULL || status != ADI_TOFI_SUCCESS) {
-                LOG(ERROR) << "InitTofiCompute failed, status=" << status;
-                return aditof::Status::GENERIC_ERROR;
-            }
+        outContext = InitTofiCompute(outConfig->p_tofi_cal_config, &status);
+        if (outContext == NULL || status != ADI_TOFI_SUCCESS) {
+            LOG(ERROR) << "InitTofiCompute failed for mode " << mode
+                       << ", status=" << status;
+            FreeTofiConfig(outConfig);
+            outConfig = nullptr;
+            return aditof::Status::GENERIC_ERROR;
         }
     }
 
     return aditof::Status::OK;
 }
+
+/**
+ * @function BufferProcessor::growSharedBufferPools
+ *
+ * Reallocates the shared raw/ToFi buffer pools so they can hold the larger
+ * of the primary and alternate mode buffers. Pauses the capture/process
+ * threads (if running) for the duration of the resize.
+ */
+aditof::Status BufferProcessor::growSharedBufferPools(uint32_t newRawSize,
+                                                       uint32_t newTofiSize) {
+    bool wasRunning = !stopThreadsFlag.load(std::memory_order_acquire);
+    if (wasRunning) {
+        stopThreads();
+    }
+
+    {
+        std::shared_ptr<uint8_t> clr;
+        while (m_v4l2_input_buffer_Q.pop(clr, std::chrono::milliseconds(0))) {
+        }
+    }
+    {
+        std::shared_ptr<uint16_t> clr;
+        while (m_tofi_io_Buffer_Q.pop(clr, std::chrono::milliseconds(0))) {
+        }
+    }
+
+    m_rawFrameBufferSize = std::max(m_rawFrameBufferSize, newRawSize);
+    m_tofiBufferSize = std::max(m_tofiBufferSize, newTofiSize);
+
+    for (int i = 0; i < (int)MAX_QUEUE_SIZE; ++i) {
+        auto buffer =
+            std::shared_ptr<uint8_t>(new uint8_t[m_rawFrameBufferSize],
+                                     std::default_delete<uint8_t[]>());
+        m_v4l2_input_buffer_Q.push(buffer);
+    }
+    for (int i = 0; i < (int)MAX_QUEUE_SIZE; ++i) {
+        auto buffer = std::shared_ptr<uint16_t>(
+            new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
+        m_tofi_io_Buffer_Q.push(buffer);
+    }
+    m_rotationOutputBuffer = std::shared_ptr<uint16_t>(
+        new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
+
+    if (wasRunning) {
+        startThreads();
+    }
+
+    LOG(INFO) << "growSharedBufferPools: raw=" << m_rawFrameBufferSize
+              << " bytes, tofi=" << (m_tofiBufferSize * sizeof(uint16_t))
+              << " bytes";
+
+    return aditof::Status::OK;
+}
+
+/**
+ * @function BufferProcessor::setAlternateModeConfiguration
+ *
+ * Registers the buffer layout and compute context for a second mode and
+ * activates per-frame dispatch between it and the primary mode, following
+ * the given repeat pattern (matching the Dynamic Mode Switching sequence
+ * programmed on the ADSD3500).
+ */
+aditof::Status BufferProcessor::setAlternateModeConfiguration(
+    uint8_t modeNumber, int frameWidth, int frameHeight, int widthInBytes,
+    int heightInBytes, uint8_t bitsInAB, uint8_t bitsInConf,
+    uint8_t bitsInDepth, bool isRawBypass, bool ispEnabled, uint8_t *iniFile,
+    uint16_t iniFileLength, uint8_t *calData, uint32_t calDataLength,
+    uint8_t repeatPrimary, uint8_t repeatAlternate) {
+
+    if (repeatPrimary == 0 || repeatAlternate == 0) {
+        LOG(ERROR) << "setAlternateModeConfiguration: repeat counts must be "
+                      "greater than zero";
+        return aditof::Status::INVALID_ARGUMENT;
+    }
+
+    AltModeConfig cfg;
+    cfg.modeNumber = modeNumber;
+    cfg.outputFrameWidth = static_cast<uint16_t>(frameWidth);
+    cfg.outputFrameHeight = static_cast<uint16_t>(frameHeight);
+    cfg.driverFrameWidth = static_cast<uint16_t>(widthInBytes);
+    cfg.driverFrameHeight = static_cast<uint16_t>(heightInBytes);
+    cfg.bitsInAB = bitsInAB;
+    cfg.bitsInConf = bitsInConf;
+    cfg.bitsInDepth = (bitsInDepth > 0) ? bitsInDepth : 16u;
+    cfg.isRawBypass = isRawBypass;
+    cfg.ispEnabled = ispEnabled;
+    cfg.modeFusionEnabled =
+        parseIniBoolFlag(iniFile, iniFileLength, "modeFusionEnabled", false);
+    cfg.isSRFrameFirst =
+        parseIniBoolFlag(iniFile, iniFileLength, "IsSRFrameFirst", false);
+
+    cfg.rawFrameBufferSize =
+        aditof::platform::Platform::getInstance().calculateBufferSize(
+            widthInBytes, heightInBytes);
+
+    // Mirrors calculateFrameSize(), applied to the alternate mode's own
+    // dimensions/bit config instead of the primary member state.
+    {
+        uint32_t width =
+            cfg.isRawBypass ? cfg.driverFrameWidth : cfg.outputFrameWidth;
+        uint32_t height =
+            cfg.isRawBypass ? cfg.driverFrameHeight : cfg.outputFrameHeight;
+
+        uint32_t depthSize = width * height;
+        uint32_t abSize = 0;
+        uint32_t confSize = 0;
+
+        if ((cfg.bitsInAB != 0) && (cfg.bitsInConf == 0)) {
+            abSize = width * height;
+        } else if ((cfg.bitsInAB == 0) && (cfg.bitsInConf != 0)) {
+            confSize = width * height * 2;
+        } else if ((cfg.bitsInAB == 0) && (cfg.bitsInConf == 0)) {
+            // No AB/conf contribution
+        } else {
+            abSize = width * height;
+            confSize = width * height * 2;
+        }
+
+        cfg.tofiBufferSize = depthSize + abSize + confSize;
+        cfg.abFrameSize = abSize;
+
+        if (cfg.isRawBypass) {
+            size_t rawBufferSizeInUint16 =
+                (cfg.rawFrameBufferSize + sizeof(uint16_t) - 1) /
+                sizeof(uint16_t);
+            if (rawBufferSizeInUint16 > cfg.tofiBufferSize) {
+                cfg.tofiBufferSize =
+                    static_cast<uint32_t>(rawBufferSizeInUint16);
+            }
+        }
+    }
+
+    if (!isRawBypass) {
+        aditof::Status status = createModeTofiContext(
+            iniFile, iniFileLength, calData, calDataLength, modeNumber,
+            ispEnabled, cfg.tofiConfig, cfg.tofiComputeContext);
+        if (status != aditof::Status::OK) {
+            LOG(ERROR) << "setAlternateModeConfiguration: Failed to build "
+                          "compute context for mode "
+                       << (int)modeNumber;
+            return status;
+        }
+    }
+
+    // Grow shared buffer pools before swapping in the new config, so the
+    // capture/process threads never see a config bigger than the buffers.
+    uint32_t maxRawSize = std::max(m_rawFrameBufferSize, cfg.rawFrameBufferSize);
+    uint32_t maxTofiSize = std::max(m_tofiBufferSize, cfg.tofiBufferSize);
+    if (maxRawSize > m_rawFrameBufferSize || maxTofiSize > m_tofiBufferSize) {
+        aditof::Status status = growSharedBufferPools(maxRawSize, maxTofiSize);
+        if (status != aditof::Status::OK) {
+            if (cfg.tofiComputeContext != nullptr) {
+                FreeTofiCompute(cfg.tofiComputeContext);
+            }
+            if (cfg.tofiConfig != nullptr) {
+                FreeTofiConfig(cfg.tofiConfig);
+            }
+            return status;
+        }
+    }
+
+    // Free any previously-registered alternate context before replacing it.
+    if (m_altConfig.tofiComputeContext != nullptr) {
+        FreeTofiCompute(m_altConfig.tofiComputeContext);
+    }
+    if (m_altConfig.tofiConfig != nullptr) {
+        FreeTofiConfig(m_altConfig.tofiConfig);
+    }
+    m_altConfig = cfg;
+    m_altConfigValid = true;
+
+    std::vector<bool> pattern;
+    pattern.insert(pattern.end(), repeatPrimary, false);
+    pattern.insert(pattern.end(), repeatAlternate, true);
+    m_dmsPattern = std::move(pattern);
+    m_dmsPos.store(0, std::memory_order_release);
+    m_dmsActive.store(true, std::memory_order_release);
+
+    LOG(INFO) << "setAlternateModeConfiguration: mode " << (int)modeNumber
+              << " active (" << cfg.outputFrameWidth << "x"
+              << cfg.outputFrameHeight << ", rawBypass=" << cfg.isRawBypass
+              << "), pattern=" << (int)repeatPrimary << "/"
+              << (int)repeatAlternate;
+
+    return aditof::Status::OK;
+}
+
+/**
+ * @function BufferProcessor::clearAlternateModeConfiguration
+ *
+ * Deactivates per-frame mode dispatch and frees the alternate mode's
+ * compute context, reverting to the single active configuration.
+ */
+aditof::Status BufferProcessor::clearAlternateModeConfiguration() {
+    m_dmsActive.store(false, std::memory_order_release);
+    m_dmsPattern.clear();
+    m_dmsPos.store(0, std::memory_order_release);
+
+    if (m_altConfig.tofiComputeContext != nullptr) {
+        FreeTofiCompute(m_altConfig.tofiComputeContext);
+    }
+    if (m_altConfig.tofiConfig != nullptr) {
+        FreeTofiConfig(m_altConfig.tofiConfig);
+    }
+    m_altConfig = AltModeConfig();
+    m_altConfigValid = false;
+
+    return aditof::Status::OK;
+}
+
+/**
+ * @function BufferProcessor::getLastDeliveredModeNumber
+ *
+ * Returns the mode number of the most recently delivered frame, tracked
+ * internally rather than parsed from the chip's embedded per-frame
+ * metadata (which lands at the wrong offset when the primary and alternate
+ * DMS modes differ in resolution).
+ */
+uint8_t BufferProcessor::getLastDeliveredModeNumber() const {
+    return m_lastFrameWasAlternate.load(std::memory_order_acquire)
+              ? m_altConfig.modeNumber
+              : m_currentModeNumber;
+}
+
+/**
+ * @function BufferProcessor::buildSRLRFusedBuffer
+ *
+ * Concatenates a Short-Range and Long-Range raw frame into one input buffer
+ * for SR/LR mode fusion (modeFusionEnabled / IsSRFrameFirst ini flags).
+ * Each frame occupies width*height*bytesPerPixel bytes; bytesPerPixel is
+ * the sum of the depth/AB/confidence bit depths, rounded up to whole bytes.
+ */
+aditof::Status BufferProcessor::buildSRLRFusedBuffer(
+    const uint8_t *srData, uint32_t srWidth, uint32_t srHeight,
+    const uint8_t *lrData, uint32_t lrWidth, uint32_t lrHeight,
+    uint8_t bitsInDepth, uint8_t bitsInAB, uint8_t bitsInConf,
+    bool isSRFrameFirst, std::vector<uint8_t> &pInputBuffer) {
+
+    if (srData == nullptr || lrData == nullptr || srWidth == 0 ||
+        srHeight == 0 || lrWidth == 0 || lrHeight == 0) {
+        LOG(ERROR) << "buildSRLRFusedBuffer: invalid frame pointer/dimensions";
+        return aditof::Status::INVALID_ARGUMENT;
+    }
+
+    const uint32_t bytesPerPixel =
+        (static_cast<uint32_t>(bitsInDepth) + bitsInAB + bitsInConf + 7) / 8;
+    if (bytesPerPixel == 0) {
+        LOG(ERROR) << "buildSRLRFusedBuffer: bitsInDepth/AB/Conf sum to 0";
+        return aditof::Status::INVALID_ARGUMENT;
+    }
+
+    const size_t srFrameBytes =
+        static_cast<size_t>(srWidth) * srHeight * bytesPerPixel;
+    const size_t lrFrameBytes =
+        static_cast<size_t>(lrWidth) * lrHeight * bytesPerPixel;
+
+    pInputBuffer.resize(srFrameBytes + lrFrameBytes);
+
+    if (isSRFrameFirst) {
+        memcpy(pInputBuffer.data(), srData, srFrameBytes);
+        memcpy(pInputBuffer.data() + srFrameBytes, lrData, lrFrameBytes);
+    } else {
+        memcpy(pInputBuffer.data(), lrData, lrFrameBytes);
+        memcpy(pInputBuffer.data() + lrFrameBytes, srData, srFrameBytes);
+    }
+
+    return aditof::Status::OK;
+}
+
 /**
  * @function BufferProcessor::captureFrameThread
  *
@@ -726,6 +1064,19 @@ void BufferProcessor::captureFrameThread() {
         v4l2_frame.data = v4l2_frame_holder;
         v4l2_frame.size = buf_data_len;
 
+        // Tag the frame with which slot of the known DMS repeat pattern it
+        // falls in, so processThread() can pick the matching mode config.
+        // The chip cycles through the programmed sequence in lock-step with
+        // frames actually dequeued here, so advancing once per successfully
+        // captured frame keeps this in sync.
+        if (m_dmsActive.load(std::memory_order_acquire) &&
+            !m_dmsPattern.empty()) {
+            size_t idx =
+                m_dmsPos.fetch_add(1, std::memory_order_acq_rel) %
+                m_dmsPattern.size();
+            v4l2_frame.isAlternate = m_dmsPattern[idx];
+        }
+
         if (!m_capture_to_process_Q.push(std::move(v4l2_frame))) {
             LOG(WARNING) << "captureFrameThread: Push timeout to bufferPool, "
                             "m_captureToProcessQueue Size: "
@@ -778,6 +1129,61 @@ void BufferProcessor::processThread() {
                 std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
             continue;
         }
+
+        // SR/LR mode fusion: concatenate one LR + one SR raw frame into a
+        // single buffer (LR first per IsSRFrameFirst=0) and hand it to the
+        // fusion-enabled context as ONE frame, so the library emits a single
+        // fused output. LR is identified by mode number (7,8 = LR).
+        const bool fusionActive =
+            m_dmsActive.load(std::memory_order_acquire) && m_altConfigValid &&
+            m_modeFusionEnabled && m_altConfig.modeFusionEnabled;
+        if (fusionActive) {
+            if (process_frame.isAlternate) {
+                m_pendingAltRaw = process_frame.data;
+                m_pendingAltSize = process_frame.size;
+            } else {
+                m_pendingPrimaryRaw = process_frame.data;
+                m_pendingPrimarySize = process_frame.size;
+            }
+            if (!m_pendingPrimaryRaw || !m_pendingAltRaw) {
+                continue; // wait for the other half of the LR/SR pair
+            }
+
+            auto isLRmode = [](uint8_t m) { return m == 7 || m == 8; };
+            const bool primaryIsLR = isLRmode(m_currentModeNumber);
+            const uint8_t *lrRaw =
+                primaryIsLR ? m_pendingPrimaryRaw.get() : m_pendingAltRaw.get();
+            const size_t lrSize =
+                primaryIsLR ? m_pendingPrimarySize : m_pendingAltSize;
+            const uint8_t *srRaw =
+                primaryIsLR ? m_pendingAltRaw.get() : m_pendingPrimaryRaw.get();
+            const size_t srSize =
+                primaryIsLR ? m_pendingAltSize : m_pendingPrimarySize;
+
+            std::vector<uint8_t> fused(lrSize + srSize);
+            if (m_isSRFrameFirst) {
+                memcpy(fused.data(), srRaw, srSize);
+                memcpy(fused.data() + srSize, lrRaw, lrSize);
+            } else {
+                memcpy(fused.data(), lrRaw, lrSize);
+                memcpy(fused.data() + lrSize, srRaw, srSize);
+            }
+
+            m_v4l2_input_buffer_Q.push(m_pendingPrimaryRaw);
+            m_v4l2_input_buffer_Q.push(m_pendingAltRaw);
+            m_pendingPrimaryRaw.reset();
+            m_pendingAltRaw.reset();
+
+            auto fusedHolder = std::shared_ptr<uint8_t>(
+                new uint8_t[fused.size()], std::default_delete<uint8_t[]>());
+            memcpy(fusedHolder.get(), fused.data(), fused.size());
+            process_frame.data = fusedHolder;
+            process_frame.size = fused.size();
+            process_frame.skipRawBufferRecycle = true;
+            // Process the fused frame through the LR (primary) context path.
+            process_frame.isAlternate = !primaryIsLR;
+        }
+
         std::shared_ptr<uint16_t> tofi_compute_io_buff;
         if (!m_tofi_io_Buffer_Q.pop(tofi_compute_io_buff)) {
             if (stopThreadsFlag.load(std::memory_order_acquire))
@@ -787,16 +1193,39 @@ void BufferProcessor::processThread() {
                 << m_tofi_io_Buffer_Q.size();
             std::this_thread::sleep_for(
                 std::chrono::milliseconds(BufferProcessor::getTimeoutDelay()));
-            m_v4l2_input_buffer_Q.push(process_frame.data);
+            if (!process_frame.skipRawBufferRecycle) {
+                m_v4l2_input_buffer_Q.push(process_frame.data);
+            }
             continue;
         }
 
+        // Resolve which mode's config applies to this specific frame: the
+        // alternate DMS mode's config if it was tagged as such at capture
+        // time, otherwise the primary setMode()-active config (unchanged
+        // behavior when no alternate mode is registered).
+        const bool isAlt = process_frame.isAlternate && m_altConfigValid;
+        const bool rawBypass = isAlt ? m_altConfig.isRawBypass : m_isRawBypassMode;
+        const uint32_t rawMaxBufSize =
+            isAlt ? m_altConfig.rawFrameBufferSize : m_rawFrameBufferSize;
+        const uint32_t tofiBufSize =
+            isAlt ? m_altConfig.tofiBufferSize : m_tofiBufferSize;
+        const uint32_t outW =
+            isAlt ? m_altConfig.outputFrameWidth : m_outputFrameWidth;
+        const uint32_t outH =
+            isAlt ? m_altConfig.outputFrameHeight : m_outputFrameHeight;
+        const uint8_t bitsAB = isAlt ? m_altConfig.bitsInAB : m_bitsInAB;
+        const uint8_t bitsConf = isAlt ? m_altConfig.bitsInConf : m_bitsInConf;
+        const uint8_t bitsDepth =
+            isAlt ? m_altConfig.bitsInDepth : m_bitsInDepth;
+        TofiComputeContext *computeCtx =
+            isAlt ? m_altConfig.tofiComputeContext : m_tofiComputeContext;
+
         // Raw bypass mode: Simple copy path, no ToFi processing
-        // Must handle before accessing m_tofiComputeContext (which is nullptr for raw bypass)
-        if (m_isRawBypassMode) {
+        // Must handle before accessing computeCtx (nullptr for raw bypass)
+        if (rawBypass) {
             const size_t bufferSizeBytes = process_frame.size;
             // Use raw frame buffer size for comparison (includes NVIDIA alignment)
-            const size_t maxBufferSize = m_rawFrameBufferSize;
+            const size_t maxBufferSize = rawMaxBufSize;
 
             if (bufferSizeBytes <= maxBufferSize) {
                 // Raw bypass: Copy entire V4L2 buffer including NVIDIA padding
@@ -806,7 +1235,7 @@ void BufferProcessor::processThread() {
                     reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get());
 
                 // SECURITY: Validate destination buffer capacity
-                size_t dst_capacity = m_tofiBufferSize * sizeof(uint16_t);
+                size_t dst_capacity = tofiBufSize * sizeof(uint16_t);
                 if (bufferSizeBytes > dst_capacity) {
                     LOG(ERROR)
                         << "Raw bypass buffer overflow risk: source="
@@ -839,7 +1268,9 @@ void BufferProcessor::processThread() {
                                     "bypass frame to done queue";
                     // Restore buffers on error
                     m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                    m_v4l2_input_buffer_Q.push(process_frame.data);
+                    if (!process_frame.skipRawBufferRecycle) {
+                        m_v4l2_input_buffer_Q.push(process_frame.data);
+                    }
                 }
 
                 continue; // Skip ToFi computation
@@ -849,35 +1280,47 @@ void BufferProcessor::processThread() {
 
                 // Restore buffers and continue
                 m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                m_v4l2_input_buffer_Q.push(process_frame.data);
+                if (!process_frame.skipRawBufferRecycle) {
+                    m_v4l2_input_buffer_Q.push(process_frame.data);
+                }
 
                 continue;
             }
         }
 
-        // Standard ToF mode: Save m_tofiComputeContext pointers before modifying
-        uint16_t *tempDepthFrame = m_tofiComputeContext->p_depth_frame;
-        uint16_t *tempAbFrame = m_tofiComputeContext->p_ab_frame;
-        float *tempConfFrame = m_tofiComputeContext->p_conf_frame;
+        if (computeCtx == nullptr) {
+            LOG(ERROR) << "processThread: No compute context available for "
+                       << (isAlt ? "alternate" : "primary") << " mode frame";
+            m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
+            if (!process_frame.skipRawBufferRecycle) {
+                m_v4l2_input_buffer_Q.push(process_frame.data);
+            }
+            continue;
+        }
+
+        // Standard ToF mode: Save context pointers before modifying
+        uint16_t *tempDepthFrame = computeCtx->p_depth_frame;
+        uint16_t *tempAbFrame = computeCtx->p_ab_frame;
+        float *tempConfFrame = computeCtx->p_conf_frame;
 
         if (tofi_compute_io_buff) {
 
-            // Buffer layout depends on bit configuration via m_tofiBufferSize
-            // m_tofiBufferSize = depthSize + abSize + confSize (in uint16_t units)
+            // Buffer layout depends on bit configuration via tofiBufSize
+            // tofiBufSize = depthSize + abSize + confSize (in uint16_t units)
             // Only allocate/point to components that are actually configured
 
-            const int numPixels = m_outputFrameWidth * m_outputFrameHeight;
+            const int numPixels = outW * outH;
 
             // Always have depth frame (always allocated)
-            m_tofiComputeContext->p_depth_frame = tofi_compute_io_buff.get();
+            computeCtx->p_depth_frame = tofi_compute_io_buff.get();
 
             // Calculate what's actually allocated after depth
             uint32_t allocatedAfterDepth =
-                m_tofiBufferSize - static_cast<uint32_t>(numPixels);
+                tofiBufSize - static_cast<uint32_t>(numPixels);
 
             // Set AB pointer only if AB is allocated
             if (allocatedAfterDepth > 0) {
-                m_tofiComputeContext->p_ab_frame =
+                computeCtx->p_ab_frame =
                     tofi_compute_io_buff.get() + numPixels;
 
                 // Calculate remaining space after AB (for confidence)
@@ -888,62 +1331,95 @@ void BufferProcessor::processThread() {
 
                 // Set confidence pointer only if confidence is allocated
                 if (allocatedAfterAB > 0) {
-                    m_tofiComputeContext->p_conf_frame =
+                    computeCtx->p_conf_frame =
                         reinterpret_cast<float *>(tofi_compute_io_buff.get() +
                                                   numPixels + abSize);
                 } else {
                     // No confidence allocated - point to a safe dummy location or keep original
-                    m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                    computeCtx->p_conf_frame = tempConfFrame;
                 }
             } else {
                 // No AB or confidence allocated - keep original pointers
-                m_tofiComputeContext->p_ab_frame = tempAbFrame;
-                m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                computeCtx->p_ab_frame = tempAbFrame;
+                computeCtx->p_conf_frame = tempConfFrame;
             }
 
             // Strip NVIDIA Tegra VI alignment padding AND Pulsatrix extra bytes.
             // Exact ToFi payload = outW × outH × (bitsInDepth + bitsInAB + bitsInConf) / 8
-            // bitsInDepth comes from bitsInPhaseOrDepth INI param (default 16).
+            // bitsDepth comes from bitsInPhaseOrDepth INI param (default 16).
             // This matches the "Total Bytes" column in the driver config table, e.g.:
             //   D=16, AB=16, conf=8 → 1024×1024×5   = 5,242,880  (strips 3072+1024)
             //   D=16, AB=12, conf=8 → 1024×1024×4.5 = 4,718,592  (no Pulsatrix padding)
             //   D=16, AB=8,  conf=8 → 1024×1024×4   = 4,194,304  (strips 3072+2048)
             const size_t tofiPayloadBytes =
-                static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight *
-                (m_bitsInDepth + m_bitsInAB + m_bitsInConf) / 8u;
-            if (process_frame.size > tofiPayloadBytes) {
+                static_cast<size_t>(outW) * outH *
+                (bitsDepth + bitsAB + bitsConf) / 8u;
+
+            // During DMS the V4L2 buffer keeps the PRIMARY mode's line stride,
+            // so an alternate (smaller) mode's lines sit at the start of each
+            // primary-stride line with zero padding after. Reconstruct the
+            // contiguous alternate payload by gathering each line before
+            // handing it to TofiCompute; otherwise the padding is interleaved
+            // into the data and depth comes out garbage.
+            std::vector<uint8_t> destridedRaw;
+            uint8_t *tofiInput = process_frame.data.get();
+            if (isAlt && !process_frame.skipRawBufferRecycle) {
+                const size_t dstStride =
+                    static_cast<size_t>(outW) *
+                    (bitsDepth + bitsAB + bitsConf) / 8u;
+                const size_t srcStride =
+                    static_cast<size_t>(m_outputFrameWidth) *
+                    (m_bitsInDepth + m_bitsInAB + m_bitsInConf) / 8u;
+                if (srcStride > dstStride && dstStride > 0 &&
+                    process_frame.size >= srcStride * outH) {
+                    destridedRaw.resize(dstStride * outH);
+                    const uint8_t *src = process_frame.data.get();
+                    for (uint32_t line = 0; line < outH; ++line) {
+                        memcpy(destridedRaw.data() + line * dstStride,
+                               src + line * srcStride, dstStride);
+                    }
+                    tofiInput = destridedRaw.data();
+                    process_frame.size = destridedRaw.size();
+                }
+            }
+
+            // A fused SR+LR buffer is intentionally larger than a single
+            // mode's payload; only trim non-fused frames (skipRawBufferRecycle
+            // is set only for the one-off fused buffer).
+            if (!process_frame.skipRawBufferRecycle &&
+                process_frame.size > tofiPayloadBytes) {
                 process_frame.size = tofiPayloadBytes;
             }
 
             uint32_t ret = TofiCompute(
-                reinterpret_cast<uint16_t *>(process_frame.data.get()),
-                m_tofiComputeContext, NULL);
+                reinterpret_cast<uint16_t *>(tofiInput), computeCtx, NULL);
             if (ret != ADI_TOFI_SUCCESS) {
                 LOG(ERROR) << "processThread: TofiCompute failed with code: "
                            << ret;
                 m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-                m_v4l2_input_buffer_Q.push(process_frame.data);
-                m_tofiComputeContext->p_depth_frame = tempDepthFrame;
-                m_tofiComputeContext->p_ab_frame = tempAbFrame;
-                m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                if (!process_frame.skipRawBufferRecycle) {
+                    m_v4l2_input_buffer_Q.push(process_frame.data);
+                }
+                computeCtx->p_depth_frame = tempDepthFrame;
+                computeCtx->p_ab_frame = tempAbFrame;
+                computeCtx->p_conf_frame = tempConfFrame;
                 continue;
             }
-            m_tofiComputeContext->p_depth_frame = tempDepthFrame;
-            m_tofiComputeContext->p_ab_frame = tempAbFrame;
-            m_tofiComputeContext->p_conf_frame = tempConfFrame;
+            computeCtx->p_depth_frame = tempDepthFrame;
+            computeCtx->p_ab_frame = tempAbFrame;
+            computeCtx->p_conf_frame = tempConfFrame;
 
         } // end if (tofi_compute_io_buff)
 
         // Apply 90-degree clockwise rotation if needed
-        if (m_needsRotation && !m_isRawBypassMode) {
+        if (m_needsRotation && !rawBypass) {
             // Rotate from tofi_compute_io_buff into m_rotationOutputBuffer (no memcpy).
             // Then swap the two shared_ptrs: tofi_compute_io_buff gets the rotated result,
             // m_rotationOutputBuffer holds the old input and becomes the dst for next frame.
 
             // The ISP embeds 128-byte metadata at the start of the AB section.
             // Rotation scrambles those bytes; save them before and restore after.
-            const size_t numPixels =
-                static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight;
+            const size_t numPixels = static_cast<size_t>(outW) * outH;
             uint8_t metadataSave[METADATA_SIZE];
             memcpy(metadataSave,
                    reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
@@ -952,7 +1428,7 @@ void BufferProcessor::processThread() {
 
             rotateEntireToFiBuffer(
                 tofi_compute_io_buff.get(), m_rotationOutputBuffer.get(),
-                m_outputFrameWidth, m_outputFrameHeight, m_tofiBufferSize);
+                outW, outH, tofiBufSize);
             std::swap(tofi_compute_io_buff, m_rotationOutputBuffer);
 
             // Restore metadata to the first 128 bytes of the AB section
@@ -965,7 +1441,7 @@ void BufferProcessor::processThread() {
         if (m_state == ST_RECORD && m_stream_file_out.is_open()) {
             aditof::Status writeStatus =
                 writeFrame((uint8_t *)tofi_compute_io_buff.get(),
-                           m_tofiBufferSize * sizeof(uint16_t));
+                           tofiBufSize * sizeof(uint16_t));
             if (writeStatus != aditof::Status::OK) {
                 LOG(WARNING)
                     << "Failed to write processed frame during recording";
@@ -973,14 +1449,16 @@ void BufferProcessor::processThread() {
         }
 
         process_frame.tofiBuffer = tofi_compute_io_buff;
-        process_frame.size = m_tofiBufferSize;
+        process_frame.size = tofiBufSize;
 
         if (!m_process_done_Q.push(std::move(process_frame))) {
             LOG(WARNING) << "processThread: Push timeout to "
                             "m_process_done_Q, ProcessedQueueSize: "
                          << m_process_done_Q.size();
             m_tofi_io_Buffer_Q.push(tofi_compute_io_buff);
-            m_v4l2_input_buffer_Q.push(process_frame.data);
+            if (!process_frame.skipRawBufferRecycle) {
+                m_v4l2_input_buffer_Q.push(process_frame.data);
+            }
             continue;
         }
     }
@@ -1002,12 +1480,18 @@ aditof::Status BufferProcessor::processBuffer(uint16_t *buffer) {
             if (buffer && tof_processed_frame.tofiBuffer &&
                 tof_processed_frame.size > 0) {
 
+                m_lastFrameWasAlternate.store(
+                    tof_processed_frame.isAlternate && m_altConfigValid,
+                    std::memory_order_release);
+
                 memcpy(buffer, tof_processed_frame.tofiBuffer.get(),
                        tof_processed_frame.size * sizeof(uint16_t));
 
                 // Return buffers to their respective pools
                 m_tofi_io_Buffer_Q.push(tof_processed_frame.tofiBuffer);
-                m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
+                if (!tof_processed_frame.skipRawBufferRecycle) {
+                    m_v4l2_input_buffer_Q.push(tof_processed_frame.data);
+                }
 
                 return aditof::Status::OK; // Success, exit function
             } else {                       // NOLINT(llvm-else-after-return)
