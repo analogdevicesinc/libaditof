@@ -208,6 +208,7 @@ static std::map<std::string, std::string> adtf3080_fullDepth = {
  */
 static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"abThreshMin", "3.0"},
+    {"abSumThresh", "25.0"},
     {"confThresh", "25.0"},
     {"radialThreshMin", "100.0"},
     {"radialThreshMax", "10000.0"},
@@ -219,10 +220,16 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"jblfABThreshold", "10.0"},
     {"lensScatterCompensationEnabled", "0"},
     {"headerSize", "128"},
+    {"numMetaDataBytes", "2560"},
     {"inputFormat", "raw8"},
     {"depthComputeIspEnable", "1"},
     {"partialDepthEnable", "0"},
     {"interleavingEnable", "1"},
+    {"residualUnwrappingEnabled", "0"},
+    {"defaultdepthOutput", "0"},
+    {"sobelEdgeDetectionEnabled", "0"},
+    {"modeFusionEnabled", "1"},
+    {"IsSRFrameFirst", "0"},
     {"bitsInPhaseOrDepth", "16"},
     {"dualPulsatrixSystemEnabled", "1"},
     {"bitsInConf", "8"},
@@ -232,5 +239,6 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"enableRotation", "0"},
     {"xyzEnable", "1"},
     {"fps", "40"}};
+
 
 #endif
