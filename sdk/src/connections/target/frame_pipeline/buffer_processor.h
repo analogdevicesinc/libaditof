@@ -160,6 +160,39 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     void startThreads() override;
     void stopThreads() override;
 
+    aditof::Status setAlternateModeConfiguration(
+        uint8_t modeNumber, int frameWidth, int frameHeight,
+        int widthInBytes, int heightInBytes, uint8_t bitsInAB,
+        uint8_t bitsInConf, uint8_t bitsInDepth, bool isRawBypass,
+        bool ispEnabled, uint8_t *iniFile, uint16_t iniFileLength,
+        uint8_t *calData, uint32_t calDataLength, uint8_t repeatPrimary,
+        uint8_t repeatAlternate) override;
+    aditof::Status clearAlternateModeConfiguration() override;
+    uint8_t getLastDeliveredModeNumber() const override;
+
+    /**
+     * @brief Concatenates a Short-Range and a Long-Range raw frame into a
+     * single input buffer for SR/LR mode fusion, per the given IsSRFrameFirst
+     * ordering. Each frame's byte size is width*height*bytesPerPixel, where
+     * bytesPerPixel is derived from bitsInDepth+bitsInAB+bitsInConf.
+     *
+     * @param srData Raw SR frame bytes (srWidth x srHeight)
+     * @param lrData Raw LR frame bytes (lrWidth x lrHeight)
+     * @param bitsInDepth Depth bit depth (shared by SR and LR)
+     * @param bitsInAB AB bit depth (shared by SR and LR)
+     * @param bitsInConf Confidence bit depth (shared by SR and LR)
+     * @param isSRFrameFirst True to place the SR frame first in the buffer
+     * @param pInputBuffer Receives the concatenated SR+LR buffer
+     * @return Status::OK on success, Status::INVALID_ARGUMENT on bad input
+     */
+    static aditof::Status
+    buildSRLRFusedBuffer(const uint8_t *srData, uint32_t srWidth,
+                        uint32_t srHeight, const uint8_t *lrData,
+                        uint32_t lrWidth, uint32_t lrHeight,
+                        uint8_t bitsInDepth, uint8_t bitsInAB,
+                        uint8_t bitsInConf, bool isSRFrameFirst,
+                        std::vector<uint8_t> &pInputBuffer);
+
     // Legacy method (keeping for backward compatibility)
     TofiConfig *getTofiCongfig() const { return getTofiConfig(); }
     static int getTimeoutDelay() { return TIME_OUT_DELAY; }
@@ -194,6 +227,17 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
                                 uint32_t width, uint32_t height,
                                 uint32_t bufferSize);
 
+    // Alternate-mode (Dynamic Mode Switching) support
+    struct AltModeConfig;
+    aditof::Status createModeTofiContext(uint8_t *iniFile,
+                                         uint16_t iniFileLength,
+                                         uint8_t *calData,
+                                         uint32_t calDataLength, uint16_t mode,
+                                         bool ispEnabled, TofiConfig *&outConfig,
+                                         TofiComputeContext *&outContext);
+    aditof::Status growSharedBufferPools(uint32_t newRawSize,
+                                        uint32_t newTofiSize);
+
   private:
     bool m_vidPropSet;
     bool m_processorPropSet;
@@ -213,6 +257,36 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
         std::shared_ptr<uint8_t> data;
         size_t size = 0;
         std::shared_ptr<uint16_t> tofiBuffer;
+        // True if this frame was captured while the alternate DMS mode's
+        // slot was active; ignored when no alternate mode is configured.
+        bool isAlternate = false;
+        // True when .data is a one-off SR/LR fused buffer, not a buffer
+        // from m_v4l2_input_buffer_Q; must not be recycled into that pool.
+        bool skipRawBufferRecycle = false;
+    };
+
+    // Buffer layout + compute context for a second mode, used to correctly
+    // process frames produced by hardware Dynamic Mode Switching when that
+    // mode differs in resolution/bit layout from the primary setMode()-active
+    // configuration.
+    struct AltModeConfig {
+        uint8_t modeNumber = 0;
+        uint16_t outputFrameWidth = 0;
+        uint16_t outputFrameHeight = 0;
+        uint16_t driverFrameWidth = 0;
+        uint16_t driverFrameHeight = 0;
+        uint8_t bitsInAB = 0;
+        uint8_t bitsInConf = 0;
+        uint8_t bitsInDepth = 16;
+        bool isRawBypass = false;
+        bool ispEnabled = true;
+        uint32_t rawFrameBufferSize = 0;
+        uint32_t tofiBufferSize = 0;
+        uint32_t abFrameSize = 0;
+        bool modeFusionEnabled = false;
+        bool isSRFrameFirst = false;
+        TofiConfig *tofiConfig = nullptr;
+        TofiComputeContext *tofiComputeContext = nullptr;
     };
 
     // Thread-safe pool of empty raw frame buffers for use by capture thread
@@ -259,8 +333,32 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
         m_lensScatterCompensationEnabled; // When true, raw bypass uses TofiCompute
     bool
         m_needsRotation; // When true, rotate frames 90 degrees clockwise (for ADTF3080)
+    bool m_modeFusionEnabled = false; ///< parsed from the primary mode's ini blob
+    bool m_isSRFrameFirst = false;    ///< parsed from the primary mode's ini blob
 
     aditof::DepthComputeConfig m_depthComputeConfig;
+
+    // Alternate-mode (Dynamic Mode Switching) state
+    AltModeConfig m_altConfig;
+    bool m_altConfigValid = false;
+    std::vector<bool> m_dmsPattern; ///< false=primary mode, true=alternate
+    std::atomic<size_t> m_dmsPos{0};
+    std::atomic<bool> m_dmsActive{false};
+    // Which mode the most recently delivered (processBuffer()) frame used;
+    // ground truth for the caller, since the embedded per-frame chip
+    // metadata can land at the wrong offset when primary/alternate modes
+    // differ in resolution.
+    std::atomic<bool> m_lastFrameWasAlternate{false};
+
+    // SR/LR mode-fusion pairing: holds whichever of the pair (primary/
+    // alternate) arrives first, until its counterpart shows up.
+    std::shared_ptr<uint8_t> m_pendingPrimaryRaw;
+    size_t m_pendingPrimarySize = 0;
+    std::shared_ptr<uint8_t> m_pendingAltRaw;
+    size_t m_pendingAltSize = 0;
+
+    static bool parseIniBoolFlag(uint8_t *iniFile, uint16_t iniFileLength,
+                                const char *key, bool defaultValue);
 
   public:
     // Stream record and playback support

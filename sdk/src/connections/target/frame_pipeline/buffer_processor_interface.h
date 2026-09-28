@@ -165,6 +165,57 @@ class BufferProcessorInterface {
      * @brief Stops the capture and processing worker threads.
      */
     virtual void stopThreads() = 0;
+
+    /**
+     * @brief Registers a second ("alternate") mode configuration and
+     * activates per-frame dispatch between it and the currently active
+     * single-mode configuration. Used to correctly process frames produced
+     * by hardware Dynamic Mode Switching (DMS) when the two modes in the
+     * DMS pair have different resolutions/bit layouts.
+     *
+     * @param modeNumber Alternate mode number (the second mode in the DMS pair)
+     * @param frameWidth Output frame width in pixels for the alternate mode
+     * @param frameHeight Output frame height in pixels for the alternate mode
+     * @param widthInBytes Raw frame width in bytes (stride) for the alternate mode
+     * @param heightInBytes Raw frame height in bytes for the alternate mode
+     * @param bitsInAB Bit depth for AB data for the alternate mode
+     * @param bitsInConf Bit depth for confidence data for the alternate mode
+     * @param bitsInDepth Bit depth for depth data for the alternate mode
+     * @param isRawBypass True if the alternate mode bypasses ToFi compute
+     * @param ispEnabled True if hardware ISP pre-computes depth for the alternate mode
+     * @param iniFile Pointer to INI configuration data for the alternate mode
+     * @param iniFileLength Length of INI data in bytes
+     * @param calData Pointer to calibration data for the alternate mode
+     * @param calDataLength Length of calibration data in bytes
+     * @param repeatPrimary Number of consecutive frames using the primary mode
+     * @param repeatAlternate Number of consecutive frames using the alternate mode
+     * @return Status::OK on success
+     */
+    virtual Status setAlternateModeConfiguration(
+        uint8_t modeNumber, int frameWidth, int frameHeight,
+        int widthInBytes, int heightInBytes, uint8_t bitsInAB,
+        uint8_t bitsInConf, uint8_t bitsInDepth, bool isRawBypass,
+        bool ispEnabled, uint8_t *iniFile, uint16_t iniFileLength,
+        uint8_t *calData, uint32_t calDataLength, uint8_t repeatPrimary,
+        uint8_t repeatAlternate) = 0;
+
+    /**
+     * @brief Deactivates per-frame mode dispatch and frees the alternate
+     * mode's compute context, reverting to the single active configuration.
+     *
+     * @return Status::OK on success
+     */
+    virtual Status clearAlternateModeConfiguration() = 0;
+
+    /**
+     * @brief Returns the mode number of the most recently delivered frame
+     * (via processBuffer()). Ground truth for callers, since the chip's
+     * embedded per-frame metadata can land at the wrong buffer offset when
+     * the primary and alternate DMS modes differ in resolution.
+     *
+     * @return The primary or alternate mode number, whichever was delivered
+     */
+    virtual uint8_t getLastDeliveredModeNumber() const = 0;
 };
 
 } // namespace aditof

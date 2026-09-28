@@ -1647,6 +1647,68 @@ aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
 }
 
 /**
+ * @brief Registers the buffer layout/compute context for a second
+ * ("alternate") mode and activates per-frame dispatch for Dynamic Mode
+ * Switching (DMS), so frames produced for that mode are processed with
+ * their own resolution/bit-depth config instead of the primary mode's.
+ */
+aditof::Status Adsd3500Sensor::enableDynamicModeSwitchingSupport(
+    uint8_t alternateMode, uint8_t *iniFile, uint16_t iniFileLength,
+    uint8_t *calData, uint32_t calDataLength, bool ispEnabled,
+    uint8_t repeatPrimary, uint8_t repeatAlternate) {
+    using namespace aditof;
+
+    DepthSensorModeDetails details;
+    Status status = getModeDetails(alternateMode, details);
+    if (status != Status::OK) {
+        LOG(ERROR) << "enableDynamicModeSwitchingSupport: unknown mode "
+                   << (int)alternateMode;
+        return status;
+    }
+
+    bool skipToFiProcessing = details.isRawBypass && !m_lensScatterEnabled;
+    uint8_t bitsInAB = skipToFiProcessing
+                           ? 0
+                           : (alternateMode < m_bitsInAB.size()
+                                  ? m_bitsInAB[alternateMode]
+                                  : 0);
+    uint8_t bitsInConf = skipToFiProcessing
+                             ? 0
+                             : (alternateMode < m_bitsInConf.size()
+                                    ? m_bitsInConf[alternateMode]
+                                    : 0);
+    uint8_t bitsInDepth = (alternateMode < m_bitsInDepth.size())
+                              ? m_bitsInDepth[alternateMode]
+                              : 16u;
+
+    return m_bufferProcessor->setAlternateModeConfiguration(
+        alternateMode, details.baseResolutionWidth,
+        details.baseResolutionHeight, details.frameWidthInBytes,
+        details.frameHeightInBytes, bitsInAB, bitsInConf, bitsInDepth,
+        skipToFiProcessing, ispEnabled, iniFile, iniFileLength, calData,
+        calDataLength, repeatPrimary, repeatAlternate);
+}
+
+/**
+ * @brief Deactivates per-frame DMS dispatch, reverting to the single active
+ * configuration set via setMode().
+ */
+aditof::Status Adsd3500Sensor::disableDynamicModeSwitchingSupport() {
+    return m_bufferProcessor->clearAlternateModeConfiguration();
+}
+
+/**
+ * @brief Returns the mode number of the most recently delivered frame,
+ * tracked internally by the buffer processor rather than parsed from the
+ * chip's embedded per-frame metadata.
+ */
+aditof::Status
+Adsd3500Sensor::getLastDeliveredFrameMode(uint8_t &mode) {
+    mode = m_bufferProcessor->getLastDeliveredModeNumber();
+    return aditof::Status::OK;
+}
+
+/**
  * @brief Retrieves depth computation parameters.
  *
  * Returns the open-source depth compute enabled status from the buffer processor.

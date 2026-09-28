@@ -1132,11 +1132,36 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
 aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     using namespace aditof;
 
-    return m_frameAcqManager->requestFrame(
+    Status status = m_frameAcqManager->requestFrame(
         frame, index, m_details.frameType, m_modeDetailsCache, m_isOffline,
         m_pcmFrame, m_depthEnabled, m_abEnabled, m_confEnabled, m_xyzEnabled,
         m_confBitsPerPixel, m_abBitsPerPixel, m_depthBitsPerPixel,
         m_dropFrameOnce);
+    if (status != Status::OK || frame == nullptr) {
+        return status;
+    }
+
+    // Dynamic Mode Switching: the chip's embedded per-frame metadata can
+    // land at the wrong buffer offset when the alternate mode's resolution
+    // differs from the primary mode's, so patch imagerMode using the buffer
+    // processor's own ground-truth tracking instead of trusting it blindly.
+    uint8_t actualMode = 0;
+    if (m_depthSensor->getLastDeliveredFrameMode(actualMode) == Status::OK) {
+        Metadata metadata;
+        if (frame->getMetadataStruct(metadata) == Status::OK &&
+            metadata.imagerMode != actualMode) {
+            metadata.imagerMode = actualMode;
+            uint16_t *metadataLocation = nullptr;
+            if (frame->getData("metadata", &metadataLocation) == Status::OK &&
+                metadataLocation != nullptr) {
+                memcpy(reinterpret_cast<uint8_t *>(metadataLocation),
+                      reinterpret_cast<const uint8_t *>(&metadata),
+                      sizeof(metadata));
+            }
+        }
+    }
+
+    return Status::OK;
 }
 
 /**
@@ -2547,6 +2572,16 @@ aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
 
     assert(!m_isOffline);
 
+    if (!en) {
+        // Best-effort: revert the frame pipeline to the single active mode.
+        // UNAVAILABLE just means the sensor doesn't support/need this hook.
+        Status altStatus = m_depthSensor->disableDynamicModeSwitchingSupport();
+        if (altStatus != Status::OK && altStatus != Status::UNAVAILABLE) {
+            LOG(WARNING) << "Could not clear DMS alternate-mode pipeline "
+                            "config";
+        }
+    }
+
     return m_adsd3500Ctrl->setEnableDynamicModeSwitching(en);
 }
 
@@ -2573,5 +2608,60 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
 
     assert(!m_isOffline);
 
+    // If this is the common A/B pair and the second mode differs in
+    // resolution/bit layout from the currently active mode, the host-side
+    // frame pipeline needs its own config for it, otherwise frames for the
+    // second mode get parsed with the wrong layout (garbage metadata/depth).
+    if (sequence.size() == 2 && sequence[0].first == m_details.mode) {
+        uint8_t alternateMode = sequence[1].first;
+        std::map<std::string, std::string> altParams;
+        if (m_config->getDepthParamsForMode(alternateMode, altParams) ==
+            Status::OK) {
+            std::string s;
+            for (auto &param : altParams) {
+                s += param.first + "=" + param.second + "\n";
+            }
+
+            bool ispEnabled = (altParams.find("depthComputeIspEnable") !=
+                                    altParams.end() &&
+                               altParams["depthComputeIspEnable"] == "1");
+
+            Status altStatus;
+            if (ispEnabled) {
+                TofiXYZDealiasData dealiasBuffer[10];
+                for (int i = 0; i < 10; i++) {
+                    m_calibrationMgr->getXYZDealiasData(i, dealiasBuffer[i]);
+                }
+                altStatus = m_depthSensor->enableDynamicModeSwitchingSupport(
+                    alternateMode, (uint8_t *)s.c_str(), s.size(),
+                    (uint8_t *)dealiasBuffer,
+                    sizeof(TofiXYZDealiasData) * 10, true, sequence[0].second,
+                    sequence[1].second);
+            } else {
+                const std::string &rawCCB = m_calibrationMgr->getRawCCBData();
+                altStatus = m_depthSensor->enableDynamicModeSwitchingSupport(
+                    alternateMode, (uint8_t *)s.c_str(), s.size(),
+                    (uint8_t *)rawCCB.c_str(), rawCCB.size(), false,
+                    sequence[0].second, sequence[1].second);
+            }
+
+            // UNAVAILABLE just means the sensor doesn't support/need this
+            // (e.g. network/offline sensors); anything else is worth a warning.
+            if (altStatus != Status::OK && altStatus != Status::UNAVAILABLE) {
+                LOG(WARNING) << "Could not prepare frame pipeline for DMS "
+                                "alternate mode "
+                             << (int)alternateMode
+                             << "; its frames may be misinterpreted if its "
+                                "resolution/bit layout differs from mode "
+                             << (int)m_details.mode;
+            }
+        } else {
+            LOG(WARNING) << "Mode " << (int)alternateMode
+                        << " not found in depth params map; cannot prepare "
+                           "DMS alternate-mode pipeline config";
+        }
+    }
+
     return m_adsd3500Ctrl->setDynamicModeSwitchingSequence(sequence);
 }
+

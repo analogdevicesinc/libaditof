@@ -213,6 +213,62 @@ class DepthSensorInterface {
     */
     virtual aditof::Status getIniParamsArrayForMode(int mode,
                                                     std::string &iniStr) = 0;
+
+    /**
+     * @brief Registers a second ("alternate") mode's buffer/compute
+     * configuration and activates per-frame dispatch for it, so frames
+     * produced by hardware Dynamic Mode Switching (DMS) are processed with
+     * the correct layout even when the alternate mode's resolution/bit
+     * depths differ from the mode set via setMode(). Sensors that don't
+     * support DMS may leave this unimplemented.
+     * @param[in] alternateMode - the second mode number in the DMS pair
+     * @param[in] iniFile - ini file content for the alternate mode
+     * @param[in] iniFileLength - ini file content length
+     * @param[in] calData - calibration data for the alternate mode
+     * @param[in] calDataLength - calibration data length
+     * @param[in] ispEnabled - true if ISP pre-computes depth for that mode
+     * @param[in] repeatPrimary - consecutive frames using the current mode
+     * @param[in] repeatAlternate - consecutive frames using alternateMode
+     * @return Status::OK on success, Status::UNAVAILABLE if unsupported
+     */
+    virtual aditof::Status enableDynamicModeSwitchingSupport(
+        uint8_t alternateMode, uint8_t *iniFile, uint16_t iniFileLength,
+        uint8_t *calData, uint32_t calDataLength, bool ispEnabled,
+        uint8_t repeatPrimary, uint8_t repeatAlternate) {
+        (void)alternateMode;
+        (void)iniFile;
+        (void)iniFileLength;
+        (void)calData;
+        (void)calDataLength;
+        (void)ispEnabled;
+        (void)repeatPrimary;
+        (void)repeatAlternate;
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    /**
+     * @brief Disables per-frame DMS dispatch enabled via
+     * enableDynamicModeSwitchingSupport(), reverting to the single active
+     * configuration set via setMode().
+     * @return Status::OK on success, Status::UNAVAILABLE if unsupported
+     */
+    virtual aditof::Status disableDynamicModeSwitchingSupport() {
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    /**
+     * @brief Returns the mode number of the most recently delivered frame.
+     * Ground truth for callers when Dynamic Mode Switching is active,
+     * since the chip's embedded per-frame metadata can land at the wrong
+     * buffer offset when the primary and alternate modes differ in
+     * resolution/bit layout.
+     * @param[out] mode - the mode number of the last delivered frame
+     * @return Status::OK on success, Status::UNAVAILABLE if unsupported
+     */
+    virtual aditof::Status getLastDeliveredFrameMode(uint8_t &mode) {
+        (void)mode;
+        return aditof::Status::UNAVAILABLE;
+    }
 };
 
 } // namespace aditof
