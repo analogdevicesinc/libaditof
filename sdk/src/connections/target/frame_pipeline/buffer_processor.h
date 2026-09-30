@@ -222,6 +222,13 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
 
     void captureFrameThread();
     void processThread();
+    // Reads the ISP-embedded imagerMode from a raw DMS frame (metadata header
+    // sits at the start of the AB block). Returns 0xFF if unreadable, so the
+    // caller can fall back to the DMS counter tag.
+    uint8_t readRawFrameImagerMode(const uint8_t *raw, size_t size) const;
+    // Reads the ISP-embedded frameNumber from a raw DMS frame. Returns
+    // 0xFFFFFFFF if unreadable.
+    uint32_t readRawFrameNumber(const uint8_t *raw, size_t size) const;
     void calculateFrameSize(uint8_t &bitsInAB, uint8_t &bitsInConf);
     void rotateEntireToFiBuffer(const uint16_t *src, uint16_t *dst,
                                 uint32_t width, uint32_t height,
