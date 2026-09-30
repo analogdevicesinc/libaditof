@@ -181,6 +181,14 @@ Status CameraInitializationManager::initializeOnlineMode(
         }
     };
 
+    // Parse full version into a comparable tuple (major, minor, patch, build).
+    auto parseFullVersion =
+        [](const std::string &v) -> std::tuple<int, int, int, int> {
+        int major = 0, minor = 0, patch = 0, build = 0;
+        sscanf(v.c_str(), "%d.%d.%d.%d", &major, &minor, &patch, &build);
+        return {major, minor, patch, build};
+    };
+
     // Hard minimum major version — enforced unconditionally, but can be
     // bypassed by setting skipFirmwareVersionCheck: true in the config file
     // (intended for development/testing with older firmware only).
@@ -227,21 +235,27 @@ Status CameraInitializationManager::initializeOnlineMode(
                           "this SDK version";
             return Status::GENERIC_ERROR;
         } else {
-            // Major >= expected major but version doesn't match — warn and wait
-            LOG(WARNING) << "Firmware version mismatch!";
-            LOG(WARNING) << "  Expected: " << expectedFwVersion;
-            LOG(WARNING) << "  Actual:   " << fwVersion;
-            LOG(WARNING) << "Delaying 10 seconds before proceeding...";
-            LOG(WARNING) << "This may cause issues with the SDK";
+            // Compare full versions: only warn if actual is older than expected.
+            if (parseFullVersion(fwVersion) >=
+                parseFullVersion(expectedFwVersion)) {
+                LOG(INFO) << "Firmware version is newer than expected: "
+                          << fwVersion << " (expected: " << expectedFwVersion
+                          << "), continuing without warning";
+            } else {
+                LOG(WARNING) << "Firmware version mismatch!";
+                LOG(WARNING) << "  Expected: " << expectedFwVersion;
+                LOG(WARNING) << "  Actual:   " << fwVersion;
+                LOG(WARNING) << "Delaying 10 seconds before proceeding...";
+                LOG(WARNING) << "This may cause issues with the SDK";
 
-            // 10-second delay with countdown
-            for (int i = 10; i > 0; i--) {
-                LOG(INFO) << "Waiting... " << i << " seconds remaining";
-                std::this_thread::sleep_for(std::chrono::seconds(1));
+                for (int i = 10; i > 0; i--) {
+                    LOG(INFO) << "Waiting... " << i << " seconds remaining";
+                    std::this_thread::sleep_for(std::chrono::seconds(1));
+                }
+
+                LOG(INFO) << "Continuing initialization with mismatched "
+                             "firmware version";
             }
-
-            LOG(INFO)
-                << "Continuing initialization with mismatched firmware version";
         }
     } else if (!expectedFwVersion.empty() && skipFwCheck) {
         LOG(INFO) << "Firmware version check skipped per JSON config override";

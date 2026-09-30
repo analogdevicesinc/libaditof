@@ -668,7 +668,7 @@ aditof::Status FrameHandlerImpl::SaveMetaAsTxt(const char *filename,
  *         aditof::Status::GENERIC_ERROR if input is invalid or file I/O fails.
  *
  * @note Extracts metadata, dimensions, and data pointers from frame object.
- * @note Confidence data format depends on resolution: float for 1024x1024, uint16 otherwise.
+ * @note Confidence is stored as packed uint16 samples, not IEEE-754 floats.
  * @note Gracefully handles missing optional data (RGB visualizations, confidence, XYZ).
  * @note All errors retrieving frame data are logged but do not halt export.
  */
@@ -785,13 +785,9 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
     }
 
     if (confFrame != nullptr) {
-        if (frameDetails.width == 1024 && frameDetails.height == 1024) {
-            SaveFloatAsJPEG(confFileName.c_str(), confFrame, frameDetails.width,
-                            frameDetails.height);
-        } else {
-            SaveUint16AsJPEG(confFileName.c_str(), (uint16_t *)confFrame,
-                             frameDetails.width, frameDetails.height);
-        }
+        SaveUint16AsJPEG(confFileName.c_str(),
+                         reinterpret_cast<const uint16_t *>(confFrame),
+                         frameDetails.width, frameDetails.height);
     }
 
     return aditof::Status::OK;

@@ -1473,9 +1473,6 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     using namespace aditof;
     aditof::Status status = aditof::Status::OK;
 
-    m_chipResetDone = false;
-    m_adsd3500Status = Adsd3500Status::OK;
-
     // Register interrupt callback
     aditof::SensorInterruptCallback cb = [this](Adsd3500Status status) {
         m_adsd3500Status = status;
@@ -1484,14 +1481,45 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
     status = adsd3500_register_interrupt_callback(cb);
     bool interruptsAvailable = (status == Status::OK);
 
-    // Signal interrupt handler to skip status read on first reset interrupt
-    if (m_interruptManager) {
-        m_interruptManager->setSkipNextInterrupt(true);
-    }
-
-    // Use platform-specific reset logic
     auto &platform = aditof::platform::Platform::getInstance();
-    status = platform.resetSensor(interruptsAvailable, &m_chipResetDone, 10);
+
+    // Reset, then verify the chip is actually responsive before returning.
+    // Some imagers (e.g. ADTF3066) emit multiple rapid reset interrupts that
+    // are all suppressed by the skip window, so the reset-complete callback may
+    // never fire; proceeding against a not-yet-ready chip makes every host
+    // command and the subsequent streaming fail after rapid mode switches.
+    const int MAX_RESET_ATTEMPTS = 3;
+    status = Status::GENERIC_ERROR;
+    for (int attempt = 0; attempt < MAX_RESET_ATTEMPTS; ++attempt) {
+        m_chipResetDone = false;
+        m_adsd3500Status = Adsd3500Status::OK;
+
+        // Signal interrupt handler to skip status read on the reset interrupt
+        if (m_interruptManager) {
+            m_interruptManager->setSkipNextInterrupt(true);
+        }
+
+        platform.resetSensor(interruptsAvailable, &m_chipResetDone, 10);
+
+        uint16_t chipState = 0xFFFF;
+        for (int i = 0; i < 20; ++i) { // poll up to ~1s
+            if (adsd3500_read_cmd(ADSD3500_REG_CHIP_STATUS, &chipState) ==
+                    Status::OK &&
+                (chipState == 0x0 || chipState == 0x29)) {
+                status = Status::OK;
+                break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        if (status == Status::OK) {
+            break;
+        }
+
+        LOG(WARNING) << "ADSD3500 not ready after reset (status: 0x" << std::hex
+                     << chipState << std::dec << "), retrying reset ("
+                     << (attempt + 1) << "/" << MAX_RESET_ATTEMPTS << ")";
+    }
 
     if (interruptsAvailable) {
         adsd3500_unregister_interrupt_callback(cb);
