@@ -867,6 +867,12 @@ aditof::Status BufferProcessor::setAlternateModeConfiguration(
     pattern.insert(pattern.end(), repeatAlternate, true);
     m_dmsPattern = std::move(pattern);
     m_dmsPos.store(0, std::memory_order_release);
+    // Drop any half-paired frame left over from a previous DMS session so the
+    // first pair of this session can't mix a stale frame with a fresh one.
+    m_pendingPrimaryRaw.reset();
+    m_pendingAltRaw.reset();
+    m_pendingPrimarySize = 0;
+    m_pendingAltSize = 0;
     m_dmsActive.store(true, std::memory_order_release);
 
     LOG(INFO) << "setAlternateModeConfiguration: mode " << (int)modeNumber
@@ -888,6 +894,10 @@ aditof::Status BufferProcessor::clearAlternateModeConfiguration() {
     m_dmsActive.store(false, std::memory_order_release);
     m_dmsPattern.clear();
     m_dmsPos.store(0, std::memory_order_release);
+    m_pendingPrimaryRaw.reset();
+    m_pendingAltRaw.reset();
+    m_pendingPrimarySize = 0;
+    m_pendingAltSize = 0;
 
     if (m_altConfig.tofiComputeContext != nullptr) {
         FreeTofiCompute(m_altConfig.tofiComputeContext);
@@ -913,6 +923,55 @@ uint8_t BufferProcessor::getLastDeliveredModeNumber() const {
     return m_lastFrameWasAlternate.load(std::memory_order_acquire)
               ? m_altConfig.modeNumber
               : m_currentModeNumber;
+}
+
+/**
+ * @function BufferProcessor::readRawFrameImagerMode
+ *
+ * Reads the ISP-embedded imagerMode byte from a raw DMS frame. The 128-byte
+ * metadata header lands at the start of the AB block, i.e. after the depth
+ * and confidence blocks (numPixels * (depthBytes + confBytes)); imagerMode
+ * sits at byte offset 16 within that header. Both fused modes share the
+ * primary resolution/bit layout, so the primary config drives the offset.
+ * Returns 0xFF when the computed offset is out of range.
+ */
+uint8_t BufferProcessor::readRawFrameImagerMode(const uint8_t *raw,
+                                                size_t size) const {
+    if (!raw) {
+        return 0xFF;
+    }
+    const size_t numPixels =
+        static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight;
+    const size_t bytesBeforeAB = (m_bitsInDepth + m_bitsInConf) / 8;
+    const size_t imagerModeOffset = numPixels * bytesBeforeAB + 16;
+    if (imagerModeOffset >= size) {
+        return 0xFF;
+    }
+    return raw[imagerModeOffset];
+}
+
+/**
+ * @function BufferProcessor::readRawFrameNumber
+ *
+ * Reads the ISP-embedded 32-bit frameNumber from a raw DMS frame. The
+ * metadata header lands at the start of the AB block; frameNumber sits at
+ * byte offset 12 within that header. Returns 0xFFFFFFFF when out of range.
+ */
+uint32_t BufferProcessor::readRawFrameNumber(const uint8_t *raw,
+                                             size_t size) const {
+    if (!raw) {
+        return 0xFFFFFFFFu;
+    }
+    const size_t numPixels =
+        static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight;
+    const size_t bytesBeforeAB = (m_bitsInDepth + m_bitsInConf) / 8;
+    const size_t frameNumberOffset = numPixels * bytesBeforeAB + 12;
+    if (frameNumberOffset + sizeof(uint32_t) > size) {
+        return 0xFFFFFFFFu;
+    }
+    uint32_t frameNumber;
+    memcpy(&frameNumber, raw + frameNumberOffset, sizeof(uint32_t));
+    return frameNumber;
 }
 
 /**
@@ -1133,12 +1192,34 @@ void BufferProcessor::processThread() {
         // SR/LR mode fusion: concatenate one LR + one SR raw frame into a
         // single buffer (LR first per IsSRFrameFirst=0) and hand it to the
         // fusion-enabled context as ONE frame, so the library emits a single
-        // fused output. LR is identified by mode number (7,8 = LR).
+        // fused output. Fusion is off at the SDK level by default; it turns on
+        // only when a program (viewer/pygame) explicitly opts in via
+        // setModeFusionEnabled(true), which rebuilds the compute contexts with
+        // modeFusionEnabled=1 (m_modeFusionEnabled). A plain DMS sequence keeps
+        // modeFusionEnabled=0, so this stays false and each mode's frames are
+        // delivered separately.
         const bool fusionActive =
             m_dmsActive.load(std::memory_order_acquire) && m_altConfigValid &&
-            m_modeFusionEnabled && m_altConfig.modeFusionEnabled;
+            m_modeFusionEnabled;
         if (fusionActive) {
-            if (process_frame.isAlternate) {
+            // Sort this frame into the primary/alternate pending slot by its
+            // ISP-embedded imagerMode rather than the DMS counter tag, so a
+            // dropped or phase-shifted frame can never pair an SR with an SR
+            // (or swap the LR/SR concatenation order). Fall back to the
+            // counter tag only if the embedded mode is unreadable/unexpected.
+            uint8_t frameMode =
+                readRawFrameImagerMode(process_frame.data.get(),
+                                       process_frame.size);
+            bool frameIsAlternate;
+            if (frameMode == m_altConfig.modeNumber) {
+                frameIsAlternate = true;
+            } else if (frameMode == m_currentModeNumber) {
+                frameIsAlternate = false;
+            } else {
+                frameIsAlternate = process_frame.isAlternate;
+            }
+
+            if (frameIsAlternate) {
                 m_pendingAltRaw = process_frame.data;
                 m_pendingAltSize = process_frame.size;
             } else {
@@ -1149,8 +1230,47 @@ void BufferProcessor::processThread() {
                 continue; // wait for the other half of the LR/SR pair
             }
 
+            // Frame sync: a valid pair is captured back-to-back, so the two
+            // halves' frameNumbers must be adjacent (differ by 1) regardless
+            // of which mode the chip emits first (mode 0<->1 delivers primary
+            // first, mode 0<->7 delivers the alternate first). If they are not
+            // adjacent a sensor frame was dropped and the halves belong to
+            // different cycles; discard the older (stale) half, keep the newer,
+            // and wait for its true counterpart instead of fusing a mismatch.
+            const uint32_t primaryFn =
+                readRawFrameNumber(m_pendingPrimaryRaw.get(),
+                                   m_pendingPrimarySize);
+            const uint32_t altFn =
+                readRawFrameNumber(m_pendingAltRaw.get(), m_pendingAltSize);
+            if (primaryFn != 0xFFFFFFFFu && altFn != 0xFFFFFFFFu) {
+                const uint32_t fnDiff = (altFn > primaryFn)
+                                            ? (altFn - primaryFn)
+                                            : (primaryFn - altFn);
+                if (fnDiff != 1) {
+                    if (altFn > primaryFn) {
+                        // Primary is stale (its partner was lost).
+                        m_v4l2_input_buffer_Q.push(m_pendingPrimaryRaw);
+                        m_pendingPrimaryRaw.reset();
+                        m_pendingPrimarySize = 0;
+                    } else {
+                        m_v4l2_input_buffer_Q.push(m_pendingAltRaw);
+                        m_pendingAltRaw.reset();
+                        m_pendingAltSize = 0;
+                    }
+                    LOG(WARNING) << "processThread: DMS pair not adjacent "
+                                    "(primary fn=" << primaryFn << ", alt fn="
+                                 << altFn << "); dropped stale frame, re-syncing";
+                    continue; // wait for the adjacent counterpart
+                }
+            }
+
+            // ADTF3066 range classification (hardcoded): Long Range = modes
+            // 7, 8; Short Range = modes 0, 1, 3, 6. Frequency count can't be
+            // used here since SR mode 1 and LR mode 7 are both 3-frequency.
             auto isLRmode = [](uint8_t m) { return m == 7 || m == 8; };
             const bool primaryIsLR = isLRmode(m_currentModeNumber);
+
+
             const uint8_t *lrRaw =
                 primaryIsLR ? m_pendingPrimaryRaw.get() : m_pendingAltRaw.get();
             const size_t lrSize =
@@ -1159,6 +1279,21 @@ void BufferProcessor::processThread() {
                 primaryIsLR ? m_pendingAltRaw.get() : m_pendingPrimaryRaw.get();
             const size_t srSize =
                 primaryIsLR ? m_pendingAltSize : m_pendingPrimarySize;
+
+            // Diagnostic: dump the individual LR and SR raw frames going into
+            // fusion so they can be validated before concatenation.
+            if (std::getenv("DMS_FUSE_DUMP")) {
+                static bool dumped = false;
+                if (!dumped) {
+                    std::ofstream ol("/tmp/fuse_lr_raw.bin", std::ios::binary);
+                    ol.write((const char *)lrRaw, lrSize);
+                    std::ofstream os("/tmp/fuse_sr_raw.bin", std::ios::binary);
+                    os.write((const char *)srRaw, srSize);
+                    dumped = true;
+                    LOG(INFO) << "DMS-FUSE dumped LR(" << lrSize << ") + SR("
+                              << srSize << ") raw frames to /tmp";
+                }
+            }
 
             std::vector<uint8_t> fused(lrSize + srSize);
             if (m_isSRFrameFirst) {
