@@ -627,6 +627,8 @@ PYBIND11_MODULE(aditofpython, m) {
         .def("adsds3500setDynamicModeSwitchingSequence",
              &aditof::Camera::adsds3500setDynamicModeSwitchingSequence,
              py::arg("sequence"))
+        .def("setModeFusionEnabled", &aditof::Camera::setModeFusionEnabled,
+             py::arg("enable"))
         .def(
             "readSerialNumber",
             [](aditof::Camera &camera, std::string serialNumber,
