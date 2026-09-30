@@ -207,7 +207,7 @@ static std::map<std::string, std::string> adtf3080_fullDepth = {
  * @brief Default depth computation parameters for ADTF3066 imager.
  */
 static std::map<std::string, std::string> adtf3066_fullDepth = {
-    {"abThreshMin", "3.0"},
+    {"abThreshMin", "10.0"},
     {"abSumThresh", "25.0"},
     {"confThresh", "25.0"},
     {"radialThreshMin", "100.0"},
@@ -220,7 +220,7 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"jblfABThreshold", "10.0"},
     {"lensScatterCompensationEnabled", "0"},
     {"headerSize", "128"},
-    {"numMetaDataBytes", "2560"},
+    {"numMetaDataBytes", "1280"},
     {"inputFormat", "raw8"},
     {"depthComputeIspEnable", "1"},
     {"partialDepthEnable", "0"},
@@ -228,7 +228,7 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"residualUnwrappingEnabled", "0"},
     {"defaultdepthOutput", "0"},
     {"sobelEdgeDetectionEnabled", "0"},
-    {"modeFusionEnabled", "1"},
+    {"modeFusionEnabled", "0"},
     {"IsSRFrameFirst", "0"},
     {"bitsInPhaseOrDepth", "16"},
     {"dualPulsatrixSystemEnabled", "1"},

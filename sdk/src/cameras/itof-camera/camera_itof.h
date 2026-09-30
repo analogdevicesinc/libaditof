@@ -142,6 +142,7 @@ class CameraItof : public aditof::Camera {
     aditof::Status adsd3500setEnableDynamicModeSwitching(bool en) override;
     aditof::Status adsds3500setDynamicModeSwitchingSequence(
         const std::vector<std::pair<uint8_t, uint8_t>> &sequence) override;
+    aditof::Status setModeFusionEnabled(bool enable) override;
     aditof::Status readSerialNumber(std::string &serialNumber,
                                     bool useCacheValue = false) override;
     aditof::Status getImagerType(aditof::ImagerType &imagerType) const override;
@@ -272,6 +273,8 @@ class CameraItof : public aditof::Camera {
     bool m_dropFrameOnce; // Per-frame state; m_dropFirstFrame moved to m_config
     bool m_rotationEnabled =
         false; // True if XYZ tables and frames are rotated 90° CW
+    bool m_modeFusionRequested =
+        false; // App opted into SR/LR fusion for the DMS sequence
 };
 
 #endif // CAMERA_ITOF_H

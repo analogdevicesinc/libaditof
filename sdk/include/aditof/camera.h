@@ -515,6 +515,27 @@ class SDK_API Camera {
         const std::vector<std::pair<uint8_t, uint8_t>> &sequence) = 0;
 
     /**
+     * @brief Request SR/LR mode fusion for a Dynamic Mode Switching sequence.
+     *
+     * Fusion is OFF at the SDK level by default: a plain DMS sequence delivers
+     * each mode's frames separately (see the dynamic_mode_switching example).
+     * When fusion is enabled, the two alternating modes (one short-range, one
+     * long-range) are concatenated and handed to the depth-compute library as a
+     * single frame so it emits one fused depth output. Call this with true
+     * BEFORE @ref adsds3500setDynamicModeSwitchingSequence to opt in; the SDK
+     * then builds the compute contexts with modeFusionEnabled=1 and the frame
+     * pipeline pairs the alternating raw frames.
+     *
+     * @param[in] enable - true to fuse the alternating modes, false for plain
+     *                     mode switching (default).
+     * @return Status
+     */
+    virtual aditof::Status setModeFusionEnabled(bool enable) {
+        (void)enable;
+        return aditof::Status::OK;
+    }
+
+    /**
     * @brief Read serial number from camera and update cache
     * @param[out] serialNumber - Will contain serial number
     * @param[in] useCacheValue - If it is false it will

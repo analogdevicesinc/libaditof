@@ -2612,15 +2612,60 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
     // resolution/bit layout from the currently active mode, the host-side
     // frame pipeline needs its own config for it, otherwise frames for the
     // second mode get parsed with the wrong layout (garbage metadata/depth).
-    if (sequence.size() == 2 && sequence[0].first == m_details.mode) {
+    //
+    // Fusion is only prepared when the application explicitly opted in via
+    // setModeFusionEnabled(true). A plain DMS sequence (m_modeFusionRequested
+    // == false, e.g. the dynamic_mode_switching example) leaves both compute
+    // contexts with modeFusionEnabled=0 so the pipeline delivers each mode's
+    // frames separately instead of concatenating them.
+    if (m_modeFusionRequested && sequence.size() == 2 &&
+        sequence[0].first == m_details.mode) {
+        uint8_t primaryMode = sequence[0].first;
         uint8_t alternateMode = sequence[1].first;
+
+        // Fusion is requested here. The SDK default modeFusionEnabled=0 means
+        // the compute contexts were built without fusion, so the depth-compute
+        // library would not fuse. Force modeFusionEnabled=1 into the ini blob
+        // and rebuild BOTH contexts: the fused frame is processed by the LR
+        // context, which may be the primary or the alternate depending on the
+        // mode order, so both must carry the flag.
+        auto buildFusionIni =
+            [](std::map<std::string, std::string> params) -> std::string {
+            params["modeFusionEnabled"] = "1";
+            std::string s;
+            for (auto &p : params) {
+                s += p.first + "=" + p.second + "\n";
+            }
+            return s;
+        };
+
+        // Rebuild the PRIMARY compute context with fusion enabled.
+        std::map<std::string, std::string> primParams;
+        if (m_config->getDepthParamsForMode(primaryMode, primParams) ==
+            Status::OK) {
+            std::string ps = buildFusionIni(primParams);
+            bool primIsp = (primParams.count("depthComputeIspEnable") &&
+                            primParams["depthComputeIspEnable"] == "1");
+            if (primIsp) {
+                TofiXYZDealiasData db[10];
+                for (int i = 0; i < 10; i++) {
+                    m_calibrationMgr->getXYZDealiasData(i, db[i]);
+                }
+                m_depthSensor->initTargetDepthCompute(
+                    (uint8_t *)ps.c_str(), ps.size(), (uint8_t *)db,
+                    sizeof(TofiXYZDealiasData) * 10);
+            } else {
+                const std::string &rawCCB = m_calibrationMgr->getRawCCBData();
+                m_depthSensor->initTargetDepthCompute(
+                    (uint8_t *)ps.c_str(), ps.size(),
+                    (uint8_t *)rawCCB.c_str(), rawCCB.size());
+            }
+        }
+
         std::map<std::string, std::string> altParams;
         if (m_config->getDepthParamsForMode(alternateMode, altParams) ==
             Status::OK) {
-            std::string s;
-            for (auto &param : altParams) {
-                s += param.first + "=" + param.second + "\n";
-            }
+            std::string s = buildFusionIni(altParams);
 
             bool ispEnabled = (altParams.find("depthComputeIspEnable") !=
                                     altParams.end() &&
@@ -2663,5 +2708,10 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
     }
 
     return m_adsd3500Ctrl->setDynamicModeSwitchingSequence(sequence);
+}
+
+aditof::Status CameraItof::setModeFusionEnabled(bool enable) {
+    m_modeFusionRequested = enable;
+    return aditof::Status::OK;
 }
 
