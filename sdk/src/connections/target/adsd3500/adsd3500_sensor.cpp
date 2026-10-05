@@ -1566,7 +1566,8 @@ aditof::Status Adsd3500Sensor::adsd3500_getInterruptandReset() {
 
     if (m_interruptAvailable != true) {
         LOG(INFO) << "Interrupt is not available , Resetting the ADSD3500";
-        adsd3500_reset();
+        // Report the reset result, not the failed callback registration above.
+        status = adsd3500_reset();
     } else {
         LOG(INFO) << "Got the Interrupt from ADSD3500";
     }
