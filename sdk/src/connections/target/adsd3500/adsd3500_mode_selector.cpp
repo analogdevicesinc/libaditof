@@ -220,6 +220,10 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
                 std::to_string(configurationTable.baseResolutionHeight) &&
             std::stoi(driverConf.noOfPhases) ==
                 configurationTable.numberOfPhases &&
+            // Modes 0 and 1 share phases and differ only by frequencies.
+            (configurationTable.numberOfFrequencies == 0 ||
+             std::stoi(driverConf.noOfFrequencies) ==
+                 configurationTable.numberOfFrequencies) &&
             driverConf.depthBits == m_controls["depthBits"] &&
             driverConf.abBits == m_controls["abBits"] &&
             driverConf.confBits == m_controls["confBits"] &&
