@@ -69,6 +69,11 @@ aditof::Status DeviceParameters::createIniParams(
             iniF.iniKeyValPairs = adtf3066_fullDepth;
         }
 
+        // The shared parameter sets default to dual; single-ISP chips must not use it.
+        if (chipID == CHIP_ID_SINGLE) {
+            iniF.iniKeyValPairs["dualPulsatrixSystemEnabled"] = "0";
+        }
+
         iniFileStructList.emplace_back(iniF);
     }
 
