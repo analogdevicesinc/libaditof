@@ -135,6 +135,33 @@ SDK binary and associated softlinks are hare **build/libaditof.so* **
 
 See [windows-build.md](doc/windows-build.md).
 
+## Camera Configuration File
+
+### Saving the current configuration
+
+Use `data_collect` with `--scf` to capture the live camera parameters to a JSON file:
+
+```bash
+./data_collect --m 0 --n 1 --scf /path/to/adcam_config.json
+```
+
+This saves all active depth parameters (JBLF, thresholds, FPS, etc.) for the given mode. Run once per mode and combine as needed.
+
+### Loading the configuration
+
+The SDK looks for `adcam_config.json` in the following order:
+
+1. **Same directory as the executable** — place `adcam_config.json` next to your binary and it is picked up automatically.
+2. **`ADCAM_CONFIG_PATH` environment variable** — set this to the full path of the config file to use it from any location:
+   ```bash
+   export ADCAM_CONFIG_PATH=/path/to/adcam_config.json
+   ./your_app
+   ```
+   To make this permanent, add the `export` line to `~/.bashrc`. If the file is missing at runtime the SDK logs a warning and falls back to factory defaults automatically.
+3. **Factory defaults** — if neither of the above is found, the SDK runs with built-in defaults.
+
+The explicit path passed to `camera->initialize("/path/to/config.json")` always takes priority over auto-discovery.
+
 ## CMake Options
 
 For the build options in [CMakeLists.txt](./CMakeLists.txt) see [cmake/readme.md](./cmake/readme.md).

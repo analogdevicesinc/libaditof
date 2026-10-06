@@ -26,7 +26,9 @@
 #include <aditof/adsd3500_hardware_interface.h>
 #include <aditof/log.h>
 #include <cassert>
+#include <chrono>
 #include <sstream>
+#include <thread>
 
 namespace aditof {
 
@@ -258,8 +260,21 @@ Status Adsd3500Controller::setFrameRate(uint16_t fps) {
 }
 
 Status Adsd3500Controller::getFrameRate(uint16_t &fps) {
-    return m_adsd3500Hardware->adsd3500_read_cmd(ADSD3500_REG_FRAME_RATE_GET,
-                                                 &fps);
+    // Right after a mode switch the sensor is briefly busy and the subdev read
+    // can return a stale 0. Retry with a non-zero response delay until a valid
+    // value is read, so a 0 is never propagated to callers.
+    Status status = Status::OK;
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        fps = 0;
+        status = m_adsd3500Hardware->adsd3500_read_cmd(
+            ADSD3500_REG_FRAME_RATE_GET, &fps, 2000);
+        if (status == Status::OK && fps != 0) {
+            return status;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    LOG(WARNING) << "getFrameRate: sensor returned 0 after retries.";
+    return status;
 }
 
 // ========== Advanced Features ==========

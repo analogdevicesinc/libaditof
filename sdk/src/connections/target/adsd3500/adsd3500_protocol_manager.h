@@ -132,6 +132,17 @@ class Adsd3500ProtocolManager {
     aditof::Status adsd3500_write_payload(uint8_t *payload,
                                           uint16_t payload_len);
 
+    /**
+     * @brief Updates the internal video device pointer after reallocation.
+     *
+     * Must be called whenever m_implData->videoDevs is reallocated (e.g. on
+     * mode switch) so that subsequent ioctl calls use the current file
+     * descriptors instead of the freed/stale ones.
+     *
+     * @param videoDevs Pointer to the newly allocated video device array
+     */
+    void updateVideoDevices(struct VideoDev *videoDevs);
+
   private:
     struct VideoDev *m_videoDevs; ///< Pointer to V4L2 video device array
     std::array<uint8_t, ADSD3500_CTRL_PACKET_SIZE>

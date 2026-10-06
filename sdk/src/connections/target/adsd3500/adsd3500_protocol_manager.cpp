@@ -559,3 +559,7 @@ Adsd3500ProtocolManager::adsd3500_write_payload(uint8_t *payload,
 
     return status;
 }
+
+void Adsd3500ProtocolManager::updateVideoDevices(struct VideoDev *videoDevs) {
+    m_videoDevs = videoDevs;
+}
