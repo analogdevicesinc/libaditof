@@ -268,6 +268,7 @@ class CameraItof : public aditof::Camera {
     bool m_enableDepthCompute;
     std::string m_initConfigFilePath;
     bool m_userJsonLoaded = false;
+    bool m_rawBypassWritten = false; // True while the chip has bypass enabled
     aditof::ImagerType m_imagerType;
     bool m_dropFrameOnce; // Per-frame state; m_dropFirstFrame moved to m_config
     bool m_rotationEnabled =
