@@ -441,10 +441,10 @@ aditof::Status Adsd3500Sensor::open() {
                     continue;
                 }
 
-                if (m_isDualPulsatrixSystem) {
-                    chipIDStatus = adsd3500_read_cmd(ADSD3500_REG_CHIP_ID_EXT,
-                                                     &chipID, 110 * 1000);
-                } else {
+                // Single-ISP chips ACK the extended register but return 0.
+                chipIDStatus = adsd3500_read_cmd(ADSD3500_REG_CHIP_ID_EXT,
+                                                 &chipID, 110 * 1000);
+                if (chipIDStatus != Status::OK || chipID == 0) {
                     chipIDStatus =
                         adsd3500_read_cmd(ADSD3500_REG_CHIP_ID, &chipID);
                 }
@@ -454,6 +454,8 @@ aditof::Status Adsd3500Sensor::open() {
                 }
 
                 m_chipId = chipID;
+                LOG(INFO) << "ADSD3500 chip ID: 0x" << std::hex << chipID
+                          << std::dec;
 
                 dealiasStatus =
                     adsd3500_read_payload_cmd(0x02, dealiasCheck, 32);
