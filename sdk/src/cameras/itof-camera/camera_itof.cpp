@@ -379,6 +379,7 @@ aditof::Status CameraItof::stop() {
     // mirrors the first-run path and delivers frames correctly.
     if (!m_isOffline && m_adsd3500Hardware) {
         aditof::Status resetStatus = m_adsd3500Hardware->adsd3500_reset();
+        m_rawBypassWritten = false;
         if (resetStatus != aditof::Status::OK) {
             LOG(WARNING) << "stop: chip GPIO reset failed (non-fatal)";
         } else {
@@ -511,10 +512,14 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             iniKeyValPairs.find("lensScatterCompensationEnabled");
         bool rawBypassEnabled = (lensScatteringIt != iniKeyValPairs.end() &&
                                  lensScatteringIt->second == "1");
-        status = adsd3500SetRawBypassMode(rawBypassEnabled);
-        if (status != Status::OK) {
-            LOG(WARNING) << "Failed to set raw bypass mode";
-            return status;
+        // The chip boots with bypass disabled; skip the write unless it changes.
+        if (rawBypassEnabled || m_rawBypassWritten) {
+            status = adsd3500SetRawBypassMode(rawBypassEnabled);
+            if (status != Status::OK) {
+                LOG(WARNING) << "Failed to set raw bypass mode";
+                return status;
+            }
+            m_rawBypassWritten = rawBypassEnabled;
         }
 
         // Set lens scatter compensation flag for buffer allocation
