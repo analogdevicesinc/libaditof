@@ -37,6 +37,7 @@
 #include <aditof/adsd_errs.h>
 #include <aditof/camera.h>
 #include <aditof/depth_sensor_interface.h>
+#include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -327,6 +328,20 @@ class CameraItof : public aditof::Camera {
     uint16_t m_fusionFps = 0; // Sensor fps requested while fused, 0 = ini fps
 
 #ifdef HAS_RGB_CAMERA
+    // Per-start counters behind the RGB-versus-depth sync log lines.
+    struct RgbSyncStats {
+        uint64_t depthFrames = 0;
+        uint64_t late = 0;
+        uint64_t missing = 0;
+        uint64_t backlog = 0;
+        uint64_t suppressed = 0;
+        double waitSumMs = 0.0;
+        double waitMaxMs = 0.0;
+        uint64_t depthAheadSum = 0;
+        size_t depthAheadMax = 0;
+        std::chrono::steady_clock::time_point lastLateLog;
+        std::chrono::steady_clock::time_point lastSummary;
+    } m_rgbSync;
     std::unique_ptr<aditof::RGBSensor> m_rgbSensor;
     struct {
         bool detected;    // Hardware detection result from enumeration
