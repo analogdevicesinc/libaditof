@@ -112,6 +112,26 @@ class ThreadSafeQueue {
         return true;
     }
 
+    void clear() {
+        std::unique_lock<std::mutex> lock(mutex_);
+        std::queue<T>().swap(queue_);
+        lock.unlock();
+        not_full_.notify_all();
+    }
+
+    // Never blocks; drops the oldest item when full. Returns true if it did.
+    bool push_overwrite(T item) {
+        std::unique_lock<std::mutex> lock(mutex_);
+        const bool dropped = queue_.size() >= max_size_;
+        if (dropped) {
+            queue_.pop();
+        }
+        queue_.push(std::move(item));
+        lock.unlock();
+        not_empty_.notify_all();
+        return dropped;
+    }
+
     size_t max_size() const {
         std::lock_guard<std::mutex> lock(mutex_);
         return max_size_;
@@ -174,7 +194,15 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     aditof::Status setRGBSensor(aditof::RGBSensor *sensor);
     aditof::Status enableRGBCapture(bool enable);
     bool isRGBCaptureEnabled() const { return m_rgbCaptureEnabled; }
-    aditof::Status getLatestRGBFrame(aditof::RGBFrame &frame);
+    // Pops the oldest queued RGB frame, waiting up to timeout for it to arrive.
+    // pendingBefore (optional) receives the queue size before the pop.
+    aditof::Status getLatestRGBFrame(aditof::RGBFrame &frame,
+                                     std::chrono::milliseconds timeout,
+                                     size_t *pendingBefore = nullptr);
+    // Processed depth frames waiting to be fetched.
+    size_t getReadyDepthFrames() const { return m_process_done_Q.size(); }
+    // Discards processed depth frames that have no RGB partner; returns count.
+    size_t flushReadyDepthFrames();
 #endif
 
     // Legacy method (keeping for backward compatibility)
@@ -235,6 +263,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     // atomic to prevent data races and undefined behaviour on concurrent reads.
     std::atomic<aditof::RGBSensor *> m_rgbSensor{nullptr};
     std::atomic<bool> m_rgbCaptureEnabled{false};
+    std::atomic<bool> m_rgbDropFirst{
+        true}; // first RGB frame after enable is dropped
     std::atomic<uint64_t> m_totalRGBCaptured;
     std::atomic<uint64_t> m_totalRGBFailures;
     ThreadSafeQueue<aditof::RGBFrame> m_rgb_frame_Q;

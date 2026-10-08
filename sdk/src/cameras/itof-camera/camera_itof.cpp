@@ -338,6 +338,12 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
 aditof::Status CameraItof::start() {
     using namespace aditof;
 
+    // Drop the first depth frame on every start, not only the first one.
+    m_dropFrameOnce = true;
+#ifdef HAS_RGB_CAMERA
+    m_rgbSync = RgbSyncStats();
+#endif
+
     // Start depth sensor (V4L2 STREAMON) first
     Status status = m_depthSensor->start();
     if (Status::OK != status) {
@@ -367,6 +373,10 @@ aditof::Status CameraItof::start() {
                 if (bufProc) {
                     bufProc->setRGBSensor(m_rgbSensor.get());
                     bufProc->enableRGBCapture(true);
+                    // Depth frames queued while Argus started have no RGB partner.
+                    const size_t flushed = bufProc->flushReadyDepthFrames();
+                    LOG(INFO) << "Dropped " << flushed
+                              << " queued depth frames that predate RGB";
                     LOG(INFO) << "RGB sensor wired to BufferProcessor";
                 }
             }
@@ -1306,9 +1316,87 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                     adsd3500Sensor->getBufferProcessor());
                 if (bufProc) {
                     aditof::RGBFrame rgbFrame;
-                    if (bufProc->getLatestRGBFrame(rgbFrame) ==
-                            aditof::Status::OK &&
-                        rgbFrame.isValid()) {
+                    // Measured depth-to-RGB gap never exceeded 100 ms; below
+                    // 10 fps wait a frame period. 10% on top of either.
+                    const int64_t periodMs =
+                        m_cameraFps > 0 ? 1000 / m_cameraFps : 100;
+                    const auto rgbTimeout = std::chrono::milliseconds(
+                        std::max<int64_t>(periodMs, 100) * 11 / 10);
+                    size_t pending = 0;
+                    const size_t depthAhead = bufProc->getReadyDepthFrames();
+                    const auto waitStart = std::chrono::steady_clock::now();
+                    const bool gotRgb = bufProc->getLatestRGBFrame(
+                                            rgbFrame, rgbTimeout, &pending) ==
+                                            aditof::Status::OK &&
+                                        rgbFrame.isValid();
+                    const auto waitEnd = std::chrono::steady_clock::now();
+                    const double waitMs =
+                        std::chrono::duration<double, std::milli>(waitEnd -
+                                                                  waitStart)
+                            .count();
+
+                    auto &sync = m_rgbSync;
+                    ++sync.depthFrames;
+                    sync.waitSumMs += waitMs;
+                    sync.waitMaxMs = std::max(sync.waitMaxMs, waitMs);
+                    sync.depthAheadSum += depthAhead;
+                    sync.depthAheadMax =
+                        std::max(sync.depthAheadMax, depthAhead);
+
+                    // RGB trails depth by design; flag it once the wait passes
+                    // half a period, where the pair may no longer match.
+                    if (!gotRgb) {
+                        ++sync.missing;
+                        LOG(WARNING)
+                            << "RGB frame missing for depth frame #"
+                            << sync.depthFrames << " (waited " << waitMs
+                            << " ms, limit " << rgbTimeout.count() << " ms)";
+                    } else if (waitMs > periodMs / 2.0) {
+                        ++sync.late;
+                        if (waitEnd - sync.lastLateLog >
+                            std::chrono::seconds(1)) {
+                            LOG(INFO)
+                                << "RGB frame late for depth frame #"
+                                << sync.depthFrames << ": waited " << waitMs
+                                << " ms (frame period " << periodMs
+                                << " ms), depth frames queued ahead: "
+                                << depthAhead
+                                << (sync.suppressed
+                                        ? ", " +
+                                              std::to_string(sync.suppressed) +
+                                              " similar lines suppressed"
+                                        : std::string());
+                            sync.lastLateLog = waitEnd;
+                            sync.suppressed = 0;
+                        } else {
+                            ++sync.suppressed;
+                        }
+                    }
+                    if (gotRgb && pending > 1) {
+                        ++sync.backlog;
+                        LOG(WARNING)
+                            << "RGB queue held " << pending
+                            << " frames at depth frame #" << sync.depthFrames
+                            << ", paired with an RGB frame " << pending - 1
+                            << " frame(s) old";
+                    }
+                    if (waitEnd - sync.lastSummary > std::chrono::seconds(10)) {
+                        if (sync.lastSummary.time_since_epoch().count() != 0) {
+                            LOG(INFO)
+                                << "RGB sync: " << sync.depthFrames
+                                << " depth frames, wait avg "
+                                << sync.waitSumMs / sync.depthFrames
+                                << " ms max " << sync.waitMaxMs << " ms, late "
+                                << sync.late << ", missing " << sync.missing
+                                << ", queue backlog " << sync.backlog
+                                << ", depth queued ahead avg "
+                                << double(sync.depthAheadSum) / sync.depthFrames
+                                << " max " << sync.depthAheadMax;
+                        }
+                        sync.lastSummary = waitEnd;
+                    }
+
+                    if (gotRgb) {
                         memcpy(reinterpret_cast<uint8_t *>(rgbBuf),
                                rgbFrame.data.data(), rgbFrame.data.size());
                     } else {
