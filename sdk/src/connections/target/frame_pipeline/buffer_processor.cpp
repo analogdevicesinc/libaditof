@@ -1349,6 +1349,7 @@ void BufferProcessor::stopThreads() {
         m_rgbThread.join();
     }
     m_rgbThread = std::thread();
+    m_rgb_frame_Q.clear();
 #endif
 
     // Reset thread objects
@@ -1390,17 +1391,40 @@ aditof::Status BufferProcessor::setRGBSensor(aditof::RGBSensor *sensor) {
     return aditof::Status::OK;
 }
 
+size_t BufferProcessor::flushReadyDepthFrames() {
+    size_t flushed = 0;
+    Tofi_v4l2_buffer frame;
+    while (m_process_done_Q.pop(frame, std::chrono::milliseconds(0))) {
+        if (frame.data)
+            m_v4l2_input_buffer_Q.push(frame.data);
+        if (frame.tofiBuffer)
+            m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
+        ++flushed;
+    }
+    return flushed;
+}
+
 aditof::Status BufferProcessor::enableRGBCapture(bool enable) {
+    if (enable) {
+        m_rgb_frame_Q.clear();
+        m_rgbDropFirst.store(true, std::memory_order_release);
+    }
     m_rgbCaptureEnabled.store(enable, std::memory_order_release);
     return aditof::Status::OK;
 }
 
-aditof::Status BufferProcessor::getLatestRGBFrame(aditof::RGBFrame &frame) {
+aditof::Status
+BufferProcessor::getLatestRGBFrame(aditof::RGBFrame &frame,
+                                   std::chrono::milliseconds timeout,
+                                   size_t *pendingBefore) {
     if (!m_rgbCaptureEnabled.load(std::memory_order_acquire) ||
         !m_rgbSensor.load(std::memory_order_acquire)) {
         return aditof::Status::UNAVAILABLE;
     }
-    if (m_rgb_frame_Q.pop(frame, std::chrono::milliseconds(100))) {
+    if (pendingBefore) {
+        *pendingBefore = m_rgb_frame_Q.size();
+    }
+    if (m_rgb_frame_Q.pop(frame, timeout)) {
         return aditof::Status::OK;
     }
     return aditof::Status::GENERIC_ERROR;
@@ -1409,6 +1433,7 @@ aditof::Status BufferProcessor::getLatestRGBFrame(aditof::RGBFrame &frame) {
 void BufferProcessor::captureRGBFrameThread() {
     LOG(INFO) << "captureRGBFrameThread: started";
     bool loggedWaiting = false;
+    uint64_t rgbOverflows = 0;
     while (!stopThreadsFlag.load(std::memory_order_acquire)) {
         // Snapshot both atomics once per iteration so we use a consistent
         // view and avoid TOCTOU between the null-check and the getFrame call.
@@ -1425,6 +1450,11 @@ void BufferProcessor::captureRGBFrameThread() {
         loggedWaiting = false;
         aditof::RGBFrame nv12Frame;
         aditof::Status status = sensor->getFrame(nv12Frame, 200);
+        if (status == aditof::Status::OK && nv12Frame.isValid() &&
+            m_rgbDropFirst.exchange(false, std::memory_order_acq_rel)) {
+            LOG(INFO) << "captureRGBFrameThread: dropped first RGB frame";
+            continue;
+        }
         if (status == aditof::Status::OK && nv12Frame.isValid()) {
             // Convert NV12 to BGR (3 bytes/pixel) before queuing
             aditof::RGBFrame bgrFrame;
@@ -1434,12 +1464,14 @@ void BufferProcessor::captureRGBFrameThread() {
             if (aditof::convertNV12toBGR(nv12Frame.data, bgrFrame.data,
                                          nv12Frame.width, nv12Frame.height) ==
                 aditof::Status::OK) {
-                if (!m_rgb_frame_Q.push(std::move(bgrFrame),
-                                        std::chrono::milliseconds(50))) {
-                    aditof::RGBFrame discarded;
-                    m_rgb_frame_Q.pop(discarded, std::chrono::milliseconds(0));
-                    m_rgb_frame_Q.push(std::move(bgrFrame),
-                                       std::chrono::milliseconds(50));
+                if (m_rgb_frame_Q.push_overwrite(std::move(bgrFrame))) {
+                    // Consumer is slower than the camera; pairing drifts from here.
+                    if (++rgbOverflows == 1 || rgbOverflows % 100 == 0) {
+                        LOG(WARNING)
+                            << "captureRGBFrameThread: RGB queue full, "
+                               "dropped oldest frame ("
+                            << rgbOverflows << " total)";
+                    }
                 }
             } else {
                 LOG(ERROR)
