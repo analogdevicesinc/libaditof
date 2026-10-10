@@ -161,8 +161,11 @@ file(GLOB OFFLINE_HEADERS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/connections/offline/*.h
 )
 
-# RGB Camera sources (GStreamer-based - conditional)
+# RGB Camera sources (conditional; backend chosen with RGB_CAMERA_BACKEND)
 if(WITH_RGB_CAMERA)
+    set(RGB_CAMERA_BACKEND "GSTREAMER" CACHE STRING "RGB camera backend: GSTREAMER (Argus) or V4L2 (raw Bayer)")
+    set_property(CACHE RGB_CAMERA_BACKEND PROPERTY STRINGS GSTREAMER V4L2)
+
     set(RGB_CAMERA_COMMON_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/ar0234_sensor.cpp
     )
@@ -170,8 +173,7 @@ if(WITH_RGB_CAMERA)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/ar0234_sensor.h
     )
 
-    if(NOT DEFINED RGB_CAMERA_BACKEND OR RGB_CAMERA_BACKEND STREQUAL "GSTREAMER")
-        set(RGB_CAMERA_BACKEND "GSTREAMER")
+    if(RGB_CAMERA_BACKEND STREQUAL "GSTREAMER")
         list(APPEND RGB_CAMERA_COMMON_SOURCES
             ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/gstreamer_frame_grabber.cpp
         )
@@ -180,6 +182,17 @@ if(WITH_RGB_CAMERA)
         )
         add_definitions(-DHAS_GSTREAMER_BACKEND)
         message(STATUS "RGB Camera backend: GStreamer")
+    elseif(RGB_CAMERA_BACKEND STREQUAL "V4L2")
+        list(APPEND RGB_CAMERA_COMMON_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/rgb_v4l2_frame_grabber_backend.cpp
+        )
+        list(APPEND RGB_CAMERA_COMMON_HEADERS
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/rgb_v4l2_frame_grabber_backend.h
+        )
+        add_definitions(-DHAS_V4L2_BACKEND)
+        message(STATUS "RGB Camera backend: V4L2")
+    else()
+        message(FATAL_ERROR "Unknown RGB_CAMERA_BACKEND '${RGB_CAMERA_BACKEND}' (use GSTREAMER or V4L2)")
     endif()
 
     set(RGB_CAMERA_ALL_SOURCES ${RGB_CAMERA_COMMON_SOURCES})

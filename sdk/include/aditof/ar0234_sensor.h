@@ -28,16 +28,25 @@ namespace aditof {
 // ============================================================================
 
 /**
+ * @brief Pixel layout of RGBFrame::data
+ */
+enum class RGBPixelFormat {
+    NV12, ///< YUV 4:2:0 semi-planar, 1.5 bytes per pixel (GStreamer backend)
+    BGR   ///< 3 bytes per pixel, B G R order (V4L2 backend)
+};
+
+/**
  * @brief Frame captured from RGB sensor
  */
 struct RGBFrame {
-    std::vector<uint8_t>
-        data;           ///< Raw pixel data (BGRx format, 4 bytes per pixel)
-    uint32_t width;     ///< Frame width in pixels
-    uint32_t height;    ///< Frame height in pixels
-    uint64_t timestamp; ///< Frame timestamp in microseconds
+    std::vector<uint8_t> data; ///< Pixel data, laid out as described by format
+    uint32_t width;            ///< Frame width in pixels
+    uint32_t height;           ///< Frame height in pixels
+    uint64_t timestamp;        ///< Frame timestamp in microseconds
+    RGBPixelFormat format;     ///< Pixel layout of data
 
-    RGBFrame() : width(0), height(0), timestamp(0) {}
+    RGBFrame()
+        : width(0), height(0), timestamp(0), format(RGBPixelFormat::NV12) {}
 
     /// Get frame size in bytes
     size_t size() const { return data.size(); }
@@ -138,8 +147,8 @@ struct RGBSensorConfig {
  * @brief Backend type - which capture method is being used
  */
 enum class RGBBackend {
-    GSTREAMER, ///< GStreamer-based capture (current)
-    V4L2,      ///< Direct V4L2 capture (future)
+    GSTREAMER, ///< GStreamer-based capture (nvarguscamerasrc)
+    V4L2,      ///< Direct V4L2 capture of the raw Bayer stream
     NVARGUS,   ///< NVIDIA Argus direct API (future)
     UNKNOWN
 };
@@ -193,6 +202,14 @@ class RGBBackend_Internal {
     virtual bool getFrame(RGBFrame &frame, uint32_t timeoutMs = 1000) = 0;
 
     /**
+     * @brief Get the next frame and throw it away, without converting it
+     */
+    virtual bool discardFrame(uint32_t timeoutMs = 1000) {
+        RGBFrame frame;
+        return getFrame(frame, timeoutMs);
+    }
+
+    /**
      * @brief Get statistics string
      */
     virtual std::string getStatistics() const = 0;
@@ -223,12 +240,13 @@ class RGBBackend_Internal {
  * config.fps = 60;
  * 
  * if (sensor.open(config) == Status::OK) {
+ *     sensor.initialize(); // before start(), e.g. in setMode()
  *     sensor.start();
  *     
  *     RGBFrame frame;
  *     while (capturing) {
  *         if (sensor.getFrame(frame) == Status::OK) {
- *             // Process frame.data (1920x1200 BGRx pixels)
+ *             // Process frame.data, laid out as frame.format
  *         }
  *     }
  *     
@@ -256,6 +274,15 @@ class RGBSensor {
     Status close();
 
     /**
+     * @brief Prepare the backend before start(), e.g. in setMode()
+     *
+     * Opens and configures the V4L2 device. Does nothing for the GStreamer
+     * backend, whose pipeline is built in start().
+     * @return Status::OK on success, Status::BUSY while capturing
+     */
+    Status initialize();
+
+    /**
      * @brief Start frame capture
      * @return Status::OK on success
      */
@@ -276,6 +303,13 @@ class RGBSensor {
     Status getFrame(RGBFrame &frame, uint32_t timeoutMs = 1000);
 
     /**
+     * @brief Wait for the next frame and drop it
+     * @param timeoutMs Timeout in milliseconds (default: 1000ms)
+     * @return Status::OK on success, Status::GENERIC_ERROR on timeout/error
+     */
+    Status discardFrame(uint32_t timeoutMs = 1000);
+
+    /**
      * @brief Check if sensor is currently capturing
      * @return true if capturing, false otherwise
      */
@@ -292,6 +326,12 @@ class RGBSensor {
      * @return Sensor configuration
      */
     RGBSensorConfig getConfig() const { return m_config; }
+
+    /**
+     * @brief Get the type of the backend being used
+     * @return Backend type, RGBBackend::UNKNOWN if the sensor is not open
+     */
+    RGBBackend getBackendType() const;
 
     /**
      * @brief Get backend name being used
@@ -313,11 +353,12 @@ class RGBSensor {
 
   private:
     std::unique_ptr<RGBBackend_Internal>
-        m_backend;            ///< Internal backend implementation
-    RGBSensorConfig m_config; ///< Current configuration
-    bool m_isOpen;            ///< Open state flag
-    bool m_argusProbeOk;      ///< True after first successful Argus probe
-    uint64_t m_frameCount;    ///< Total frames captured
+        m_backend;             ///< Internal backend implementation
+    RGBSensorConfig m_config;  ///< Current configuration
+    bool m_isOpen;             ///< Open state flag
+    bool m_argusProbeOk;       ///< True after first successful Argus probe
+    bool m_backendInitialized; ///< True after initialize() prepared the backend
+    uint64_t m_frameCount;     ///< Total frames captured
 };
 
 } // namespace aditof
