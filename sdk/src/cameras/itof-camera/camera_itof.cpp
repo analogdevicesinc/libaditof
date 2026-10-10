@@ -342,12 +342,51 @@ aditof::Status CameraItof::start() {
     m_dropFrameOnce = true;
 #ifdef HAS_RGB_CAMERA
     m_rgbSync = RgbSyncStats();
+
+    // The V4L2 RGB sensor is triggered by the depth stream, so it has to be
+    // armed first; its start() returns once it waits for triggers.
+    const bool rgbFirst =
+        m_rgbEnabled && m_rgbSensor &&
+        m_rgbSensor->getBackendType() == aditof::RGBBackend::V4L2;
+    BufferProcessor *rgbBufProc = nullptr;
+    if (rgbFirst) {
+        if (m_rgbSensor->start() != Status::OK) {
+            LOG(WARNING)
+                << "Failed to start RGB sensor; continuing without RGB";
+            m_rgbStatus.enabled = false;
+        } else {
+            auto adsd3500Sensor =
+                std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
+            if (adsd3500Sensor) {
+                rgbBufProc = dynamic_cast<BufferProcessor *>(
+                    adsd3500Sensor->getBufferProcessor());
+            }
+            if (rgbBufProc) {
+                // RGB seq 0 comes before depth starts. RGB seq k+1 pairs with
+                // depth seq k, so a dropped first depth frame costs one more.
+                const int dropFrames =
+                    m_config->getDropFirstFrame() && !m_isOffline ? 2 : 1;
+                rgbBufProc->setRGBSensor(m_rgbSensor.get());
+                rgbBufProc->enableRGBCapture(true, dropFrames);
+                LOG(INFO) << "RGB sensor started before depth, dropping "
+                          << dropFrames << " RGB frame(s)";
+            }
+        }
+    }
 #endif
 
-    // Start depth sensor (V4L2 STREAMON) first
+    // Start depth sensor (V4L2 STREAMON)
     Status status = m_depthSensor->start();
     if (Status::OK != status) {
         LOG(ERROR) << "Error starting adsd3500.";
+#ifdef HAS_RGB_CAMERA
+        if (rgbFirst && m_rgbSensor->isCapturing()) {
+            if (rgbBufProc) {
+                rgbBufProc->enableRGBCapture(false);
+            }
+            m_rgbSensor->stop();
+        }
+#endif
         return status;
     }
     m_devStreaming = true;
@@ -356,7 +395,7 @@ aditof::Status CameraItof::start() {
     // Start RGB sensor AFTER depth with a delay to let ToF fully initialize
     // before Argus starts. Starting Argus before V4L2 STREAMON is settled
     // disrupts the ADSD3500 MIPI link and stops V4L2 frame delivery.
-    if (m_rgbEnabled && m_rgbSensor) {
+    if (!rgbFirst && m_rgbEnabled && m_rgbSensor) {
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         if (m_rgbSensor->start() != Status::OK) {
             LOG(WARNING)
@@ -750,6 +789,11 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             auto metaIt =
                 std::find(fc.begin(), fc.end(), std::string("metadata"));
             fc.insert(metaIt, "rgb");
+
+            if (m_rgbSensor && m_rgbSensor->initialize() != Status::OK) {
+                LOG(WARNING) << "RGB sensor initialization failed, RGB will "
+                                "not start";
+            }
         }
 #endif
 

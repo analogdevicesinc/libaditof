@@ -14,7 +14,7 @@
 #endif
 
 #ifdef HAS_V4L2_BACKEND
-// #include "v4l2_frame_grabber.h"  // Future implementation
+#include "rgb_v4l2_frame_grabber_backend.h"
 #endif
 
 #ifdef HAS_NVARGUS_BACKEND
@@ -42,12 +42,11 @@ namespace aditof {
 // ============================================================================
 
 static std::unique_ptr<RGBBackend_Internal> createBackend() {
-    // Priority order: GStreamer > V4L2 > nvargus
+    // Selected at build time with RGB_CAMERA_BACKEND
 #ifdef HAS_GSTREAMER_BACKEND
     return std::make_unique<GStreamerFrameGrabber>();
 #elif defined(HAS_V4L2_BACKEND)
-    // return std::make_unique<V4L2FrameGrabber>();  // Future implementation
-    return nullptr;
+    return std::make_unique<RGBV4L2FrameGrabberBackend>();
 #elif defined(HAS_NVARGUS_BACKEND)
     // return std::make_unique<NVArgusFrameGrabber>();  // Future implementation
     return nullptr;
@@ -62,7 +61,7 @@ static std::unique_ptr<RGBBackend_Internal> createBackend() {
 
 RGBSensor::RGBSensor()
     : m_backend(nullptr), m_isOpen(false), m_argusProbeOk(false),
-      m_frameCount(0) {
+      m_backendInitialized(false), m_frameCount(0) {
     LOG(INFO) << "RGBSensor created";
 }
 
@@ -95,9 +94,10 @@ Status RGBSensor::open(const RGBSensorConfig &config) {
         return Status::GENERIC_ERROR;
     }
 
-    // Pipeline creation is deferred to start() so the Argus probe subprocess
-    // runs before any CameraProvider is open in this process, avoiding a
-    // conflict where the probe child and parent both access the same sensor.
+    // GStreamer pipeline creation is deferred to start() so the Argus probe
+    // subprocess runs before any CameraProvider is open in this process,
+    // avoiding a conflict where the probe child and parent both access the same
+    // sensor. The V4L2 backend is prepared by initialize() instead.
     m_isOpen = true;
     m_frameCount = 0;
 
@@ -120,11 +120,27 @@ Status RGBSensor::close() {
 
     // Release backend
     m_backend.reset();
+    m_backendInitialized = false;
     m_isOpen = false;
 
     LOG(INFO) << "AR0234Sensor closed";
 
     return Status::OK;
+}
+
+Status RGBSensor::initialize() {
+    if (!m_isOpen) {
+        return Status::UNAVAILABLE;
+    }
+    if (isCapturing()) {
+        return Status::BUSY;
+    }
+    // The GStreamer pipeline is destroyed by stop(), so start() builds it.
+    if (m_backend->getBackendType() == RGBBackend::GSTREAMER) {
+        return Status::OK;
+    }
+    m_backendInitialized = m_backend->initialize(m_config);
+    return m_backendInitialized ? Status::OK : Status::GENERIC_ERROR;
 }
 
 Status RGBSensor::start() {
@@ -138,13 +154,26 @@ Status RGBSensor::start() {
         return Status::BUSY;
     }
 
+    const auto startBegin = std::chrono::steady_clock::now();
+    auto elapsedMs = [](std::chrono::steady_clock::time_point since) {
+        return std::chrono::duration<double, std::milli>(
+                   std::chrono::steady_clock::now() - since)
+            .count();
+    };
+
     // -----------------------------------------------------------------------
-    // Step 1: Argus availability probe (first start only).
+    // Step 1: Argus availability probe (first start only, GStreamer backend).
     //
     // The probe runs in a subprocess so any Argus SIGSEGV only kills the child.
     // On subsequent start() calls (stop→start cycles) we skip the probe —
     // Argus is known healthy and the 3-second overhead is wasteful.
-    if (!m_argusProbeOk) {
+    const bool useArgus = m_backend->getBackendType() == RGBBackend::GSTREAMER;
+    if (!useArgus && !m_backendInitialized) {
+        LOG(ERROR) << "AR0234Sensor backend not initialized, call "
+                      "initialize() before start()";
+        return Status::UNAVAILABLE;
+    }
+    if (useArgus && !m_argusProbeOk) {
         // timeout 3: healthy Argus initialises in ~3s (exit 124 = timeout = OK);
         // broken Argus exits with error before the timeout fires.
         const std::string probeCmd =
@@ -159,9 +188,10 @@ Status RGBSensor::start() {
         // which can take a few seconds. Retry the probe with escalating backoff
         // instead of giving up on the first failure (which would disable RGB
         // for the entire session).
-        constexpr int kMaxProbeAttempts = 4;
+        constexpr int kMaxProbeAttempts = 3;
         for (int attempt = 1; !m_argusProbeOk && attempt <= kMaxProbeAttempts;
              ++attempt) {
+            const auto probeBegin = std::chrono::steady_clock::now();
             pid_t probePid = fork();
             if (probePid == 0) {
                 execl("/bin/sh", "sh", "-c", probeCmd.c_str(), nullptr);
@@ -176,6 +206,9 @@ Status RGBSensor::start() {
             int exitCode = WIFEXITED(wstatus) ? WEXITSTATUS(wstatus) : -1;
             int sigNum = WIFSIGNALED(wstatus) ? WTERMSIG(wstatus) : 0;
             bool probeOk = (exitCode == 0 || exitCode == 124);
+            LOG(INFO) << "RGB timing: probe attempt " << attempt << " took "
+                      << elapsedMs(probeBegin) << " ms (exit=" << exitCode
+                      << ")";
 
             if (probeOk) {
                 LOG(INFO) << "Argus probe OK (exit=" << exitCode << ", attempt "
@@ -205,38 +238,61 @@ Status RGBSensor::start() {
     }
 
     // -----------------------------------------------------------------------
-    // Step 2: Create the GStreamer pipeline and start it on a fresh thread.
+    // Step 2: Create the GStreamer pipeline and start it on a fresh thread
+    // (V4L2: start the backend that initialize() prepared).
     //
     // initialize() builds the nvarguscamerasrc pipeline (NULL state).
     // Running startPipeline() (NULL→PAUSED→PLAYING) on a fresh std::thread
     // avoids the EGL API binding conflict when the caller is the tof-viewer
     // main thread (eglBindAPI EGL_OPENGL_API vs nvarguscamerasrc's ES API).
     LOG(INFO) << "AR0234Sensor using backend: " << m_backend->getBackendName();
+    if (useArgus) {
+        LOG(INFO) << "RGB timing: probe step finished " << elapsedMs(startBegin)
+                  << " ms after start() began";
+    }
 
-    // Retry the initialize()+start() sequence a few times. When the viewer is
-    // closed and reopened, the nvargus-daemon occasionally still holds a stale
-    // CaptureSession from the previous process, so the first pipeline start can
-    // fail. A full teardown (m_backend->stop() destroys the pipeline) followed
-    // by a short settle lets the daemon release the session before we retry.
+    // GStreamer only: retry the initialize()+start() sequence a few times.
+    // When the viewer is closed and reopened, the nvargus-daemon occasionally
+    // still holds a stale CaptureSession from the previous process, so the
+    // first pipeline start can fail. A full teardown (m_backend->stop()
+    // destroys the pipeline) followed by a short settle lets the daemon release
+    // the session before we retry.
     constexpr int kMaxStartAttempts = 3;
-    for (int attempt = 1; attempt <= kMaxStartAttempts; ++attempt) {
+    const int maxStartAttempts = useArgus ? kMaxStartAttempts : 1;
+    for (int attempt = 1; attempt <= maxStartAttempts; ++attempt) {
         bool startResult = false;
+        const auto pipelineBegin = std::chrono::steady_clock::now();
 
-        // initialize() builds the nvarguscamerasrc pipeline (NULL state).
-        // Running startPipeline() (NULL→PAUSED→PLAYING) on a fresh std::thread
-        // avoids the EGL API binding conflict when the caller is the tof-viewer
-        // main thread (eglBindAPI EGL_OPENGL_API vs nvarguscamerasrc's ES API).
-        if (m_backend->initialize(m_config)) {
-            std::thread startThread(
-                [this, &startResult]() { startResult = m_backend->start(); });
-            startThread.join();
+        if (useArgus) {
+            // initialize() builds the nvarguscamerasrc pipeline (NULL state).
+            // Running startPipeline() (NULL→PAUSED→PLAYING) on a fresh
+            // std::thread avoids the EGL API binding conflict when the caller
+            // is the tof-viewer main thread (eglBindAPI EGL_OPENGL_API vs
+            // nvarguscamerasrc's ES API).
+            if (m_backend->initialize(m_config)) {
+                std::thread startThread([this, &startResult]() {
+                    startResult = m_backend->start();
+                });
+                startThread.join();
+            } else {
+                LOG(ERROR)
+                    << "Failed to initialize AR0234 sensor backend (attempt "
+                    << attempt << "/" << maxStartAttempts << ")";
+            }
         } else {
-            LOG(ERROR) << "Failed to initialize AR0234 sensor backend (attempt "
-                       << attempt << "/" << kMaxStartAttempts << ")";
+            // Already initialized by initialize(), checked at the top of start().
+            startResult = m_backend->start();
         }
 
         if (startResult) {
-            LOG(INFO) << "AR0234Sensor started capturing"
+            LOG(INFO) << "RGB timing: "
+                      << (useArgus ? "pipeline initialize+start"
+                                   : "V4L2 stream on until sensor armed")
+                      << " took " << elapsedMs(pipelineBegin)
+                      << " ms; total start() " << elapsedMs(startBegin)
+                      << " ms";
+            LOG(INFO) << "AR0234Sensor started capturing with "
+                      << m_backend->getBackendName() << " backend"
                       << (attempt > 1 ? " (after retry)" : "");
             return Status::OK;
         }
@@ -244,16 +300,16 @@ Status RGBSensor::start() {
         // Tear down completely so the Argus session is released, then let the
         // daemon settle before the next attempt.
         m_backend->stop();
-        if (attempt < kMaxStartAttempts) {
+        if (attempt < maxStartAttempts) {
             LOG(WARNING) << "RGB start failed (attempt " << attempt << "/"
-                         << kMaxStartAttempts
+                         << maxStartAttempts
                          << "), retrying after Argus settle...";
             std::this_thread::sleep_for(std::chrono::milliseconds(700));
         }
     }
 
     LOG(ERROR) << "Failed to start AR0234 sensor capture after "
-               << kMaxStartAttempts << " attempts";
+               << maxStartAttempts << " attempts";
     return Status::GENERIC_ERROR;
 }
 
@@ -297,6 +353,14 @@ Status RGBSensor::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
     return Status::OK;
 }
 
+Status RGBSensor::discardFrame(uint32_t timeoutMs) {
+    if (!isCapturing()) {
+        return Status::UNAVAILABLE;
+    }
+    return m_backend->discardFrame(timeoutMs) ? Status::OK
+                                              : Status::GENERIC_ERROR;
+}
+
 bool RGBSensor::isCapturing() const {
     return m_isOpen && m_backend && m_backend->isRunning();
 }
@@ -306,6 +370,10 @@ std::string RGBSensor::getBackendName() const {
         return "None";
     }
     return m_backend->getBackendName();
+}
+
+RGBBackend RGBSensor::getBackendType() const {
+    return m_backend ? m_backend->getBackendType() : RGBBackend::UNKNOWN;
 }
 
 std::string RGBSensor::getStatistics() const {

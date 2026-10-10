@@ -192,7 +192,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
 #ifdef HAS_RGB_CAMERA
     // RGB sensor management
     aditof::Status setRGBSensor(aditof::RGBSensor *sensor);
-    aditof::Status enableRGBCapture(bool enable);
+    // dropFrames: RGB frames discarded after enabling, ahead of the first one queued.
+    aditof::Status enableRGBCapture(bool enable, int dropFrames = 1);
     bool isRGBCaptureEnabled() const { return m_rgbCaptureEnabled; }
     // Pops the oldest queued RGB frame, waiting up to timeout for it to arrive.
     // pendingBefore (optional) receives the queue size before the pop.
@@ -263,8 +264,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     // atomic to prevent data races and undefined behaviour on concurrent reads.
     std::atomic<aditof::RGBSensor *> m_rgbSensor{nullptr};
     std::atomic<bool> m_rgbCaptureEnabled{false};
-    std::atomic<bool> m_rgbDropFirst{
-        true}; // first RGB frame after enable is dropped
+    std::atomic<int> m_rgbDropCount{
+        1}; // RGB frames still to drop after capture is enabled
     std::atomic<uint64_t> m_totalRGBCaptured;
     std::atomic<uint64_t> m_totalRGBFailures;
     ThreadSafeQueue<aditof::RGBFrame> m_rgb_frame_Q;

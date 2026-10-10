@@ -1404,10 +1404,10 @@ size_t BufferProcessor::flushReadyDepthFrames() {
     return flushed;
 }
 
-aditof::Status BufferProcessor::enableRGBCapture(bool enable) {
+aditof::Status BufferProcessor::enableRGBCapture(bool enable, int dropFrames) {
     if (enable) {
         m_rgb_frame_Q.clear();
-        m_rgbDropFirst.store(true, std::memory_order_release);
+        m_rgbDropCount.store(dropFrames, std::memory_order_release);
     }
     m_rgbCaptureEnabled.store(enable, std::memory_order_release);
     return aditof::Status::OK;
@@ -1448,22 +1448,37 @@ void BufferProcessor::captureRGBFrameThread() {
             continue;
         }
         loggedWaiting = false;
-        aditof::RGBFrame nv12Frame;
-        aditof::Status status = sensor->getFrame(nv12Frame, 200);
-        if (status == aditof::Status::OK && nv12Frame.isValid() &&
-            m_rgbDropFirst.exchange(false, std::memory_order_acq_rel)) {
-            LOG(INFO) << "captureRGBFrameThread: dropped first RGB frame";
+        int toDrop = m_rgbDropCount.load(std::memory_order_acquire);
+        if (toDrop > 0) {
+            const aditof::Status dropStatus = sensor->discardFrame(200);
+            if (dropStatus == aditof::Status::OK &&
+                m_rgbDropCount.compare_exchange_strong(
+                    toDrop, toDrop - 1, std::memory_order_acq_rel)) {
+                LOG(INFO) << "captureRGBFrameThread: dropped RGB frame, "
+                          << toDrop - 1 << " more to drop";
+            } else if (dropStatus == aditof::Status::UNAVAILABLE) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
             continue;
         }
-        if (status == aditof::Status::OK && nv12Frame.isValid()) {
-            // Convert NV12 to BGR (3 bytes/pixel) before queuing
+        aditof::RGBFrame rawFrame;
+        aditof::Status status = sensor->getFrame(rawFrame, 200);
+        if (status == aditof::Status::OK && rawFrame.isValid()) {
             aditof::RGBFrame bgrFrame;
-            bgrFrame.width = nv12Frame.width;
-            bgrFrame.height = nv12Frame.height;
-            bgrFrame.timestamp = nv12Frame.timestamp;
-            if (aditof::convertNV12toBGR(nv12Frame.data, bgrFrame.data,
-                                         nv12Frame.width, nv12Frame.height) ==
-                aditof::Status::OK) {
+            bool converted = true;
+            if (rawFrame.format == aditof::RGBPixelFormat::BGR) {
+                bgrFrame = std::move(rawFrame);
+            } else {
+                // Convert NV12 to BGR (3 bytes/pixel) before queuing
+                bgrFrame.width = rawFrame.width;
+                bgrFrame.height = rawFrame.height;
+                bgrFrame.timestamp = rawFrame.timestamp;
+                bgrFrame.format = aditof::RGBPixelFormat::BGR;
+                converted = aditof::convertNV12toBGR(
+                                rawFrame.data, bgrFrame.data, rawFrame.width,
+                                rawFrame.height) == aditof::Status::OK;
+            }
+            if (converted) {
                 if (m_rgb_frame_Q.push_overwrite(std::move(bgrFrame))) {
                     // Consumer is slower than the camera; pairing drifts from here.
                     if (++rgbOverflows == 1 || rgbOverflows % 100 == 0) {
