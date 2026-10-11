@@ -72,13 +72,12 @@ class CameraFrameAcquisitionManager {
      *
      * Complete frame acquisition and processing sequence:
      * 1. Validates frame buffer and updates frame details if needed
-     * 2. Drops first frame if configured (reduces sensor initialization artifacts)
-     * 3. Acquires raw frame from depth sensor
-     * 4. For raw bypass mode: returns immediately (no post-processing)
-     * 5. Computes XYZ point cloud if enabled
-     * 6. Zeros disabled data types (depth/AB/confidence)
-     * 7. Extracts or generates metadata
-     * 8. Copies metadata to frame buffer
+     * 2. Acquires raw frame from depth sensor
+     * 3. For raw bypass mode: returns immediately (no post-processing)
+     * 4. Computes XYZ point cloud if enabled
+     * 5. Zeros disabled data types (depth/AB/confidence)
+     * 6. Extracts or generates metadata
+     * 7. Copies metadata to frame buffer
      *
      * @param[in,out] frame Pointer to frame object to populate with data.
      * @param[in] index Frame index for multi-frame acquisition (default 0).
@@ -93,7 +92,6 @@ class CameraFrameAcquisitionManager {
      * @param[in] confBitsPerPixel Confidence map bit depth (4, 8, or 16).
      * @param[in] abBitsPerPixel AB frame bit depth (8 or 16).
      * @param[in] depthBitsPerPixel Depth frame bit depth (typically 16).
-     * @param[in,out] dropFrameOnce Reference to drop-frame state flag.
      *
      * @return Status::OK if frame acquired and processed successfully;
      *         Status::INVALID_ARGUMENT if frame pointer is null;
@@ -108,7 +106,7 @@ class CameraFrameAcquisitionManager {
                         bool isOffline, bool isPcmFrame, bool depthEnabled,
                         bool abEnabled, bool confEnabled, bool xyzEnabled,
                         uint8_t confBitsPerPixel, uint8_t abBitsPerPixel,
-                        uint8_t depthBitsPerPixel, bool &dropFrameOnce);
+                        uint8_t depthBitsPerPixel);
 
   private:
     /**
@@ -136,18 +134,6 @@ class CameraFrameAcquisitionManager {
      */
     Status getFrameDataLocation(Frame *frame, bool isPcmFrame,
                                 uint16_t **dataLocation);
-
-    /**
-     * @brief Drops first frame from sensor if configured.
-     *
-     * @param[in] dataLocation Frame buffer for dropped frame.
-     * @param[in] index Frame index.
-     * @param[in,out] dropFrameOnce State flag updated after drop.
-     *
-     * @return Status::OK if frame dropped successfully.
-     */
-    Status dropFirstFrameIfNeeded(uint16_t *dataLocation, uint32_t index,
-                                  bool &dropFrameOnce, bool isOffline);
 
     /**
      * @brief Acquires raw frame data from depth sensor.

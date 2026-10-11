@@ -150,9 +150,6 @@ class CameraConfiguration {
     int16_t getFsyncMode() const { return m_fsyncMode; }
     void setFsyncMode(int16_t mode) { m_fsyncMode = mode; }
 
-    bool getDropFirstFrame() const { return m_dropFirstFrame; }
-    void setDropFirstFrame(bool drop) { m_dropFirstFrame = drop; }
-
     const std::vector<std::pair<uint8_t, uint8_t>> &getDmsSequence() const {
         return m_configDmsSequence;
     }
@@ -212,7 +209,6 @@ class CameraConfiguration {
     int16_t m_enableEdgeConfidence;
     int16_t m_enableMetaDatainAB;
     int16_t m_fsyncMode;
-    bool m_dropFirstFrame;
     std::vector<std::pair<uint8_t, uint8_t>> m_configDmsSequence;
     std::map<std::string, std::string> m_iniKeyValPairs;
 

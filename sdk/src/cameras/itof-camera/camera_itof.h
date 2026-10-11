@@ -159,8 +159,6 @@ class CameraItof : public aditof::Camera {
     loadDepthParamsFromJsonFile(const std::string &pathFile,
                                 const int16_t mode_in_use = -1) override;
 
-    void dropFirstFrame(bool dropFrame) override;
-
     aditof::Status
     getFrameProcessParams(std::map<std::string, std::string> &params) override;
     aditof::Status
@@ -286,7 +284,7 @@ class CameraItof : public aditof::Camera {
     // NOTE: Configuration settings now managed by m_config:
     // - m_fsyncMode, m_mipiOutputSpeed, m_isdeskewEnabled
     // - m_enableTempCompenstation, m_enableMetaDatainAB, m_enableEdgeConfidence
-    // - m_dropFirstFrame, m_configDmsSequence, m_iniKeyValPairs
+    // - m_configDmsSequence, m_iniKeyValPairs
     // - m_depth_params_map, m_depth_params_map_reset
     // NOTE: Calibration data now managed by m_calibrationMgr:
     // - m_rawCCBData, m_xyz_dealias_data, m_xyzTable
@@ -298,7 +296,6 @@ class CameraItof : public aditof::Camera {
     bool m_userJsonLoaded = false;
     bool m_rawBypassWritten = false; // True while the chip has bypass enabled
     aditof::ImagerType m_imagerType;
-    bool m_dropFrameOnce; // Per-frame state; m_dropFirstFrame moved to m_config
     bool m_rotationEnabled =
         false; // True if XYZ tables and frames are rotated 90° CW
 

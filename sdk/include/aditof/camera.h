@@ -597,13 +597,6 @@ class SDK_API Camera {
     setSensorConfiguration(const std::string &sensorConf) = 0;
 
     /**
-     * @brief Allow drop first frame
-     * @param dropFrame - Drop the first frame if true
-     * @return void
-     */
-    virtual void dropFirstFrame(bool dropFrame) = 0;
-
-    /**
      * @brief Start recording frames to a file
      * @param[in] filePath - Path to the file where frames will be recorded
      * @return Status

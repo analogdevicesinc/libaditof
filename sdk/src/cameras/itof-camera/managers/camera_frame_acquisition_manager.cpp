@@ -47,8 +47,8 @@ Status CameraFrameAcquisitionManager::requestFrame(
     Frame *frame, uint32_t index, const FrameDetails &frameType,
     const DepthSensorModeDetails &modeDetails, bool isOffline, bool isPcmFrame,
     bool depthEnabled, bool abEnabled, bool confEnabled, bool xyzEnabled,
-    uint8_t confBitsPerPixel, uint8_t abBitsPerPixel, uint8_t depthBitsPerPixel,
-    bool &dropFrameOnce) {
+    uint8_t confBitsPerPixel, uint8_t abBitsPerPixel,
+    uint8_t depthBitsPerPixel) {
 
     Status status = Status::OK;
 
@@ -71,33 +71,26 @@ Status CameraFrameAcquisitionManager::requestFrame(
         return status;
     }
 
-    // Step 4: Drop first frame if configured
-    status = dropFirstFrameIfNeeded(frameDataLocation, index, dropFrameOnce,
-                                    isOffline);
-    if (status != Status::OK) {
-        return status;
-    }
-
-    // Step 5: Acquire raw frame from sensor
+    // Step 4: Acquire raw frame from sensor
     status = acquireRawFrame(frameDataLocation, index);
     if (status != Status::OK) {
         LOG(WARNING) << "Failed to get frame from device";
         return status;
     }
 
-    // Step 6: For raw bypass mode, skip all post-processing
+    // Step 5: For raw bypass mode, skip all post-processing
     if (modeDetails.isRawBypass) {
         return Status::OK;
     }
 
-    // Step 7: Compute XYZ point cloud if enabled
+    // Step 6: Compute XYZ point cloud if enabled
     status = computeXYZIfEnabled(frame, xyzEnabled, depthEnabled, frameType,
                                  modeDetails);
     if (status != Status::OK) {
         return status;
     }
 
-    // Step 8: Zero disabled data types
+    // Step 7: Zero disabled data types
     status = zeroDepthIfDisabled(frame, depthEnabled, modeDetails);
     if (status != Status::OK) {
         return status;
@@ -108,7 +101,7 @@ Status CameraFrameAcquisitionManager::requestFrame(
         return status;
     }
 
-    // Step 9: Extract or generate metadata
+    // Step 8: Extract or generate metadata
     Metadata metadata;
     status = extractOrGenerateMetadata(
         frame, metadata, modeDetails, abEnabled, isPcmFrame, xyzEnabled,
@@ -117,7 +110,7 @@ Status CameraFrameAcquisitionManager::requestFrame(
         return status;
     }
 
-    // Step 10: Write metadata to frame
+    // Step 9: Write metadata to frame
     status = writeMetadataToFrame(frame, metadata);
     if (status != Status::OK) {
         return status;
@@ -163,28 +156,6 @@ Status CameraFrameAcquisitionManager::getFrameDataLocation(
         LOG(ERROR) << "Frame data location is null despite success status";
         return Status::GENERIC_ERROR;
     }
-
-    return Status::OK;
-}
-
-Status CameraFrameAcquisitionManager::dropFirstFrameIfNeeded(
-    uint16_t *dataLocation, uint32_t index, bool &dropFrameOnce,
-    bool isOffline) {
-
-    // Only drop first frame in online mode if configured
-    if (!m_config->getDropFirstFrame() || !dropFrameOnce || isOffline) {
-        return Status::OK;
-    }
-
-    Status status = m_depthSensor->getFrame(dataLocation, index);
-    if (status != Status::OK) {
-        dropFrameOnce = true; // Keep trying
-        LOG(INFO) << "Failed to drop first frame!";
-        return status;
-    }
-
-    dropFrameOnce = false;
-    LOG(INFO) << "Dropped first frame";
 
     return Status::OK;
 }

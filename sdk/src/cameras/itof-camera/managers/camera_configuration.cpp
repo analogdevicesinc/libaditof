@@ -39,8 +39,8 @@ namespace aditof {
 CameraConfiguration::CameraConfiguration()
     : m_mipiOutputSpeed(-1), m_isdeskewEnabled(-1),
       m_enableTempCompensation(-1), m_enableEdgeConfidence(-1),
-      m_enableMetaDatainAB(-1), m_fsyncMode(-1), m_dropFirstFrame(true),
-      m_expectedFirmwareVersion(""), m_skipFirmwareVersionCheck(false) {}
+      m_enableMetaDatainAB(-1), m_fsyncMode(-1), m_expectedFirmwareVersion(""),
+      m_skipFirmwareVersionCheck(false) {}
 
 CameraConfiguration::~CameraConfiguration() {}
 
@@ -104,20 +104,6 @@ CameraConfiguration::loadDepthParamsFromJsonFile(const std::string &pathFile,
 
     json_object *config_json = json_tokener_parse(content.c_str());
     if (config_json != NULL) {
-
-        json_object *errata1 = NULL;
-        double errata1val = 1;
-        if (json_object_object_get_ex(config_json, "errata1", &errata1)) {
-            if (json_object_is_type(errata1, json_type_int) ||
-                json_object_is_type(errata1, json_type_double)) {
-                errata1val = json_object_get_double(errata1);
-            }
-        }
-        if (errata1val == 1) {
-            m_dropFirstFrame = true;
-        } else {
-            m_dropFirstFrame = false;
-        }
 
         json_object *fsyncMode = NULL;
         if (json_object_object_get_ex(config_json, "fsyncMode", &fsyncMode)) {
@@ -326,9 +312,6 @@ CameraConfiguration::saveDepthParamsToJsonFile(const std::string &savePathFile,
     }
 
     json_object *rootjson = json_object_new_object();
-
-    json_object_object_add(rootjson, "errata1",
-                           json_object_new_int(m_dropFirstFrame ? 1 : 0));
 
     json_object_object_add(rootjson, "fsyncMode",
                            json_object_new_int(m_fsyncMode));

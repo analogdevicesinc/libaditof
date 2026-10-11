@@ -643,8 +643,6 @@ PYBIND11_MODULE(aditofpython, m) {
                  aditof::Status status = camera.getImagerType(imagerType);
                  return std::make_pair(status, imagerType);
              })
-        .def("dropFirstFrame", &aditof::Camera::dropFirstFrame,
-             py::arg("dropFrame"))
         .def(
             "getDepthParamtersMap",
             [](aditof::Camera &camera, uint16_t mode) {

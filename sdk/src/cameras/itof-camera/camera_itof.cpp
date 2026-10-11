@@ -201,7 +201,7 @@ CameraItof::CameraItof(
       m_devStarted(false), m_devStreaming(false), m_adsd3500Enabled(false),
       m_isOffline(false), m_xyzEnabled(true), m_xyzSetViaApi(false),
       m_rgbEnabled(false), m_cameraFps(0), m_modesVersion(0),
-      m_imagerType(aditof::ImagerType::UNSET), m_dropFrameOnce(true) {
+      m_imagerType(aditof::ImagerType::UNSET) {
 
 #ifdef HAS_RGB_CAMERA
     m_rgbStatus.detected = false;
@@ -338,8 +338,6 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
 aditof::Status CameraItof::start() {
     using namespace aditof;
 
-    // Drop the first depth frame on every start, not only the first one.
-    m_dropFrameOnce = true;
 #ifdef HAS_RGB_CAMERA
     m_rgbSync = RgbSyncStats();
 
@@ -362,14 +360,12 @@ aditof::Status CameraItof::start() {
                     adsd3500Sensor->getBufferProcessor());
             }
             if (rgbBufProc) {
-                // RGB seq 0 comes before depth starts. RGB seq k+1 pairs with
-                // depth seq k, so a dropped first depth frame costs one more.
-                const int dropFrames =
-                    m_config->getDropFirstFrame() && !m_isOffline ? 2 : 1;
+                // RGB seq 0 comes before depth starts; RGB seq k+1 pairs
+                // with depth seq k.
                 rgbBufProc->setRGBSensor(m_rgbSensor.get());
-                rgbBufProc->enableRGBCapture(true, dropFrames);
+                rgbBufProc->enableRGBCapture(true);
                 LOG(INFO) << "RGB sensor started before depth, dropping "
-                          << dropFrames << " RGB frame(s)";
+                             "its first frame";
             }
         }
     }
@@ -634,9 +630,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         configureSensorModeDetails();
 
 #ifdef HAS_RGB_CAMERA
-        // MP+RGB: zero AB bits so the MIPI slot is freed for RGB data.
-        // QMP modes (512×512) must retain AB bits in the MIPI stream — the ISP
-        // will stall without AB present in the QMP MIPI stream.
         if (m_rgbEnabled && modeIt->baseResolutionWidth != 512) {
             m_abEnabled = false;
             m_abBitsPerPixel = 0;
@@ -1299,9 +1292,6 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
  * The function performs the following operations:
  * - Validates and initializes frame buffer from either "frameData" (MP modes) or
  *   "ab" (QMP modes) based on PCM frame flag
- * - Optionally drops the first frame on initial startup (configurable via
- *   m_dropFirstFrame flag) to stabilize sensor output; caller controls retry via
- *   return status
  * - Retrieves actual frame data from depth sensor via V4L2/ISP pipeline
  * - Computes XYZ coordinates from depth data if enabled and buffers allocated
  * - Clears disabled data channels (depth/AB) to ensure clean output
@@ -1324,13 +1314,7 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
  *         Sensor error status codes from depth sensor operations (getFrame calls).
  *
  * @note Single-threaded access only. Caller must ensure exclusive access to
- *       requestFrame during camera streaming. Frame drop retry logic is
- *       intentional; caller determines when to stop retrying based on status.
- *
- * @note Drop-first-frame behavior: On initial startup with m_dropFirstFrame=true,
- *       the function performs two getFrame calls: one to discard initial frame
- *       and one to return actual data. This increases latency on first call.
- *       Failures during drop phase reset m_dropFrameOnce flag for retry.
+ *       requestFrame during camera streaming.
  *
  * @note Memory safety: This function is hardened with comprehensive pointer
  *       validation and bounds checking. Metadata struct size is enforced at
@@ -1346,8 +1330,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
     aditof::Status status = m_frameAcqManager->requestFrame(
         frame, index, m_details.frameType, m_modeDetailsCache, m_isOffline,
         m_pcmFrame, m_depthEnabled, m_abEnabled, m_confEnabled, m_xyzEnabled,
-        m_confBitsPerPixel, m_abBitsPerPixel, m_depthBitsPerPixel,
-        m_dropFrameOnce);
+        m_confBitsPerPixel, m_abBitsPerPixel, m_depthBitsPerPixel);
     if (status != aditof::Status::OK) {
         return status;
     }
@@ -1909,21 +1892,6 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
                      "be respected";
     }
     return status;
-}
-
-/**
- * @brief Enables or disables the first-frame drop behavior.
- *
- * Controls whether requestFrame() drops the first sensor frame to allow the
- * imager to stabilize. Useful for mitigating sensor startup transients.
- *
- * @param[in] dropFrame True to drop first frame; false to use all frames.
- *
- * @note This function asserts that the camera is not in offline mode.
- */
-void CameraItof::dropFirstFrame(bool dropFrame) {
-    assert(!m_isOffline);
-    m_config->setDropFirstFrame(dropFrame);
 }
 
 /**
