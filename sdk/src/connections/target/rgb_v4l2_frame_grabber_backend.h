@@ -17,6 +17,7 @@
 #include <vector>
 
 struct v4l2_buffer;
+struct v4l2_query_ext_ctrl;
 
 namespace aditof {
 
@@ -25,17 +26,20 @@ namespace aditof {
  * @brief RGB camera backend that reads the raw Bayer stream straight from V4L2
  *
  * The sensor (BA10, 10-bit GRBG in 16-bit words) is read with mmap buffers and
- * converted to BGR here: bilinear demosaic, gray-world white balance measured
- * on the first frame of each start, and a gamma of 2.2. No Argus, no GStreamer.
+ * converted to BGR here: bilinear demosaic, gray-world white balance and a
+ * gamma of 2.2. Without the Argus ISP there is no auto exposure, so start()
+ * searches for one exposure before the depth stream runs, and white balance
+ * and the frame-to-frame level (light flicker) are tracked from the Bayer data.
+ * The sensor is never written to while the depth stream runs: a control write
+ * makes it emit extra frames that would break the pairing.
  *
  * initialize() opens the device and sets controls and format, so it belongs in
  * setMode(); start() and stop() only stream, and the device stays open until
  * the backend is destroyed or initialized again.
  *
- * The sensor is triggered by the depth stream. start() returns only after the
- * sensor has delivered its first frame, i.e. when it is waiting for triggers,
- * so the depth stream can be started right after it. That first frame (seq 0)
- * has no depth partner; the consumer is expected to drop it.
+ * The sensor is triggered by the depth stream. start() returns once the sensor
+ * is armed and has been read empty, so the depth stream can be started right
+ * after it and every frame that follows has a depth partner.
  */
 class RGBV4L2FrameGrabberBackend : public RGBBackend_Internal {
   public:
@@ -59,11 +63,24 @@ class RGBV4L2FrameGrabberBackend : public RGBBackend_Internal {
         size_t length = 0;
     };
 
+    /// Sums over the sampled Bayer cells that are not clipped.
+    struct SceneStats {
+        double r = 0, g = 0, b = 0;
+        size_t cells = 0;
+        double clippedFraction = 0;
+    };
+
+    bool findControl(const char *name, v4l2_query_ext_ctrl &found);
     bool setControlByName(const char *name, int32_t value);
+    bool getControlByName(const char *name, int64_t &value);
+    void settleExposure();
+    bool measureLastFrame(SceneStats &stats, uint32_t firstWaitMs);
+    SceneStats measureScene(const uint16_t *raw) const;
+    void rebuildColorTables();
+    void trackColor(const uint16_t *raw);
     bool dequeueBuffer(v4l2_buffer &buf, uint32_t timeoutMs);
     bool acceptBuffer(const v4l2_buffer &buf);
     bool requeueBuffer(v4l2_buffer &buf);
-    void buildColorTables(const uint16_t *raw);
     void demosaicRows(const uint16_t *raw, uint8_t *bgr, uint32_t firstRow,
                       uint32_t endRow) const;
     void convertToBgr(const uint16_t *raw, RGBFrame &frame);
@@ -87,6 +104,10 @@ class RGBV4L2FrameGrabberBackend : public RGBBackend_Internal {
     /// 10-bit sample to 8-bit output, per channel (B, G, R), with gain and gamma.
     std::array<std::array<uint8_t, 1024>, 3> m_lut;
     bool m_lutReady = false;
+    double m_gainR = 1.0; ///< white balance gains, tracked while streaming
+    double m_gainB = 1.0;
+    double m_flickerGain = 1.0; ///< per-frame level correction
+    double m_levelAvg = 0;      ///< running average of the green level
 };
 
 } // namespace aditof
