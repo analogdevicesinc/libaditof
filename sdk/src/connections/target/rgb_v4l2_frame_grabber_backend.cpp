@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <fcntl.h>
@@ -36,6 +37,24 @@ constexpr uint32_t kBufferCount = 4;
 constexpr int kArmTimeoutMs = 2000;
 constexpr double kGamma = 2.2;
 constexpr unsigned kMaxConvertThreads = 3;
+
+// White balance is tracked every few frames and smoothed.
+constexpr uint64_t kAutoInterval = 4;
+constexpr uint16_t kClipRaw = 1000u << 6; // counted as clipped
+constexpr double kMinFlickerGain = 0.7;
+constexpr double kMaxFlickerGain = 1.4;
+constexpr double kLevelAverageAlpha = 0.05;
+
+// Exposure is searched once per start, before the depth stream runs.
+constexpr double kTargetLevel = 0.18;  // linear mid-gray
+constexpr double kFullScale = 65472.0; // 10-bit sample in the upper bits
+constexpr double kMaxClippedFraction = 0.03;
+constexpr int32_t kStartExposureUs = 3000;
+constexpr int32_t kMinExposureUs = 100;
+constexpr int32_t kMaxExposureUs = 16667; // limit of the sensor control
+constexpr int kExposureSteps = 6;
+constexpr uint32_t kBurstWaitMs = 1000; // for the first frame after a write
+constexpr uint32_t kQuietMs = 300;      // gap that ends a burst of frames
 
 int xioctl(int fd, unsigned long request, void *arg) {
     int ret;
@@ -72,22 +91,64 @@ RGBV4L2FrameGrabberBackend::~RGBV4L2FrameGrabberBackend() {
     closeDevice();
 }
 
-bool RGBV4L2FrameGrabberBackend::setControlByName(const char *name,
-                                                  int32_t value) {
-    v4l2_queryctrl query;
-    std::memset(&query, 0, sizeof(query));
-    query.id = V4L2_CTRL_FLAG_NEXT_CTRL;
-    while (xioctl(m_fd, VIDIOC_QUERYCTRL, &query) == 0) {
-        if (!(query.flags & V4L2_CTRL_FLAG_DISABLED) &&
-            controlVarName(query.name) == name) {
-            v4l2_control control;
-            control.id = query.id;
-            control.value = value;
-            return xioctl(m_fd, VIDIOC_S_CTRL, &control) == 0;
+bool RGBV4L2FrameGrabberBackend::findControl(const char *name,
+                                             v4l2_query_ext_ctrl &found) {
+    std::memset(&found, 0, sizeof(found));
+    found.id = V4L2_CTRL_FLAG_NEXT_CTRL;
+    while (xioctl(m_fd, VIDIOC_QUERY_EXT_CTRL, &found) == 0) {
+        if (!(found.flags & V4L2_CTRL_FLAG_DISABLED) &&
+            controlVarName(
+                reinterpret_cast<const unsigned char *>(found.name)) == name) {
+            return true;
         }
-        query.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
+        found.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
     }
     return false;
+}
+
+// Exposure is a 64-bit control, which VIDIOC_S_CTRL and VIDIOC_G_CTRL reject.
+bool RGBV4L2FrameGrabberBackend::setControlByName(const char *name,
+                                                  int32_t value) {
+    v4l2_query_ext_ctrl query;
+    if (!findControl(name, query)) {
+        return false;
+    }
+    v4l2_ext_control control;
+    std::memset(&control, 0, sizeof(control));
+    control.id = query.id;
+    if (query.type == V4L2_CTRL_TYPE_INTEGER64) {
+        control.value64 = value;
+    } else {
+        control.value = value;
+    }
+    v4l2_ext_controls controls;
+    std::memset(&controls, 0, sizeof(controls));
+    controls.ctrl_class = V4L2_CTRL_ID2CLASS(query.id);
+    controls.count = 1;
+    controls.controls = &control;
+    return xioctl(m_fd, VIDIOC_S_EXT_CTRLS, &controls) == 0;
+}
+
+bool RGBV4L2FrameGrabberBackend::getControlByName(const char *name,
+                                                  int64_t &value) {
+    v4l2_query_ext_ctrl query;
+    if (!findControl(name, query)) {
+        return false;
+    }
+    v4l2_ext_control control;
+    std::memset(&control, 0, sizeof(control));
+    control.id = query.id;
+    v4l2_ext_controls controls;
+    std::memset(&controls, 0, sizeof(controls));
+    controls.ctrl_class = V4L2_CTRL_ID2CLASS(query.id);
+    controls.count = 1;
+    controls.controls = &control;
+    if (xioctl(m_fd, VIDIOC_G_EXT_CTRLS, &controls) != 0) {
+        return false;
+    }
+    value = query.type == V4L2_CTRL_TYPE_INTEGER64 ? control.value64
+                                                   : control.value;
+    return true;
 }
 
 bool RGBV4L2FrameGrabberBackend::initialize(const RGBSensorConfig &config) {
@@ -209,12 +270,16 @@ bool RGBV4L2FrameGrabberBackend::start() {
     }
 
     m_lutReady = false;
+    m_gainR = 1.0;
+    m_gainB = 1.0;
+    m_flickerGain = 1.0;
+    m_levelAvg = 0;
     m_haveSequence = false;
     m_frameCount = 0;
     m_missedFrames = 0;
 
-    // The frame is left in the queue for getFrame(); here it only tells that the
-    // sensor is armed and waits for the trigger of the depth stream.
+    // Only tells that the sensor is armed; settleExposure() then reads every
+    // frame that came before the depth trigger.
     pollfd pfd;
     pfd.fd = m_fd;
     pfd.events = POLLIN;
@@ -227,6 +292,7 @@ bool RGBV4L2FrameGrabberBackend::start() {
     }
 
     m_isRunning = true;
+    settleExposure();
     LOG(INFO) << "V4L2 RGB: streaming, sensor armed";
     return true;
 }
@@ -352,29 +418,145 @@ bool RGBV4L2FrameGrabberBackend::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
     return true;
 }
 
-void RGBV4L2FrameGrabberBackend::buildColorTables(const uint16_t *raw) {
-    // Gray-world white balance on a sparse sample of the Bayer cells.
-    double sumR = 0, sumG = 0, sumB = 0;
-    size_t cells = 0;
+RGBV4L2FrameGrabberBackend::SceneStats
+RGBV4L2FrameGrabberBackend::measureScene(const uint16_t *raw) const {
+    // Sparse sample of the Bayer cells; clipped cells would skew the white
+    // balance and the level, so they are only counted.
+    SceneStats stats;
+    size_t total = 0;
+    size_t clipped = 0;
     for (uint32_t y = 0; y + 1 < static_cast<uint32_t>(m_config.height);
          y += 8) {
         const uint16_t *row0 = raw + static_cast<size_t>(y) * m_stridePx;
         const uint16_t *row1 = row0 + m_stridePx;
         for (uint32_t x = 0; x + 1 < static_cast<uint32_t>(m_config.width);
              x += 8) {
-            sumG += (row0[x] + row1[x + 1]) * 0.5;
-            sumR += row0[x + 1];
-            sumB += row1[x];
-            ++cells;
+            const uint16_t g0 = row0[x], g1 = row1[x + 1];
+            const uint16_t r = row0[x + 1], b = row1[x];
+            ++total;
+            if (std::max(std::max(g0, g1), std::max(r, b)) >= kClipRaw) {
+                ++clipped;
+                continue;
+            }
+            stats.g += (g0 + g1) * 0.5;
+            stats.r += r;
+            stats.b += b;
+            ++stats.cells;
         }
     }
-    double gainR = 1.0, gainB = 1.0;
-    if (cells && sumR > 0 && sumB > 0) {
-        gainR = sumG / sumR;
-        gainB = sumG / sumB;
+    stats.clippedFraction =
+        total ? static_cast<double>(clipped) / static_cast<double>(total) : 0.0;
+    return stats;
+}
+
+bool RGBV4L2FrameGrabberBackend::measureLastFrame(SceneStats &stats,
+                                                  uint32_t firstWaitMs) {
+    // Reads every queued frame and the burst that follows, and measures the
+    // last one. The queue is empty afterwards.
+    bool measured = false;
+    uint32_t waitMs = firstWaitMs;
+    v4l2_buffer buf;
+    while (dequeueBuffer(buf, waitMs)) {
+        waitMs = kQuietMs;
+        if (acceptBuffer(buf)) {
+            m_rawCopy.resize(static_cast<size_t>(m_stridePx) * m_config.height);
+            std::memcpy(m_rawCopy.data(), m_buffers[buf.index].start,
+                        m_minFrameBytes);
+            measured = true;
+        }
+        requeueBuffer(buf);
+    }
+    if (measured) {
+        stats = measureScene(m_rawCopy.data());
+    }
+    return measured;
+}
+
+void RGBV4L2FrameGrabberBackend::settleExposure() {
+    // Nothing triggers the sensor yet, so every frame read here has no depth
+    // partner and is thrown away. Writing exposure makes the module send a
+    // burst of frames, which is why it is done only now and never while the
+    // depth stream runs: the extra frames would break the pairing.
+    const auto begin = std::chrono::steady_clock::now();
+    int32_t exposure = kStartExposureUs;
+    int64_t current = 0;
+    if (getControlByName("exposure", current) && current == exposure) {
+        ++exposure; // an unchanged value never reaches the module
     }
 
-    const double gains[3] = {gainB, 1.0, gainR}; // B, G, R
+    bool drained = false;
+    int32_t previousExposure = 0;
+    double previousLevel = 0;
+    for (int step = 0; step < kExposureSteps; ++step) {
+        drained = false;
+        SceneStats stats;
+        if (!setControlByName("exposure", exposure)) {
+            LOG(WARNING) << "V4L2 RGB: could not set exposure";
+            break;
+        }
+        // Only the first write after STREAMON sends a burst of frames; later
+        // ones are applied silently, so they cannot be measured.
+        const bool measured =
+            measureLastFrame(stats, step == 0 ? kBurstWaitMs : kQuietMs);
+        drained = true;
+        if (!measured) {
+            if (step == 0) {
+                LOG(WARNING) << "V4L2 RGB: no frame after the exposure write";
+            }
+            break;
+        }
+
+        const double level =
+            stats.cells
+                ? stats.g / static_cast<double>(stats.cells) / kFullScale
+                : 1.0;
+        LOG(INFO) << "V4L2 RGB: exposure " << exposure << " us gives level "
+                  << level << ", " << stats.clippedFraction * 100
+                  << "% clipped";
+        if (previousExposure > 0 && stats.clippedFraction < 0.5 &&
+            std::fabs(static_cast<double>(exposure) / previousExposure - 1) >
+                0.5 &&
+            std::fabs(level / std::max(previousLevel, 1e-4) - 1) < 0.1) {
+            LOG(WARNING) << "V4L2 RGB: the exposure control has no effect";
+            break;
+        }
+        previousExposure = exposure;
+        previousLevel = level;
+
+        double ratio = kTargetLevel / std::max(level, 1e-4);
+        if (stats.clippedFraction > kMaxClippedFraction) {
+            ratio = std::min(ratio, 0.6);
+        }
+        if (std::fabs(ratio - 1.0) < 0.15) {
+            break;
+        }
+        const int32_t next = std::max(
+            kMinExposureUs,
+            std::min(kMaxExposureUs,
+                     static_cast<int32_t>(std::lround(
+                         exposure * std::max(0.25, std::min(4.0, ratio))))));
+        if (next == exposure) {
+            break;
+        }
+        exposure = next;
+    }
+
+    if (!drained) {
+        v4l2_buffer buf;
+        while (dequeueBuffer(buf, kQuietMs)) {
+            requeueBuffer(buf);
+        }
+    }
+    LOG(INFO) << "V4L2 RGB: exposure settled at " << exposure << " us in "
+              << std::chrono::duration<double, std::milli>(
+                     std::chrono::steady_clock::now() - begin)
+                     .count()
+              << " ms, frame queue empty";
+}
+
+void RGBV4L2FrameGrabberBackend::rebuildColorTables() {
+    const double gains[3] = {m_gainB * m_flickerGain, m_flickerGain,
+                             m_gainR * m_flickerGain}; // B, G, R
     for (int c = 0; c < 3; ++c) {
         for (int i = 0; i < 1024; ++i) {
             const double linear = std::min(1.0, i / 1023.0 * gains[c]);
@@ -383,7 +565,34 @@ void RGBV4L2FrameGrabberBackend::buildColorTables(const uint16_t *raw) {
         }
     }
     m_lutReady = true;
-    LOG(INFO) << "V4L2 RGB: white balance gains R " << gainR << " B " << gainB;
+}
+
+void RGBV4L2FrameGrabberBackend::trackColor(const uint16_t *raw) {
+    const SceneStats stats = measureScene(raw);
+    const bool tuneFrame = !m_lutReady || m_frameCount % kAutoInterval == 0;
+
+    // Mains light flickers at 100/120 Hz and the frame rate aliases that into a
+    // frame-to-frame change of the whole (global shutter) image. Scale each
+    // frame to the running average level; scene changes are slower than that.
+    double flicker = 1.0;
+    if (stats.cells > 0 && stats.g > 0) {
+        const double level = stats.g / static_cast<double>(stats.cells);
+        if (m_levelAvg <= 0) {
+            m_levelAvg = level;
+        }
+        flicker = std::max(kMinFlickerGain,
+                           std::min(kMaxFlickerGain, m_levelAvg / level));
+        m_levelAvg += kLevelAverageAlpha * (level - m_levelAvg);
+    }
+    m_flickerGain = flicker;
+
+    // Gray-world white balance, smoothed so it never steps visibly.
+    if (tuneFrame && stats.cells > 0 && stats.r > 0 && stats.b > 0) {
+        const double alpha = m_lutReady ? 0.25 : 1.0;
+        m_gainR += alpha * (stats.g / stats.r - m_gainR);
+        m_gainB += alpha * (stats.g / stats.b - m_gainB);
+    }
+    rebuildColorTables();
 }
 
 // Bilinear demosaic of the GRBG pattern (G R / B G); neighbours that fall
@@ -438,9 +647,7 @@ void RGBV4L2FrameGrabberBackend::demosaicRows(const uint16_t *raw, uint8_t *bgr,
 
 void RGBV4L2FrameGrabberBackend::convertToBgr(const uint16_t *raw,
                                               RGBFrame &frame) {
-    if (!m_lutReady) {
-        buildColorTables(raw);
-    }
+    trackColor(raw);
 
     const uint32_t w = static_cast<uint32_t>(m_config.width);
     const uint32_t h = static_cast<uint32_t>(m_config.height);

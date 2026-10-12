@@ -360,12 +360,11 @@ aditof::Status CameraItof::start() {
                     adsd3500Sensor->getBufferProcessor());
             }
             if (rgbBufProc) {
-                // RGB seq 0 comes before depth starts; RGB seq k+1 pairs
-                // with depth seq k.
+                // The backend returns with its frame queue empty, so every RGB
+                // frame from here on is triggered by the depth stream.
                 rgbBufProc->setRGBSensor(m_rgbSensor.get());
-                rgbBufProc->enableRGBCapture(true);
-                LOG(INFO) << "RGB sensor started before depth, dropping "
-                             "its first frame";
+                rgbBufProc->enableRGBCapture(true, 0);
+                LOG(INFO) << "RGB sensor started before depth";
             }
         }
     }
