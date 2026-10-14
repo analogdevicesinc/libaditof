@@ -46,7 +46,7 @@ constexpr double kMaxFlickerGain = 1.4;
 constexpr double kLevelAverageAlpha = 0.05;
 
 // Exposure is searched once per start, before the depth stream runs.
-constexpr double kTargetLevel = 0.18;  // linear mid-gray
+constexpr double kTargetLevel = 0.25;  // linear mid-gray
 constexpr double kFullScale = 65472.0; // 10-bit sample in the upper bits
 constexpr double kMaxClippedFraction = 0.03;
 constexpr int32_t kStartExposureUs = 3000;
