@@ -1613,6 +1613,23 @@ aditof::Status CameraItof::readSerialNumber(std::string &serialNumber,
     return status;
 }
 
+// Chip ToF intrinsics (floats 0-13: fx,fy,cx,cy,codx,cody,k1-k6,p2,p1) are in
+// the sensor's native frame; express them in the 90° CW rotated frame.
+static void rotateChipToFIntrinsicsCW(float f[14], uint32_t nativeHeight) {
+    const float fx = f[0], fy = f[1], cx = f[2], cy = f[3];
+    const float codx = f[4], cody = f[5], p2 = f[12], p1 = f[13];
+
+    f[0] = fy;
+    f[1] = fx;
+    f[2] = static_cast<float>(nativeHeight) - 1.0f - cy;
+    f[3] = cx;
+    f[4] = -cody;
+    f[5] = codx;
+    // (x,y) -> (-y,x) maps tangential terms p1' = p2, p2' = -p1
+    f[13] = p2;
+    f[12] = -p1;
+}
+
 aditof::Status CameraItof::readRGBDCalibrationFromChip(uint8_t data[160]) {
     using namespace aditof;
 
@@ -1641,6 +1658,13 @@ aditof::Status CameraItof::readRGBDCalibrationFromChip(uint8_t data[160]) {
         LOG(INFO) << "readRGBDCalibrationFromChip: chip not provisioned "
                      "(use loadCalibrationFromJson/Bin instead)";
         return Status::UNAVAILABLE;
+    }
+
+    if (m_rotationEnabled && m_modeDetailsCache.baseResolutionHeight > 0) {
+        float tof[14];
+        std::memcpy(tof, data, sizeof(tof));
+        rotateChipToFIntrinsicsCW(tof, m_modeDetailsCache.baseResolutionHeight);
+        std::memcpy(data, tof, sizeof(tof));
     }
 
     m_rgbdCalibBuf.assign(data, data + 160);
