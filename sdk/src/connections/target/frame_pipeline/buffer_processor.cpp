@@ -597,6 +597,19 @@ aditof::Status BufferProcessor::createModeTofiContext(
                            << mode;
                 return aditof::Status::GENERIC_ERROR;
             }
+            // Diagnostic: dump the exact ini bytes handed to the library for
+            // this mode's context, so two runs (e.g. different DMS orders)
+            // can be byte-diffed to confirm the library truly receives
+            // identical input regardless of which mode was primary/alternate.
+            if (std::getenv("DMS_INI_DUMP")) {
+                std::string path = "/tmp/tofi_ini_mode" +
+                                   std::to_string(mode) + ".bin";
+                std::ofstream oi(path, std::ios::binary);
+                oi.write(reinterpret_cast<const char *>(iniFile),
+                        iniFileLength);
+                LOG(INFO) << "DMS-INI dumped " << iniFileLength
+                          << " bytes for mode " << mode << " to " << path;
+            }
             try {
                 outConfig = InitTofiConfig_isp(
                     &depth_ini, p0_mode, &status, localDealiasData);
@@ -1296,13 +1309,38 @@ void BufferProcessor::processThread() {
             }
 
             std::vector<uint8_t> fused(lrSize + srSize);
-            if (m_isSRFrameFirst) {
+            // Read IsSRFrameFirst from whichever context is actually SR, not
+            // from "whichever mode happens to be primary" (m_isSRFrameFirst
+            // alone): otherwise swapping which mode is primary/alternate in
+            // the DMS sequence (e.g. {0,7} vs {7,0}) could silently flip the
+            // concatenation order if the two modes' ini blobs ever disagree
+            // on this flag, breaking the mode-selection order invariance.
+            const bool srFrameFirst =
+                primaryIsLR ? m_altConfig.isSRFrameFirst : m_isSRFrameFirst;
+            if (srFrameFirst) {
                 memcpy(fused.data(), srRaw, srSize);
                 memcpy(fused.data() + srSize, lrRaw, lrSize);
             } else {
                 memcpy(fused.data(), lrRaw, lrSize);
                 memcpy(fused.data() + lrSize, srRaw, srSize);
             }
+
+            // Diagnostic: dump the actual concatenated buffer so the
+            // LR-first/SR-first byte order can be verified directly, not
+            // just inferred from the separate pre-fusion halves above.
+            if (std::getenv("DMS_FUSE_DUMP")) {
+                static bool dumpedFused = false;
+                if (!dumpedFused) {
+                    std::ofstream of("/tmp/fuse_concatenated.bin",
+                                     std::ios::binary);
+                    of.write((const char *)fused.data(), fused.size());
+                    dumpedFused = true;
+                    LOG(INFO) << "DMS-FUSE dumped concatenated buffer ("
+                              << fused.size() << " bytes, srFrameFirst="
+                              << srFrameFirst << ") to /tmp";
+                }
+            }
+
 
             m_v4l2_input_buffer_Q.push(m_pendingPrimaryRaw);
             m_v4l2_input_buffer_Q.push(m_pendingAltRaw);

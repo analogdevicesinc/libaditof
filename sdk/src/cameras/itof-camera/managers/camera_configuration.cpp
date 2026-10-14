@@ -95,7 +95,18 @@ CameraConfiguration::loadDepthParamsFromJsonFile(const std::string &pathFile,
 
     Status status = Status::OK;
 
-    m_depth_params_map.clear();
+    // A full reload (mode_in_use < 0, i.e. "load every mode in this file")
+    // replaces the whole map. A single-mode load must only refresh that one
+    // mode's entry; clearing the whole map here would silently drop every
+    // other mode already loaded (e.g. a DMS alternate mode loaded in a
+    // separate call, or CCB-sourced defaults from initialize()), leaving
+    // that mode permanently unconfigurable from JSON for the rest of the
+    // session.
+    if (mode_in_use < 0) {
+        m_depth_params_map.clear();
+    } else {
+        m_depth_params_map.erase(mode_in_use);
+    }
 
     // Parse json
     std::ifstream ifs(pathFile.c_str());

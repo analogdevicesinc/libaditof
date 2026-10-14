@@ -565,7 +565,12 @@ class SDK_API Camera {
      * @brief Load adsd parameters from json file.
      * Need setMode to apply
      * @param pathFileloadDepthParamsFromJsonFile - Path to load from json file
-     * @param mode_in_use - Specify to read details for a specifc mode
+     * @param mode_in_use - If >= 0, only this mode's entry is (re)loaded and
+     *        every other already-loaded mode is left untouched, so calling
+     *        this once per mode (e.g. once for each side of a Dynamic Mode
+     *        Switching pair) tunes both from the same or different JSON
+     *        files. If < 0 (default), every mode found in the file replaces
+     *        the whole map.
      * @return Status
      */
     virtual aditof::Status loadDepthParamsFromJsonFile(

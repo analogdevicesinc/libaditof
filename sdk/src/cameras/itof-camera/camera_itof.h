@@ -275,6 +275,8 @@ class CameraItof : public aditof::Camera {
         false; // True if XYZ tables and frames are rotated 90° CW
     bool m_modeFusionRequested =
         false; // App opted into SR/LR fusion for the DMS sequence
+    uint8_t m_dmsAlternateMode =
+        0xFF; // Second mode of the active DMS pair, 0xFF = none configured
 };
 
 #endif // CAMERA_ITOF_H
