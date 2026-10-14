@@ -69,7 +69,10 @@ class CameraConfiguration {
      * dynamic mode switching sequences, etc.).
      *
      * @param[in] pathFile Path to the JSON configuration file
-     * @param[in] mode_in_use If >= 0, load only this mode; if < 0, load all modes
+     * @param[in] mode_in_use If >= 0, load/refresh only this mode's entry
+     *                         (other already-loaded modes are preserved); if
+     *                         < 0, replace the whole map with every mode
+     *                         found in the file.
      * @return Status::OK on success, error codes on failure
      */
     Status loadDepthParamsFromJsonFile(const std::string &pathFile,
