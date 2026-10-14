@@ -37,7 +37,7 @@
  * ==================
  * For each valid ToF pixel (u, v) with depth d (mm):
  *  1. Normalize:  x = (u - cx_tof) / fx_tof,  y = (v - cy_tof) / fy_tof
- *  2. Undistort using the Brown-Conrady model (k1–k6, p1, p2, codx, cody)
+ *  2. Undistort by inverting the Brown-Conrady model (k1–k6, p1, p2, codx, cody)
  *  3. Back-project to 3-D:  P_tof = [x_u * d,  y_u * d,  d]
  *  4. Transform:  P_rgb = R * P_tof + t   (tof2rgb extrinsics, t in mm)
  *  5. Project onto RGB image with optional RGB lens distortion
@@ -299,8 +299,8 @@ class SDK_API RGBDCoregistration {
     /**
      * @brief Undistort a normalised ToF image point in-place.
      *
-     * Applies the rational Brown-Conrady undistortion model using the ToF
-     * intrinsics stored in m_calib.tof.
+     * Inverts the rational Brown-Conrady distortion model (iteratively, like
+     * cv::undistortPoints) using the ToF intrinsics stored in m_calib.tof.
      *
      * @param[in]  x_norm   Normalized x coordinate: (u - cx) / fx
      * @param[in]  y_norm   Normalized y coordinate: (v - cy) / fy
