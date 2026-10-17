@@ -1658,7 +1658,7 @@ aditof::Status CameraItof::readRGBDCalibrationFromChip(uint8_t data[160]) {
         m_adsd3500Hardware->adsd3500_read_payload_cmd(0x30, data, 160);
     if (status != Status::OK) {
         LOG(INFO) << "readRGBDCalibrationFromChip: chip not provisioned "
-                     "(use loadCalibrationFromJson/Bin instead)";
+                     "with an RGBD calibration";
         return Status::UNAVAILABLE;
     }
 
