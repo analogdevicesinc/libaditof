@@ -206,8 +206,6 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     size_t flushReadyDepthFrames();
 #endif
 
-    // Legacy method (keeping for backward compatibility)
-    TofiConfig *getTofiCongfig() const { return getTofiConfig(); }
     static int getTimeoutDelay() { return TIME_OUT_DELAY; }
 
   public:

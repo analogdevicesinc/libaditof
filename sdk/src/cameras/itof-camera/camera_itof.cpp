@@ -1857,20 +1857,6 @@ aditof::Status CameraItof::setRotationEnabled(bool enable) {
 }
 
 /**
- * @brief Auto-discovers JSON configuration file from binary path or environment variable.
- *
- * Searches for a configuration file in the following order:
- * 1. Binary directory (where the executable is located): adcam_config.json
- * 2. Environment variable: ADCAM_CONFIG_PATH
- * 3. Returns empty string if not found (proceed with factory defaults)
- *
- * @return Path to discovered JSON file, or empty string if not found.
- */
-std::string CameraItof::autoDiscoverConfigFile() {
-    return m_config->autoDiscoverConfigFile();
-}
-
-/**
  * @brief Saves current depth parameters to a JSON configuration file.
  *
  * Delegates to CameraConfiguration for JSON serialization.
