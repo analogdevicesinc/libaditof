@@ -21,7 +21,7 @@ which will generate all the necessary recipes for building and installing. Usefu
 | WITH_DOC | on/off | off | Build the doxygen documentation. |
 | WITH_PYTHON | on/off | off | Build the python bindings. |
 | WITH_NETWORK | on/off | off | Build the network interface for a Linux or Windows host build; use **off** for building on the target. |
-| WITH_OFFLINE | on/off | off | Build the offline mode. No hardware is required. |
+| WITH_OFFLINE | on/off | on | Build the offline mode. No hardware is required. |
 | WITH_COMMAND_LINE_TOOLS | on/off | on | Build the command line tools. |
 | CI_BUILD | on/off | off | Only used for continuous integrations builds. Can overwrite other cmake options. |
 
