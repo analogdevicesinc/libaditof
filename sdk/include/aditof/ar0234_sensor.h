@@ -5,7 +5,7 @@
  * This file contains everything needed for AR0234 camera:
  * - Sensor configuration and frame structures
  * - Internal backend interface (for GStreamer/V4L2/nvargus)
- * - Main AR0234Sensor class for applications
+ * - Main RGBSensor class for applications
  * 
  * Copyright (c) 2025 Analog Devices, Inc.
  */
