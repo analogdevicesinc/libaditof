@@ -43,7 +43,6 @@ struct DepthSensorModeDetails;
  *
  * Handles the complete frame request workflow:
  * - Frame buffer validation and allocation
- * - First frame dropping logic (optional)
  * - Raw frame acquisition from depth sensor
  * - Raw bypass mode handling (Bayer data passthrough)
  * - XYZ point cloud computation from depth

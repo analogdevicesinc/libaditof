@@ -878,7 +878,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             } else if (item == "conf") {
                 fDataDetails.subelementSize = sizeof(float);
             } else if (item == "rgb") {
-                // AR0234: 1920x1200, BGR = 3 bytes per pixel (NV12 converted)
+                // AR0234 1920x1200, BGR, 3 bytes per pixel (GStreamer NV12 is converted to BGR)
                 fDataDetails.width = 1920;
                 fDataDetails.height = 1200;
                 fDataDetails.subelementSize = sizeof(uint8_t);
@@ -1222,7 +1222,7 @@ void CameraItof::setRGBSensorInfo(const std::string &devicePath,
     m_rgbEnabled = true;
     LOG(INFO) << "RGB sensor opened successfully at " << devicePath;
     // BufferProcessor wiring (setRGBSensor + enableRGBCapture) is deferred
-    // to start() so it happens only after Argus is fully PLAYING.
+    // to start(), which orders the RGB and depth start for the active backend.
 #else
     (void)devicePath;
     (void)isDetected;
@@ -1286,7 +1286,7 @@ CameraItof::getAvailableModes(std::vector<uint8_t> &availableModes) const {
  * @brief Retrieves and processes a depth frame from the sensor.
  *
  * Acquires a frame from the underlying depth sensor and populates the provided
- * Frame object with depth, AB, XYZ, and metadata components based on current
+ * Frame object with depth, AB, XYZ, RGB (when enabled), and metadata components based on current
  * mode settings and enabled features.
  *
  * @details
