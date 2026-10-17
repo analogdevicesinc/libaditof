@@ -42,7 +42,7 @@ struct RGBFrame {
     std::vector<uint8_t> data; ///< Pixel data, laid out as described by format
     uint32_t width;            ///< Frame width in pixels
     uint32_t height;           ///< Frame height in pixels
-    uint64_t timestamp;        ///< Frame timestamp in microseconds
+    uint64_t timestamp;        ///< Microseconds (V4L2 backend); GStreamer backend reports nanoseconds of pipeline time
     RGBPixelFormat format;     ///< Pixel layout of data
 
     RGBFrame()
