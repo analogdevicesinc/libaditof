@@ -44,38 +44,13 @@
  *  6. Write d (mm) into registered_depth at the projected RGB pixel; nearest
  *     depth wins when multiple ToF pixels map to the same RGB pixel.
  *
- * Calibration sources
- * ===================
- * - ToF intrinsics: read from ADSD3500 firmware via adsd3500_read_payload_cmd(0x01)
- *   and set via setToFIntrinsics().
- * - RGB intrinsics + extrinsics: stored in NVM as a 104-byte binary blob.
- *   Load via loadCalibrationFromBin() or loadCalibrationFromJson().
- *
- * Binary format (104 bytes = 26 × 4-byte IEEE 754 LE floats)
- * ===========================================================
- *   [0 –13]  RGB intrinsics: fx, fy, cx, cy, codx, cody, k1, k2, k3, k4, k5, k6, p2, p1
- *   [14–25]  Extrinsics (rgb2tof): r11, r12, r13, r21, r22, r23, r31, r32, r33, t1, t2, t3
- *            Translation in metres; internally converted to mm and inverted to tof2rgb.
- *
- * JSON format
- * ===========
- * {
- *   "rgbd_calibration": {
- *     "camera_intrinsics_rgb": {
- *       "fx": 1221.0, "fy": 1221.0, "cx": 960.0, "cy": 600.0,
- *       "codx": 0.0,  "cody": 0.0,
- *       "k1": 0.0, "k2": 0.0, "k3": 0.0, "k4": 0.0, "k5": 0.0, "k6": 0.0,
- *       "p2": 0.0, "p1": 0.0
- *     },
- *     "camera_extrinsics_rgb2tof": {
- *       "r11":1.0,"r12":0.0,"r13":0.0,
- *       "r21":0.0,"r22":1.0,"r23":0.0,
- *       "r31":0.0,"r32":0.0,"r33":1.0,
- *       "t1":0.0, "t2":0.0, "t3":0.0
- *     }
- *   }
- * }
- * Translation in metres; internally converted to mm and inverted to tof2rgb.
+ * Calibration source
+ * ==================
+ * Read the 160-byte GET_RGBD_CALIBRATION_DATA (command 0x30) response with
+ * Camera::readRGBDCalibrationFromChip() and pass it to
+ * loadCalibrationFrom160Bytes(). It holds the ToF intrinsics, the RGB
+ * intrinsics and the rgb2tof extrinsics (translation in metres; converted to
+ * mm and inverted to tof2rgb internally).
  */
 
 namespace aditof {
@@ -84,7 +59,7 @@ namespace aditof {
  * @brief Intrinsic parameters for one camera (ToF or RGB).
  *
  * Field order matches the ADSD3500 ISP payload (command 0x01) and the
- * 104-byte NVM binary blob produced by rgbd_json_to_bin.py:
+ * 160-byte 0x30 chip response:
  *   fx, fy, cx, cy, codx, cody, k1, k2, k3, k4, k5, k6, p2, p1
  *
  * Distortion follows the rational Brown-Conrady model:
@@ -114,7 +89,7 @@ struct CameraIntrinsicsCalib {
  *
  * P_rgb = R * P_tof + t  (t in mm).
  * R is stored row-major: {r11, r12, r13, r21, r22, r23, r31, r32, r33}.
- * When loaded from the binary/JSON (which stores rgb2tof), the inverse is
+ * When loaded from the chip (which stores rgb2tof), the inverse is
  * computed automatically so this struct always holds the tof2rgb direction.
  */
 struct StereoExtrinsics {
@@ -139,10 +114,9 @@ struct RGBDCalibration {
  * Usage:
  * @code
  *   aditof::RGBDCoregistration coreg;
- *   // RGB intrinsics + extrinsics from NVM binary:
- *   coreg.loadCalibrationFromBin("/path/to/rgbd_calibration.bin");
- *   // ToF intrinsics from ISP (CameraIntrinsics → CameraIntrinsicsCalib):
- *   coreg.setToFIntrinsics(tofCalib);
+ *   uint8_t calib[160];
+ *   camera->readRGBDCalibrationFromChip(calib);
+ *   coreg.loadCalibrationFrom160Bytes(calib, sizeof(calib));
  *
  *   std::vector<uint16_t> registered(rgbW * rgbH, 0);
  *   coreg.registerDepthToRGB(depth.data(), tofW, tofH,
@@ -162,20 +136,6 @@ class SDK_API RGBDCoregistration {
     RGBDCoregistration &operator=(const RGBDCoregistration &) = delete;
     RGBDCoregistration(RGBDCoregistration &&) = default;
     RGBDCoregistration &operator=(RGBDCoregistration &&) = default;
-
-    /**
-     * @brief Load RGB intrinsics + extrinsics from the 104-byte NVM binary.
-     *
-     * Binary layout (26 × 4-byte LE floats):
-     *   [0–13]  RGB intrinsics: fx,fy,cx,cy,codx,cody,k1–k6,p2,p1
-     *   [14–25] Extrinsics (rgb2tof): r11–r33, t1–t3 (translation in metres)
-     * Extrinsics are inverted to tof2rgb and translation converted to mm.
-     * ToF intrinsics must be set separately via setToFIntrinsics().
-     *
-     * @param binPath Path to the 104-byte binary calibration file.
-     * @return Status::OK on success.
-     */
-    Status loadCalibrationFromBin(const std::string &binPath);
 
     /**
      * @brief Load calibration from the 160-byte GET_RGBD_CALIBRATION_DATA
@@ -199,21 +159,10 @@ class SDK_API RGBDCoregistration {
     Status loadCalibrationFrom160Bytes(const uint8_t *data, std::size_t size);
 
     /**
-     * @brief Load RGB intrinsics + extrinsics from a JSON file on disk.
-     *
-     * Expected schema — see header comment for full structure.
-     * ToF intrinsics must be set separately via setToFIntrinsics().
-     *
-     * @param jsonPath Path to the calibration JSON file.
-     * @return Status::OK on success.
-     */
-    Status loadCalibrationFromJson(const std::string &jsonPath);
-
-    /**
      * @brief Set ToF camera intrinsics (obtained from ADSD3500 ISP).
      *
-     * Call this after loadCalibrationFromBin()/loadCalibrationFromJson() to
-     * supply the ToF intrinsics read via adsd3500_read_payload_cmd(0x01).
+     * Overrides the ToF intrinsics stored by loadCalibrationFrom160Bytes(),
+     * e.g. with the intrinsics reported by the camera details.
      * The CameraIntrinsicsCalib field order matches CameraIntrinsics from
      * tofi_camera_intrinsics.h exactly.
      *
@@ -279,21 +228,6 @@ class SDK_API RGBDCoregistration {
 
     /** @return Reference to the active calibration (valid after load). */
     const RGBDCalibration &getCalibration() const { return m_calib; }
-
-    /**
-     * @brief Save the loaded calibration to a JSON file.
-     *
-     * Writes the RGB intrinsics and extrinsics in the sample_calibration.json
-     * schema (camera_intrinsics_rgb + camera_extrinsics_rgb2tof, translation
-     * in metres).  The stored tof2rgb extrinsics are inverted back to rgb2tof
-     * before writing so the file is usable directly with RGBD_CALIB_UPDATE
-     * and the Python coregistration example.
-     *
-     * @param jsonPath Path to write (created or overwritten).
-     * @return Status::OK on success; Status::UNAVAILABLE if no calibration
-     *         is loaded; Status::GENERIC_ERROR if the file cannot be written.
-     */
-    Status saveCalibrationToJson(const std::string &jsonPath) const;
 
   private:
     /**

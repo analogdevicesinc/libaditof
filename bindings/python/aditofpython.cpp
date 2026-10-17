@@ -623,6 +623,18 @@ PYBIND11_MODULE(aditofpython, m) {
                 return std::make_tuple(status, chipStatus, imagerStatus);
             },
             py::arg("chipStatus"), py::arg("imagerStatus"))
+        .def(
+            "readRGBDCalibrationFromChip",
+            [](aditof::Camera &camera) {
+                uint8_t data[160] = {};
+                aditof::Status status =
+                    camera.readRGBDCalibrationFromChip(data);
+                return std::make_tuple(
+                    status, py::bytes(reinterpret_cast<const char *>(data),
+                                      sizeof(data)));
+            },
+            "Read the 160-byte RGBD calibration (command 0x30). Call after "
+            "setMode() and before start(). Returns (status, bytes).")
         .def("adsd3500setEnableDynamicModeSwitching",
              &aditof::Camera::adsd3500setEnableDynamicModeSwitching,
              py::arg("enable"))
@@ -1068,12 +1080,16 @@ PYBIND11_MODULE(aditofpython, m) {
     // RGBDCoregistration
     py::class_<aditof::RGBDCoregistration>(m, "RGBDCoregistration")
         .def(py::init<>())
-        .def("loadCalibrationFromJson",
-             &aditof::RGBDCoregistration::loadCalibrationFromJson,
-             py::arg("jsonPath"))
-        .def("loadCalibrationFromBin",
-             &aditof::RGBDCoregistration::loadCalibrationFromBin,
-             py::arg("binPath"))
+        .def(
+            "loadCalibrationFrom160Bytes",
+            [](aditof::RGBDCoregistration &coreg, py::bytes data) {
+                std::string buf = data;
+                return coreg.loadCalibrationFrom160Bytes(
+                    reinterpret_cast<const uint8_t *>(buf.data()), buf.size());
+            },
+            py::arg("data"),
+            "Load calibration from the 160-byte 0x30 chip response, e.g. from "
+            "Camera.readRGBDCalibrationFromChip().")
         .def(
             "setToFIntrinsics",
             [](aditof::RGBDCoregistration &coreg,
@@ -1127,9 +1143,8 @@ PYBIND11_MODULE(aditofpython, m) {
         .def(
             "registerDepthToRGB",
             [](aditof::RGBDCoregistration &coreg,
-               py::array_t<uint16_t> depth_in,
-               uint32_t tofWidth, uint32_t tofHeight, uint32_t rgbWidth,
-               uint32_t rgbHeight) {
+               py::array_t<uint16_t> depth_in, uint32_t tofWidth,
+               uint32_t tofHeight, uint32_t rgbWidth, uint32_t rgbHeight) {
                 py::buffer_info info = depth_in.request();
                 const uint16_t *depth_ptr =
                     static_cast<const uint16_t *>(info.ptr);
