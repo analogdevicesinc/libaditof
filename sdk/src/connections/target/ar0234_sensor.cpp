@@ -56,7 +56,7 @@ static std::unique_ptr<RGBBackend_Internal> createBackend() {
 }
 
 // ============================================================================
-// AR0234Sensor Implementation
+// RGBSensor Implementation
 // ============================================================================
 
 RGBSensor::RGBSensor()
@@ -74,7 +74,7 @@ RGBSensor::~RGBSensor() {
 
 Status RGBSensor::open(const RGBSensorConfig &config) {
     if (m_isOpen) {
-        LOG(WARNING) << "AR0234Sensor already open";
+        LOG(WARNING) << "RGBSensor already open";
         return Status::BUSY;
     }
 
@@ -101,7 +101,7 @@ Status RGBSensor::open(const RGBSensorConfig &config) {
     m_isOpen = true;
     m_frameCount = 0;
 
-    LOG(INFO) << "AR0234Sensor opened successfully: " << m_config.width << "x"
+    LOG(INFO) << "RGBSensor opened successfully: " << m_config.width << "x"
               << m_config.height << "@" << m_config.fps << "fps"
               << " (device: " << m_config.devicePath << ")";
 
@@ -123,7 +123,7 @@ Status RGBSensor::close() {
     m_backendInitialized = false;
     m_isOpen = false;
 
-    LOG(INFO) << "AR0234Sensor closed";
+    LOG(INFO) << "RGBSensor closed";
 
     return Status::OK;
 }
@@ -145,12 +145,12 @@ Status RGBSensor::initialize() {
 
 Status RGBSensor::start() {
     if (!m_isOpen) {
-        LOG(ERROR) << "AR0234Sensor not open";
+        LOG(ERROR) << "RGBSensor not open";
         return Status::UNAVAILABLE;
     }
 
     if (isCapturing()) {
-        LOG(WARNING) << "AR0234Sensor already capturing";
+        LOG(WARNING) << "RGBSensor already capturing";
         return Status::BUSY;
     }
 
@@ -169,7 +169,7 @@ Status RGBSensor::start() {
     // Argus is known healthy and the 3-second overhead is wasteful.
     const bool useArgus = m_backend->getBackendType() == RGBBackend::GSTREAMER;
     if (!useArgus && !m_backendInitialized) {
-        LOG(ERROR) << "AR0234Sensor backend not initialized, call "
+        LOG(ERROR) << "RGBSensor backend not initialized, call "
                       "initialize() before start()";
         return Status::UNAVAILABLE;
     }
@@ -245,7 +245,7 @@ Status RGBSensor::start() {
     // Running startPipeline() (NULL→PAUSED→PLAYING) on a fresh std::thread
     // avoids the EGL API binding conflict when the caller is the tof-viewer
     // main thread (eglBindAPI EGL_OPENGL_API vs nvarguscamerasrc's ES API).
-    LOG(INFO) << "AR0234Sensor using backend: " << m_backend->getBackendName();
+    LOG(INFO) << "RGBSensor using backend: " << m_backend->getBackendName();
     if (useArgus) {
         LOG(INFO) << "RGB timing: probe step finished " << elapsedMs(startBegin)
                   << " ms after start() began";
@@ -291,7 +291,7 @@ Status RGBSensor::start() {
                       << " took " << elapsedMs(pipelineBegin)
                       << " ms; total start() " << elapsedMs(startBegin)
                       << " ms";
-            LOG(INFO) << "AR0234Sensor started capturing with "
+            LOG(INFO) << "RGBSensor started capturing with "
                       << m_backend->getBackendName() << " backend"
                       << (attempt > 1 ? " (after retry)" : "");
             return Status::OK;
@@ -327,23 +327,23 @@ Status RGBSensor::stop() {
         return Status::GENERIC_ERROR;
     }
 
-    LOG(INFO) << "AR0234Sensor stopped capturing";
+    LOG(INFO) << "RGBSensor stopped capturing";
 
     return Status::OK;
 }
 
 Status RGBSensor::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
     if (!m_isOpen) {
-        LOG(ERROR) << "AR0234Sensor not open";
+        LOG(ERROR) << "RGBSensor not open";
         return Status::UNAVAILABLE;
     }
 
     if (!isCapturing()) {
-        LOG(ERROR) << "AR0234Sensor not capturing";
+        LOG(ERROR) << "RGBSensor not capturing";
         return Status::UNAVAILABLE;
     }
 
-    // Get frame directly from backend (already uses AR0234Frame)
+    // Get frame directly from backend (already uses RGBFrame)
     if (!m_backend->getFrame(frame, timeoutMs)) {
         return Status::GENERIC_ERROR;
     }

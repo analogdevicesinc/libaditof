@@ -330,10 +330,10 @@ Status GStreamerFrameGrabber::destroyPipeline() {
     return Status::OK;
 }
 
-// AR0234Backend_Internal interface implementation
+// RGBBackend_Internal interface implementation
 
 bool GStreamerFrameGrabber::initialize(const RGBSensorConfig &config) {
-    // Convert AR0234SensorConfig to GStreamerConfig
+    // Convert RGBSensorConfig to GStreamerConfig
     GStreamerConfig gstConfig;
     gstConfig.width = config.width;
     gstConfig.height = config.height;
@@ -418,7 +418,7 @@ bool GStreamerFrameGrabber::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
         return false;
     }
 
-    // Copy frame data to AR0234Frame
+    // Copy frame data to RGBFrame
     frame.data.assign(map.data, map.data + map.size);
     frame.width = m_config.width;
     frame.height = m_config.height;
