@@ -28,8 +28,10 @@
 #include "helpers/depth_parameter_mapper.h"
 #include "utils_ini.h"
 
-#ifdef HAS_RGB_CAMERA
+#ifdef ADITOF_ON_TARGET
 #include "connections/target/adsd3500/adsd3500_sensor.h" // For Adsd3500Sensor cast + BufferProcessor (transitively)
+#endif
+#ifdef HAS_RGB_CAMERA
 #include <aditof/ar0234_sensor.h> // For RGBSensor/RGBFrame
 #endif
 
@@ -453,7 +455,7 @@ aditof::Status CameraItof::stop() {
     // captureRGBFrameThread gates itself immediately if it is restarted by a
     // subsequent setMode() call before start() re-enables it.  Without this,
     // the thread restarts with m_rgbCaptureEnabled=true and calls getFrame()
-    // against an already-stopped GStreamer pipeline → "AR0234Sensor not
+    // against an already-stopped GStreamer pipeline → "RGBSensor not
     // capturing" error.
     {
         auto adsd3500Sensor =
@@ -1187,7 +1189,7 @@ aditof::Status CameraItof::stopRecording() {
 }
 
 uint32_t CameraItof::getRecordedFrameCount() const {
-#ifdef HAS_RGB_CAMERA
+#ifdef ADITOF_ON_TARGET
     auto adsd3500Sensor =
         std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
     if (adsd3500Sensor) {
