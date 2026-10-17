@@ -38,9 +38,9 @@ struct FrameImpl::ImplData {
     std::unordered_map<std::string, uint16_t *>
         m_dataLocations; /**< Map of frame data type names to pointers within m_allData buffer */
     std::shared_ptr<uint16_t[]>
-        m_allData; /**< Consolidated heap buffer containing depth, AB, and confidence data */
-    size_t
-        allDataNbBytes; /**< Total size in bytes of m_allData (W*H*8 for depth+AB+confidence) */
+        m_allData; /**< Consolidated heap buffer holding every data type listed in the frame details */
+    size_t allDataNbBytes =
+        0; /**< Total size in bytes of m_allData */
 };
 
 /**
@@ -73,7 +73,8 @@ FrameImpl::~FrameImpl() = default;
  *
  * @param op The FrameImpl object to copy from.
  */
-FrameImpl::FrameImpl(const FrameImpl &op) {
+FrameImpl::FrameImpl(const FrameImpl &op)
+    : m_implData(std::make_unique<FrameImpl::ImplData>()) {
     allocFrameData(op.m_details);
     memcpy(m_implData->m_allData.get(), op.m_implData->m_allData.get(),
            m_implData->allDataNbBytes);
@@ -110,15 +111,13 @@ FrameImpl &FrameImpl::operator=(const FrameImpl &op) {
  * Configures the frame with the specified FrameDetails, which defines the
  * data layout (depth, AB, confidence, metadata, etc.). Automatically allocates
  * the necessary memory to store the frame data based on the details specification.
- * Also stores bit depth information for confidence and AB channels for later
- * processing. Logs a warning if the Frame is being reused with different details
+ * Logs a warning if the Frame is being reused with different details
  * (e.g., during mode changes) and recommends creating a fresh Frame object.
  *
  * @param details The FrameDetails object containing frame configuration
  *                 (dimensions, data types, etc.).
- * @param m_bitsInConf The bit depth for confidence data (default 8 bits).
- * @param m_bitsInAB The bit depth for AB (amplitude/brightness) data
- *                   (default 8 bits).
+ * @param m_bitsInConf Currently unused.
+ * @param m_bitsInAB Currently unused.
  * @return Status::OK on success, or an error status if configuration fails.
  *
  * @note Calling this multiple times with different dimensions will log a warning
@@ -271,6 +270,7 @@ FrameImpl::getFrameDetailByName(const aditof::FrameDetails &details,
 
     if (frame_detail == details.dataDetails.end()) {
         LOG(WARNING) << "Could not find any attribute with name: " << name;
+        return aditof::FrameDataDetails();
     }
 
     return *frame_detail;
@@ -289,7 +289,8 @@ FrameImpl::getFrameDetailByName(const aditof::FrameDetails &details,
  *
  * @note The allocation uses a shared_ptr with a custom deleter for safe
  *       memory management. Supports data types: "metadata", "xyz", "conf",
- *       "ab", "depth", and "frameData" (full buffer).
+ *       "ab", "rgb", "depth", and "frameData" (full buffer). Sizes are
+ *       counted in uint16_t elements.
  */
 void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
     using namespace aditof;
@@ -311,9 +312,11 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
         } else if (frameDetail.type == "ab") {
             sz = (unsigned long int)(frameDetail.height * frameDetail.width);
         } else if (frameDetail.type == "rgb") {
-            // NV12 format: Y plane (width*height) + UV plane (width*height/2)
-            sz = (unsigned long int)(frameDetail.height * frameDetail.width *
-                                     1.5);
+            // BGR, 3 bytes per pixel, rounded up to whole uint16_t elements
+            sz = (unsigned long int)((frameDetail.height * frameDetail.width *
+                                          3 +
+                                      sizeof(uint16_t) - 1) /
+                                     sizeof(uint16_t));
         } else {
             sz = (unsigned long int)(frameDetail.height * frameDetail.width);
         }
@@ -325,6 +328,8 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
     }
 
     //store pointers to the contents described by FrameDetails
+    m_implData->allDataNbBytes = totalSize * sizeof(uint16_t);
+    m_implData->m_dataLocations.clear();
     m_implData->m_allData = std::shared_ptr<uint16_t[]>(
         new uint16_t[totalSize], // Allocate the array
         [](uint16_t *p) {
