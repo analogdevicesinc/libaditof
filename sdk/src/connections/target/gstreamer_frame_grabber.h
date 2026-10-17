@@ -25,7 +25,7 @@ namespace aditof {
 /**
  * @struct GStreamerConfig
  * @brief Configuration parameters for GStreamer pipeline
- * @deprecated Use AR0234SensorConfig instead for new code
+ * @deprecated Use RGBSensorConfig instead for new code
  */
 struct GStreamerConfig {
     int sensorId;           // Camera sensor ID (0, 1, etc.)
