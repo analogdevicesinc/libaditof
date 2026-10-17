@@ -17,10 +17,6 @@
 #include "rgb_v4l2_frame_grabber_backend.h"
 #endif
 
-#ifdef HAS_NVARGUS_BACKEND
-// #include "nvargus_frame_grabber.h"  // Future implementation
-#endif
-
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -47,9 +43,6 @@ static std::unique_ptr<RGBBackend_Internal> createBackend() {
     return std::make_unique<GStreamerFrameGrabber>();
 #elif defined(HAS_V4L2_BACKEND)
     return std::make_unique<RGBV4L2FrameGrabberBackend>();
-#elif defined(HAS_NVARGUS_BACKEND)
-    // return std::make_unique<NVArgusFrameGrabber>();  // Future implementation
-    return nullptr;
 #else
     return nullptr;
 #endif
