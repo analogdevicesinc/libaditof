@@ -4,7 +4,7 @@
  * High-level sensor class for AR0234 1920x1200 RGB camera.
  * This file contains everything needed for AR0234 camera:
  * - Sensor configuration and frame structures
- * - Internal backend interface (for GStreamer/V4L2/nvargus)
+ * - Internal backend interface (for GStreamer/V4L2)
  * - Main RGBSensor class for applications
  * 
  * Copyright (c) 2025 Analog Devices, Inc.
@@ -149,7 +149,6 @@ struct RGBSensorConfig {
 enum class RGBBackend {
     GSTREAMER, ///< GStreamer-based capture (nvarguscamerasrc)
     V4L2,      ///< Direct V4L2 capture of the raw Bayer stream
-    NVARGUS,   ///< NVIDIA Argus direct API (future)
     UNKNOWN
 };
 
@@ -157,10 +156,10 @@ enum class RGBBackend {
  * @brief Internal interface for RGB camera backends
  * 
  * This is used internally by RGBSensor to communicate with different
- * capture backends (GStreamer, V4L2, nvargus). Applications should use
+ * capture backends (GStreamer, V4L2). Applications should use
  * RGBSensor class instead of using this interface directly.
  * 
- * Each backend (GStreamer, V4L2, nvargus) implements these methods.
+ * Each backend (GStreamer, V4L2) implements these methods.
  */
 class RGBBackend_Internal {
   public:
@@ -226,7 +225,7 @@ class RGBBackend_Internal {
  * This is the class applications should use. It provides a simple sensor-style
  * interface similar to other sensors in the SDK (like Adsd3500Sensor).
  * 
- * Internally, it uses one of the available backends (GStreamer, V4L2, or nvargus)
+ * Internally, it uses one of the available backends (GStreamer or V4L2)
  * to actually capture frames, but you don't need to know which one.
  * 
  * Usage Example:
@@ -335,7 +334,7 @@ class RGBSensor {
 
     /**
      * @brief Get backend name being used
-     * @return Backend name (e.g., "GStreamer", "V4L2", "NVARGUS")
+     * @return Backend name (e.g., "GStreamer", "V4L2")
      */
     std::string getBackendName() const;
 
