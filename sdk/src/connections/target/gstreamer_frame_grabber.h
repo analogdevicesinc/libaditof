@@ -49,7 +49,6 @@ struct GStreamerConfig {
  * pipeline with nvarguscamerasrc for capturing frames from RGB sensor.
  * 
  * Applications should use RGBSensor class, not this directly.
- * To add V4L2 or nvargus backends, create new classes implementing RGBBackend_Internal.
  */
 class GStreamerFrameGrabber : public RGBBackend_Internal {
   public:
