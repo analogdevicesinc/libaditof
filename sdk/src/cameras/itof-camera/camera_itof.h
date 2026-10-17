@@ -295,6 +295,7 @@ class CameraItof : public aditof::Camera {
 #ifdef HAS_RGB_CAMERA
     // Per-start counters behind the RGB-versus-depth sync log lines.
     struct RgbSyncStats {
+        bool sizeMismatchLogged = false;
         uint64_t depthFrames = 0;
         uint64_t late = 0;
         uint64_t missing = 0;

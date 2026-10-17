@@ -878,9 +878,17 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             } else if (item == "conf") {
                 fDataDetails.subelementSize = sizeof(float);
             } else if (item == "rgb") {
-                // AR0234 1920x1200, BGR, 3 bytes per pixel (GStreamer NV12 is converted to BGR)
+                // BGR, 3 bytes per pixel (GStreamer NV12 is converted to BGR)
                 fDataDetails.width = 1920;
                 fDataDetails.height = 1200;
+#ifdef HAS_RGB_CAMERA
+                if (m_rgbSensor) {
+                    const aditof::RGBSensorConfig rgbCfg =
+                        m_rgbSensor->getConfig();
+                    fDataDetails.width = rgbCfg.width;
+                    fDataDetails.height = rgbCfg.height;
+                }
+#endif
                 fDataDetails.subelementSize = sizeof(uint8_t);
                 fDataDetails.subelementsPerElement = 3;
             }
@@ -1358,10 +1366,22 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                     size_t pending = 0;
                     const size_t depthAhead = bufProc->getReadyDepthFrames();
                     const auto waitStart = std::chrono::steady_clock::now();
-                    const bool gotRgb = bufProc->getLatestRGBFrame(
-                                            rgbFrame, rgbTimeout, &pending) ==
-                                            aditof::Status::OK &&
-                                        rgbFrame.isValid();
+                    bool gotRgb = bufProc->getLatestRGBFrame(
+                                      rgbFrame, rgbTimeout, &pending) ==
+                                      aditof::Status::OK &&
+                                  rgbFrame.isValid();
+                    if (gotRgb &&
+                        rgbFrame.data.size() != rgbDetails.bytesCount) {
+                        if (!m_rgbSync.sizeMismatchLogged) {
+                            LOG(ERROR)
+                                << "RGB frame is " << rgbFrame.data.size()
+                                << " bytes but the frame slot holds "
+                                << rgbDetails.bytesCount
+                                << "; the RGB data is dropped";
+                            m_rgbSync.sizeMismatchLogged = true;
+                        }
+                        gotRgb = false;
+                    }
                     const auto waitEnd = std::chrono::steady_clock::now();
                     const double waitMs =
                         std::chrono::duration<double, std::milli>(waitEnd -
