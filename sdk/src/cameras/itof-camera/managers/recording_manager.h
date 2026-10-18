@@ -33,6 +33,9 @@ class CameraConfiguration;
  */
 class RecordingManager {
   public:
+    // ToF intrinsics, RGB intrinsics and rgb2tof extrinsics (chip command 0x30)
+    static constexpr size_t RGBD_CALIBRATION_SIZE = 160;
+
     RecordingManager(std::shared_ptr<DepthSensorInterface> sensor,
                      CalibrationManager *calibMgr, CameraConfiguration *config);
     ~RecordingManager() = default;
@@ -50,15 +53,16 @@ class RecordingManager {
      * @param confEnabled Confidence frame recording enabled
      * @param xyzEnabled XYZ frame recording enabled
      * @param rotationEnabled True if frames/XYZ tables are rotated 90° CW
+     * @param rgbdCalibration 160-byte RGBD calibration to store in the header,
+     *        or nullptr when the chip has none
      * @return Status::OK on success
      */
-    Status
-    startRecording(std::string &filePath, uint16_t cameraFps,
-                   const CameraDetails &details,
-                   const DepthSensorModeDetails &modeDetailsCache,
-                   const std::vector<DepthSensorModeDetails> &availableModes,
-                   bool depthEnabled, bool abEnabled, bool confEnabled,
-                   bool xyzEnabled, bool rotationEnabled);
+    Status startRecording(
+        std::string &filePath, uint16_t cameraFps, const CameraDetails &details,
+        const DepthSensorModeDetails &modeDetailsCache,
+        const std::vector<DepthSensorModeDetails> &availableModes,
+        bool depthEnabled, bool abEnabled, bool confEnabled, bool xyzEnabled,
+        bool rotationEnabled, const uint8_t *rgbdCalibration);
 
     /**
      * @brief Stops recording and closes the recording file.
@@ -83,6 +87,13 @@ class RecordingManager {
      */
     Status loadPlaybackHeader(DepthSensorModeDetails &modeDetailsCache,
                               CameraDetails &details, bool &rotationEnabled);
+
+    /**
+     * @brief Gets the RGBD calibration stored in the playback file header.
+     * @param[out] data 160-byte buffer, written only when the file has one
+     * @return true if the file carries a calibration (older files do not)
+     */
+    bool getRGBDCalibration(uint8_t data[RGBD_CALIBRATION_SIZE]) const;
 
     /**
      * @brief Gets the number of frames in the playback file.
@@ -142,6 +153,9 @@ class RecordingManager {
             uint32_t subelementsPerElement;
             uint32_t bytesCount;
         } fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
+        // Appended so older files, which end before this, read back as absent
+        uint32_t rgbdCalibrationValid;
+        uint8_t rgbdCalibration[RGBD_CALIBRATION_SIZE];
     } m_offline_parameters;
 };
 

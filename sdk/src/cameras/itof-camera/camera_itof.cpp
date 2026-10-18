@@ -343,6 +343,13 @@ aditof::Status CameraItof::start() {
 #ifdef HAS_RGB_CAMERA
     m_rgbSync = RgbSyncStats();
 
+    // Cached before STREAMON so recordings carry it; the read drops frames
+    // once streaming.
+    if (m_rgbEnabled && m_rgbdCalibBuf.empty()) {
+        uint8_t calibration[RecordingManager::RGBD_CALIBRATION_SIZE];
+        readRGBDCalibrationFromChip(calibration);
+    }
+
     // The V4L2 RGB sensor is triggered by the depth stream, so it has to be
     // armed first; its start() returns once it waits for triggers.
     const bool rgbFirst =
@@ -1148,7 +1155,10 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
     aditof::Status status = m_recordingMgr->startRecording(
         filePath, m_cameraFps, m_details, m_modeDetailsCache,
         m_availableSensorModeDetails, m_depthEnabled, m_abEnabled,
-        m_confEnabled, m_xyzEnabled, m_rotationEnabled);
+        m_confEnabled, m_xyzEnabled, m_rotationEnabled,
+        m_rgbdCalibBuf.size() == RecordingManager::RGBD_CALIBRATION_SIZE
+            ? m_rgbdCalibBuf.data()
+            : nullptr);
 
     // Rotation state is now stored in recording header via RecordingManager
     if (status == aditof::Status::OK) {
@@ -1636,9 +1646,12 @@ aditof::Status CameraItof::readRGBDCalibrationFromChip(uint8_t data[160]) {
     using namespace aditof;
 
     if (m_isOffline) {
-        LOG(WARNING)
-            << "readRGBDCalibrationFromChip: not available in offline mode";
-        return Status::UNAVAILABLE;
+        if (!m_recordingMgr->getRGBDCalibration(data)) {
+            LOG(INFO) << "readRGBDCalibrationFromChip: the recording has no "
+                         "RGBD calibration";
+            return Status::UNAVAILABLE;
+        }
+        return Status::OK;
     }
 
     // Return cached buffer if already read this session.

@@ -657,9 +657,13 @@ class SDK_API Camera {
      *
      * Pass the result to RGBDCoregistration::loadCalibrationFrom160Bytes().
      *
+     * Recordings made with RGB carry this calibration in their header, so in
+     * playback the call returns it from the file instead of the chip.
+     *
      * @param[out] data  160-byte buffer populated on success.
      * @return Status::OK on success; Status::UNAVAILABLE if the chip has
-     *         not been provisioned (status 0x2E/0x2F/0x30 from firmware).
+     *         not been provisioned (status 0x2E/0x2F/0x30 from firmware) or,
+     *         in playback, the recording has no calibration.
      */
     virtual aditof::Status readRGBDCalibrationFromChip(uint8_t data[160]) = 0;
 };

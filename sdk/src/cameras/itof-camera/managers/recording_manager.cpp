@@ -37,10 +37,18 @@ Status RecordingManager::startRecording(
     const DepthSensorModeDetails &modeDetailsCache,
     const std::vector<DepthSensorModeDetails> &availableModes,
     bool depthEnabled, bool abEnabled, bool confEnabled, bool xyzEnabled,
-    bool rotationEnabled) {
+    bool rotationEnabled, const uint8_t *rgbdCalibration) {
 
     // Reset frame counter
     m_offline_parameters.numberOfFrames = 0;
+
+    m_offline_parameters.rgbdCalibrationValid = rgbdCalibration ? 1 : 0;
+    if (rgbdCalibration) {
+        memcpy(m_offline_parameters.rgbdCalibration, rgbdCalibration,
+               RGBD_CALIBRATION_SIZE);
+    } else {
+        memset(m_offline_parameters.rgbdCalibration, 0, RGBD_CALIBRATION_SIZE);
+    }
 
     // Store XYZ dealias data
     TofiXYZDealiasData dealias;
@@ -204,6 +212,15 @@ Status RecordingManager::stopRecording() {
         return Status::OK; // Not an error if recording wasn't supported
     }
     return recordableInterface->stopRecording();
+}
+
+bool RecordingManager::getRGBDCalibration(
+    uint8_t data[RGBD_CALIBRATION_SIZE]) const {
+    if (m_offline_parameters.rgbdCalibrationValid == 0) {
+        return false;
+    }
+    memcpy(data, m_offline_parameters.rgbdCalibration, RGBD_CALIBRATION_SIZE);
+    return true;
 }
 
 Status RecordingManager::setPlaybackFile(std::string &filePath) {
