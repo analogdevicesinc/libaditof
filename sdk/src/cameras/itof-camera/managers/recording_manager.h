@@ -33,6 +33,9 @@ class CameraConfiguration;
  */
 class RecordingManager {
   public:
+    // ToF intrinsics, RGB intrinsics and rgb2tof extrinsics (chip command 0x30)
+    static constexpr size_t RGBD_CALIBRATION_SIZE = 160;
+
     RecordingManager(std::shared_ptr<DepthSensorInterface> sensor,
                      CalibrationManager *calibMgr, CameraConfiguration *config);
     ~RecordingManager() = default;
@@ -53,6 +56,8 @@ class RecordingManager {
      * @param modeFusionEnabled True if SR/LR mode fusion is active
      * @param fusionSrMode Short-range mode of the fusion pair
      * @param fusionLrMode Long-range mode of the fusion pair
+     * @param rgbdCalibration 160-byte RGBD calibration to store in the header,
+     *        or nullptr when the chip has none
      * @return Status::OK on success
      */
     Status startRecording(
@@ -61,7 +66,8 @@ class RecordingManager {
         const std::vector<DepthSensorModeDetails> &availableModes,
         bool depthEnabled, bool abEnabled, bool confEnabled, bool xyzEnabled,
         bool rotationEnabled, bool modeFusionEnabled = false,
-        uint8_t fusionSrMode = 0xFF, uint8_t fusionLrMode = 0xFF);
+        uint8_t fusionSrMode = 0xFF, uint8_t fusionLrMode = 0xFF,
+        const uint8_t *rgbdCalibration = nullptr);
 
     /**
      * @brief Stops recording and closes the recording file.
@@ -86,6 +92,13 @@ class RecordingManager {
      */
     Status loadPlaybackHeader(DepthSensorModeDetails &modeDetailsCache,
                               CameraDetails &details, bool &rotationEnabled);
+
+    /**
+     * @brief Gets the RGBD calibration stored in the playback file header.
+     * @param[out] data 160-byte buffer, written only when the file has one
+     * @return true if the file carries a calibration (older files do not)
+     */
+    bool getRGBDCalibration(uint8_t data[RGBD_CALIBRATION_SIZE]) const;
 
     /**
      * @brief Gets the number of frames in the playback file.
@@ -127,8 +140,9 @@ class RecordingManager {
         static const uint32_t MAX_FRAME_DATA_DETAILS_SAVE = 8;
         static const uint32_t MAX_FRAME_CONTENT = 6;
         uint32_t numberOfFrames;
-        // v2 appended the mode-fusion fields; v1 files read them as zero.
-        const uint32_t formatVersion = 0x00000002;
+        // v2 appended the mode-fusion fields, v3 the RGBD calibration; older
+        // files read the missing fields as zero.
+        const uint32_t formatVersion = 0x00000003;
         uint16_t frameRate;
         uint16_t enableMetaDatainAB;
         uint32_t
@@ -165,6 +179,9 @@ class RecordingManager {
         uint32_t modeFusionEnabled;
         uint32_t fusionSrMode;
         uint32_t fusionLrMode;
+        // v3: appended so older files, which end before this, read back as absent
+        uint32_t rgbdCalibrationValid;
+        uint8_t rgbdCalibration[RGBD_CALIBRATION_SIZE];
     } m_offline_parameters;
 };
 
