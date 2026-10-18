@@ -1129,28 +1129,40 @@ PYBIND11_MODULE(aditofpython, m) {
             py::arg("camera"),
             "Read ToF intrinsics directly from a live camera (getDetails).")
         .def(
-            "registerDepthToRGB",
+            "buildToFToRGBMap",
             [](aditof::RGBDCoregistration &coreg,
-               py::array_t<uint16_t> depth_in, uint32_t tofWidth,
-               uint32_t tofHeight, uint32_t rgbWidth, uint32_t rgbHeight) {
+               py::array_t<uint16_t, py::array::c_style | py::array::forcecast>
+                   depth_in,
+               uint32_t tofWidth, uint32_t tofHeight, uint32_t rgbWidth,
+               uint32_t rgbHeight) {
                 py::buffer_info info = depth_in.request();
-                const uint16_t *depth_ptr =
-                    static_cast<const uint16_t *>(info.ptr);
+                if (static_cast<size_t>(info.size) <
+                    static_cast<size_t>(tofWidth) * tofHeight) {
+                    throw std::invalid_argument(
+                        "depth must hold tof_width * tof_height values");
+                }
 
-                auto result =
-                    py::array_t<uint16_t>({static_cast<py::ssize_t>(rgbHeight),
-                                           static_cast<py::ssize_t>(rgbWidth)});
-                py::buffer_info res_info = result.request();
-                uint16_t *out_ptr = static_cast<uint16_t *>(res_info.ptr);
+                const std::vector<py::ssize_t> shape = {
+                    static_cast<py::ssize_t>(tofHeight),
+                    static_cast<py::ssize_t>(tofWidth)};
+                py::array_t<int32_t> rgb_u(shape);
+                py::array_t<int32_t> rgb_v(shape);
 
-                coreg.registerDepthToRGB(depth_ptr, tofWidth, tofHeight,
-                                         out_ptr, rgbWidth, rgbHeight);
-                return result;
+                aditof::Status status = coreg.buildToFToRGBMap(
+                    static_cast<const uint16_t *>(info.ptr), tofWidth,
+                    tofHeight, rgb_u.mutable_data(), rgb_v.mutable_data(),
+                    rgbWidth, rgbHeight);
+                if (status != aditof::Status::OK) {
+                    throw std::runtime_error(
+                        "buildToFToRGBMap failed; is the calibration loaded?");
+                }
+                return py::make_tuple(rgb_u, rgb_v);
             },
             py::arg("depth"), py::arg("tof_width"), py::arg("tof_height"),
             py::arg("rgb_width"), py::arg("rgb_height"),
-            "Project ToF depth (H×W uint16 mm) into RGB plane. "
-            "Returns (rgb_height × rgb_width) uint16 registered depth.")
+            "For each ToF pixel (H x W uint16 mm) return the RGB pixel it "
+            "projects to as (rgb_u, rgb_v), two int32 arrays of ToF shape; "
+            "-1 where there is no mapping.")
         .def("isCalibrationLoaded",
              &aditof::RGBDCoregistration::isCalibrationLoaded);
 

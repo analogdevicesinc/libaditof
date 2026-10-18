@@ -216,87 +216,12 @@ void RGBDCoregistration::projectToRGB(float x_norm, float y_norm, float &u_px,
 }
 
 // ---------------------------------------------------------------------------
-// Main coregistration entry point.
+// Build the per-ToF-pixel lookup table into the RGB image: rgb_u/rgb_v get
+// the RGB pixel each valid ToF pixel (d > 0) projects to, or -1 when the
+// pixel has no depth, is behind the RGB camera or lands outside the image.
+// Pixels are mapped independently, so a point hidden from the RGB camera
+// still gets the colour of whatever is in front of it.
 // ---------------------------------------------------------------------------
-Status RGBDCoregistration::registerDepthToRGB(
-    const uint16_t *depth_mm, uint32_t tofWidth, uint32_t tofHeight,
-    uint16_t *registered_depth, uint32_t rgbWidth, uint32_t rgbHeight) const {
-
-    if (!m_calibLoaded) {
-        LOG(ERROR) << "RGBDCoregistration: calibration not loaded";
-        return Status::UNAVAILABLE;
-    }
-    if (!depth_mm || !registered_depth) {
-        return Status::INVALID_ARGUMENT;
-    }
-
-    // Zero-initialize output (0 == no depth data for that RGB pixel)
-    std::memset(registered_depth, 0,
-                static_cast<std::size_t>(rgbWidth) * rgbHeight *
-                    sizeof(uint16_t));
-
-    const auto &tofK = m_calib.tof;
-    const float *R = m_calib.extrinsics.R;
-    const float *t = m_calib.extrinsics.t;
-
-    const int iRgbW = static_cast<int>(rgbWidth);
-    const int iRgbH = static_cast<int>(rgbHeight);
-
-    for (uint32_t row = 0; row < tofHeight; ++row) {
-        for (uint32_t col = 0; col < tofWidth; ++col) {
-            const uint16_t d = depth_mm[row * tofWidth + col];
-            if (d == 0) {
-                continue; // Invalid / no-return pixel
-            }
-
-            // 1. Normalise ToF pixel coordinates
-            float x_norm = (static_cast<float>(col) - tofK.cx) / tofK.fx;
-            float y_norm = (static_cast<float>(row) - tofK.cy) / tofK.fy;
-
-            // 2. Undistort using ToF lens model
-            float x_u, y_u;
-            undistortToFPoint(x_norm, y_norm, x_u, y_u);
-
-            // 3. Back-project to 3-D in ToF camera frame (depth in mm)
-            // d is radial depth (distance from camera centre), not Z-depth
-            float ray_len = std::sqrt(x_u * x_u + y_u * y_u + 1.0f);
-            float Zf = static_cast<float>(d) / ray_len;
-            float Xf = x_u * Zf;
-            float Yf = y_u * Zf;
-
-            // 4. Rigid transform: P_rgb = R * P_tof + t
-            float Xr = R[0] * Xf + R[1] * Yf + R[2] * Zf + t[0];
-            float Yr = R[3] * Xf + R[4] * Yf + R[5] * Zf + t[1];
-            float Zr = R[6] * Xf + R[7] * Yf + R[8] * Zf + t[2];
-
-            if (Zr <= 0.0f) {
-                continue; // Point is behind the RGB camera
-            }
-
-            // 5. Project onto RGB image plane (apply RGB distortion)
-            float u_px, v_px;
-            projectToRGB(Xr / Zr, Yr / Zr, u_px, v_px);
-
-            int u = static_cast<int>(u_px + 0.5f);
-            int v = static_cast<int>(v_px + 0.5f);
-
-            if (u < 0 || u >= iRgbW || v < 0 || v >= iRgbH) {
-                continue;
-            }
-
-            // 6. Write depth; keep the nearer surface if two ToF pixels
-            //    project to the same RGB pixel (z-buffer semantics).
-            uint16_t &dst = registered_depth[v * rgbWidth + u];
-            auto new_depth = static_cast<uint16_t>(Zr);
-            if (dst == 0 || new_depth < dst) {
-                dst = new_depth;
-            }
-        }
-    }
-
-    return Status::OK;
-}
-
 Status RGBDCoregistration::buildToFToRGBMap(const uint16_t *depth_mm,
                                             uint32_t tofWidth,
                                             uint32_t tofHeight, int32_t *rgb_u,
