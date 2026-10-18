@@ -38,11 +38,13 @@
  * For each valid ToF pixel (u, v) with depth d (mm):
  *  1. Normalize:  x = (u - cx_tof) / fx_tof,  y = (v - cy_tof) / fy_tof
  *  2. Undistort by inverting the Brown-Conrady model (k1–k6, p1, p2, codx, cody)
- *  3. Back-project to 3-D:  P_tof = [x_u * d,  y_u * d,  d]
+ *  3. Back-project to 3-D using the radial depth d:
+ *     Z = d / sqrt(x_u² + y_u² + 1),  P_tof = [x_u * Z,  y_u * Z,  Z]
  *  4. Transform:  P_rgb = R * P_tof + t   (tof2rgb extrinsics, t in mm)
  *  5. Project onto RGB image with optional RGB lens distortion
- *  6. Write d (mm) into registered_depth at the projected RGB pixel; nearest
- *     depth wins when multiple ToF pixels map to the same RGB pixel.
+ *  6. The projected RGB pixel (u, v) is the result for that ToF pixel; it is
+ *     -1 when the pixel has no depth, is behind the RGB camera or lands
+ *     outside the RGB image.
  *
  * Calibration source
  * ==================
@@ -118,12 +120,12 @@ struct RGBDCalibration {
  *   camera->readRGBDCalibrationFromChip(calib);
  *   coreg.loadCalibrationFrom160Bytes(calib, sizeof(calib));
  *
- *   std::vector<uint16_t> registered(rgbW * rgbH, 0);
- *   coreg.registerDepthToRGB(depth.data(), tofW, tofH,
- *                            registered.data(), rgbW, rgbH);
+ *   std::vector<int32_t> rgbU(tofW * tofH), rgbV(tofW * tofH);
+ *   coreg.buildToFToRGBMap(depth.data(), tofW, tofH, rgbU.data(),
+ *                          rgbV.data(), rgbW, rgbH);
  * @endcode
  *
- * Thread safety: const methods (registerDepthToRGB) are safe to call
+ * Thread safety: const methods (buildToFToRGBMap) are safe to call
  * concurrently from multiple threads once calibration is loaded.
  */
 class SDK_API RGBDCoregistration {
@@ -178,26 +180,6 @@ class SDK_API RGBDCoregistration {
     Status setCalibration(const RGBDCalibration &calib);
 
     /**
-     * @brief Project the ToF depth map into the RGB camera plane.
-     *
-     * @param[in]  depth_mm         ToF depth image, row-major, uint16 mm
-     *                              (0 = invalid pixel).
-     * @param[in]  tofWidth         Width of the ToF frame.
-     * @param[in]  tofHeight        Height of the ToF frame.
-     * @param[out] registered_depth Output depth at RGB resolution, row-major,
-     *                              uint16 mm (0 = no ToF data). Must be
-     *                              pre-allocated: rgbWidth × rgbHeight uint16_t.
-     * @param[in]  rgbWidth         Width of the target RGB frame.
-     * @param[in]  rgbHeight        Height of the target RGB frame.
-     * @return Status::OK on success.
-     *         Status::UNAVAILABLE if calibration has not been loaded.
-     *         Status::INVALID_ARGUMENT if any pointer is null.
-     */
-    Status registerDepthToRGB(const uint16_t *depth_mm, uint32_t tofWidth,
-                              uint32_t tofHeight, uint16_t *registered_depth,
-                              uint32_t rgbWidth, uint32_t rgbHeight) const;
-
-    /**
      * @brief Build a per-ToF-pixel lookup table mapping each ToF pixel to its
      *        corresponding (u, v) coordinate in the RGB image plane.
      *
@@ -206,6 +188,9 @@ class SDK_API RGBDCoregistration {
      * coordinates into rgb_u and rgb_v.  Pixels that are invalid (d == 0),
      * behind the RGB camera, or project outside [0, rgbWidth) × [0, rgbHeight)
      * are written as -1.
+     *
+     * Pixels are mapped independently: a point hidden from the RGB camera by
+     * a nearer one still gets the nearer one's pixel.
      *
      * Output arrays must be pre-allocated to tofWidth × tofHeight elements.
      *
