@@ -105,11 +105,21 @@ Status RecordingManager::startRecording(
                          "(handled in fDataDetails)";
             continue;
         }
+        if (idx >= m_offline_parameters.MAX_FRAME_CONTENT) {
+            const uint32_t maxContent = m_offline_parameters.MAX_FRAME_CONTENT;
+            LOG(ERROR) << "[RECORDING] More than " << maxContent
+                       << " frame types; \"" << val << "\" not recorded";
+            break;
+        }
 
         LOG(INFO) << "[RECORDING] Adding to header: " << val;
         memcpy(
             (char *)m_offline_parameters.modeDetailsCache.frameContent[idx++],
-            val.c_str(), val.length());
+            val.c_str(),
+            std::min(
+                val.length(),
+                sizeof(m_offline_parameters.modeDetailsCache.frameContent[0]) -
+                    1));
     }
     LOG(INFO) << "[RECORDING] Total frame types in header: " << idx;
 
@@ -136,7 +146,7 @@ Status RecordingManager::startRecording(
     LOG(INFO) << "[RECORDING] Building fDataDetails from frameContent...";
     for (const auto &item : modeDetailsCache.frameContent) {
 
-        if (m_offline_parameters.fdatadetailsCount >
+        if (m_offline_parameters.fdatadetailsCount >=
             m_offline_parameters.MAX_FRAME_DATA_DETAILS_SAVE) {
             LOG(ERROR) << "Frame data details count exceeded the limit";
             break;

@@ -199,6 +199,7 @@ CameraItof::CameraItof(
           m_config.get())),
       m_frameAcqManager(std::make_unique<aditof::CameraFrameAcquisitionManager>(
           depthSensor, m_calibrationMgr.get(), m_config.get())),
+      m_rgbdFusion(std::make_unique<aditof::RgbdFusionManager>()),
       m_depthSensor(depthSensor), m_adsd3500Hardware(nullptr),
       m_devStarted(false), m_devStreaming(false), m_adsd3500Enabled(false),
       m_isOffline(false), m_xyzEnabled(true), m_xyzSetViaApi(false),
@@ -340,15 +341,18 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
 aditof::Status CameraItof::start() {
     using namespace aditof;
 
+    // Read before STREAMON: the chip read drops frames once streaming, and
+    // recordings carry the calibration.
+    m_rgbdFusion->reset();
+    if (m_rgbEnabled || m_isOffline) {
+        uint8_t calibration[RecordingManager::RGBD_CALIBRATION_SIZE] = {};
+        if (readRGBDCalibrationFromChip(calibration) == Status::OK) {
+            m_rgbdFusion->loadCalibration(calibration, sizeof(calibration));
+        }
+    }
+
 #ifdef HAS_RGB_CAMERA
     m_rgbSync = RgbSyncStats();
-
-    // Cached before STREAMON so recordings carry it; the read drops frames
-    // once streaming.
-    if (m_rgbEnabled && m_rgbdCalibBuf.empty()) {
-        uint8_t calibration[RecordingManager::RGBD_CALIBRATION_SIZE];
-        readRGBDCalibrationFromChip(calibration);
-    }
 
     // The V4L2 RGB sensor is triggered by the depth stream, so it has to be
     // armed first; its start() returns once it waits for triggers.
@@ -708,6 +712,14 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         // Apply the rotation control before setMode
         m_depthSensor->setControl("enableRotation", rotationValue);
 
+        // Coloured point cloud: on by default with RGB, cropped to the RGB view.
+        auto xyzColorIt = iniKeyValPairs.find("xyzColorEnable");
+        const bool xyzColorEnabled =
+            xyzColorIt == iniKeyValPairs.end() || xyzColorIt->second != "0";
+        auto overlapIt = iniKeyValPairs.find("xyzColorOverlapOnly");
+        m_rgbdFusion->setOverlapOnly(overlapIt == iniKeyValPairs.end() ||
+                                     overlapIt->second != "0");
+
         status = m_depthSensor->setMode(mode);
         if (status != Status::OK) {
             LOG(WARNING) << "Failed to set frame type";
@@ -884,6 +896,19 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                                       fDataDetails.subelementsPerElement;
 
             m_details.frameType.dataDetails.emplace_back(fDataDetails);
+        }
+
+        // Derived in requestFrame(), so it is not part of frameContent and is
+        // never recorded; last so no sensor data offset moves.
+        if (xyzColorEnabled && m_rgbEnabled && m_xyzEnabled && !m_pcmFrame) {
+            FrameDataDetails colorDetails;
+            colorDetails.type = "xyz_color";
+            colorDetails.width = reportedWidth;
+            colorDetails.height = reportedHeight;
+            colorDetails.subelementSize = sizeof(uint8_t);
+            colorDetails.subelementsPerElement = 4;
+            colorDetails.bytesCount = reportedWidth * reportedHeight * 4;
+            m_details.frameType.dataDetails.emplace_back(colorDetails);
         }
 
         // Build frameType.type as "_"-joined channel names (e.g. "depth_conf_xyz")
@@ -1152,13 +1177,18 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         return aditof::Status::GENERIC_ERROR; // Invalid call
     }
 
+    uint8_t rgbdCalibration[RecordingManager::RGBD_CALIBRATION_SIZE];
+    const bool haveRgbdCalibration =
+        m_rgbdCalibBuf.size() == RecordingManager::RGBD_CALIBRATION_SIZE;
+    if (haveRgbdCalibration) {
+        composeRGBDCalibration(rgbdCalibration);
+    }
+
     aditof::Status status = m_recordingMgr->startRecording(
         filePath, m_cameraFps, m_details, m_modeDetailsCache,
         m_availableSensorModeDetails, m_depthEnabled, m_abEnabled,
         m_confEnabled, m_xyzEnabled, m_rotationEnabled,
-        m_rgbdCalibBuf.size() == RecordingManager::RGBD_CALIBRATION_SIZE
-            ? m_rgbdCalibBuf.data()
-            : nullptr);
+        haveRgbdCalibration ? rgbdCalibration : nullptr);
 
     // Rotation state is now stored in recording header via RecordingManager
     if (status == aditof::Status::OK) {
@@ -1334,6 +1364,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         return status;
     }
 
+    bool rgbAttached = false;
 #ifdef HAS_RGB_CAMERA
     if (m_rgbStatus.enabled && m_rgbSensor) {
         uint16_t *rgbBuf = nullptr;
@@ -1442,6 +1473,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                     if (gotRgb) {
                         memcpy(reinterpret_cast<uint8_t *>(rgbBuf),
                                rgbFrame.data.data(), rgbFrame.data.size());
+                        rgbAttached = true;
                     } else {
                         memset(rgbBuf, 0, rgbDetails.bytesCount);
                     }
@@ -1450,6 +1482,10 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         }
     }
 #endif
+
+    if (frame->haveDataType("xyz_color")) {
+        m_rgbdFusion->colorize(frame, rgbAttached);
+    }
 
     return status;
 }
@@ -1642,6 +1678,70 @@ static void rotateChipToFIntrinsicsCW(float f[14], uint32_t nativeHeight) {
     f[12] = -p1;
 }
 
+#ifdef HAS_RGB_CAMERA
+// 0x30 has no RGB resolution field; a principal point far from the image
+// centre usually means the RGB intrinsics were calibrated at another size.
+static void warnIfRGBPrincipalPointOff(const uint8_t data[160], uint32_t width,
+                                       uint32_t height) {
+    constexpr float kMaxOffsetFraction = 0.05f;
+    float cx = 0.f, cy = 0.f;
+    std::memcpy(&cx, data + 16 * sizeof(float), sizeof(float));
+    std::memcpy(&cy, data + 17 * sizeof(float), sizeof(float));
+    const float centreX = 0.5f * static_cast<float>(width - 1);
+    const float centreY = 0.5f * static_cast<float>(height - 1);
+    if (std::fabs(cx - centreX) > kMaxOffsetFraction * width ||
+        std::fabs(cy - centreY) > kMaxOffsetFraction * height) {
+        LOG(WARNING) << "RGB principal point (" << cx << ", " << cy
+                     << ") is far from the centre of the " << width << "x"
+                     << height
+                     << " RGB image; the RGB calibration may be for another "
+                        "resolution";
+    }
+}
+#endif
+
+// The 0x30 ToF intrinsics are the full-sensor ones; binning and crop are
+// applied the same way as for the XYZ tables.
+static void toModeToFIntrinsics(float f[14], const TofiXYZDealiasData &mode) {
+    const float colBin = mode.col_bin_factor ? mode.col_bin_factor : 1;
+    const float rowBin = mode.row_bin_factor ? mode.row_bin_factor : 1;
+    f[0] /= colBin;
+    f[1] /= rowBin;
+    f[2] = f[2] / colBin - mode.n_offset_cols;
+    f[3] = f[3] / rowBin - mode.n_offset_rows;
+}
+
+static void warnIfToFIntrinsicsDiffer(const float chip30[14],
+                                      const CameraIntrinsics &chip01) {
+    float f01[14];
+    std::memcpy(f01, &chip01, sizeof(f01));
+    for (int i = 0; i < 14; ++i) {
+        if (std::fabs(chip30[i] - f01[i]) > 1e-6f + 1e-4f * std::fabs(f01[i])) {
+            LOG(WARNING) << "ToF intrinsics from 0x30 differ from 0x01 (float "
+                         << i << ": " << chip30[i] << " vs " << f01[i]
+                         << "); coregistration uses 0x30";
+            return;
+        }
+    }
+}
+
+void CameraItof::composeRGBDCalibration(uint8_t data[160]) const {
+    std::memcpy(data, m_rgbdCalibBuf.data(),
+                RecordingManager::RGBD_CALIBRATION_SIZE);
+
+    float tof[14];
+    std::memcpy(tof, data, sizeof(tof));
+    TofiXYZDealiasData modeData;
+    if (m_calibrationMgr->getXYZDealiasData(m_modeDetailsCache.modeNumber,
+                                            modeData) == aditof::Status::OK) {
+        toModeToFIntrinsics(tof, modeData);
+    }
+    if (m_rotationEnabled && m_modeDetailsCache.baseResolutionHeight > 0) {
+        rotateChipToFIntrinsicsCW(tof, m_modeDetailsCache.baseResolutionHeight);
+    }
+    std::memcpy(data, tof, sizeof(tof));
+}
+
 aditof::Status CameraItof::readRGBDCalibrationFromChip(uint8_t data[160]) {
     using namespace aditof;
 
@@ -1655,35 +1755,58 @@ aditof::Status CameraItof::readRGBDCalibrationFromChip(uint8_t data[160]) {
     }
 
     // Return cached buffer if already read this session.
-    if (m_rgbdCalibBuf.size() == 160) {
-        std::memcpy(data, m_rgbdCalibBuf.data(), 160);
-        LOG(INFO)
-            << "readRGBDCalibrationFromChip: returning cached calibration";
-        return Status::OK;
+    if (m_rgbdCalibBuf.size() != RecordingManager::RGBD_CALIBRATION_SIZE) {
+        // Issue GET_RGBD_CALIBRATION_DATA (0x30) burst read.
+        // MUST be called AFTER setMode() and BEFORE start() (STREAMON):
+        //   - Before setMode: firmware needs a valid mode; failure leaves chip
+        //     in burst mode, breaking all subsequent commands (errno=5).
+        //   - During streaming: SWITCH_TO_BURST_MODE halts frame output.
+        // raw[0] is sent to the chip as the command parameter.
+        uint8_t raw[RecordingManager::RGBD_CALIBRATION_SIZE] = {};
+        Status status = m_adsd3500Hardware->adsd3500_read_payload_cmd(
+            ADSD3500_CMD_GET_RGBD_CALIBRATION, raw, sizeof(raw));
+        if (status != Status::OK) {
+            LOG(INFO) << "readRGBDCalibrationFromChip: chip not provisioned "
+                         "with an RGBD calibration";
+            return Status::UNAVAILABLE;
+        }
+        m_rgbdCalibBuf.assign(raw, raw + sizeof(raw));
+        LOG(INFO) << "readRGBDCalibrationFromChip: 160 bytes read from chip";
+
+        TofiXYZDealiasData modeData;
+        if (m_calibrationMgr->getXYZDealiasData(m_modeDetailsCache.modeNumber,
+                                                modeData) == Status::OK) {
+            float tof[14];
+            std::memcpy(tof, raw, sizeof(tof));
+            warnIfToFIntrinsicsDiffer(tof, modeData.camera_intrinsics);
+        }
+#ifdef HAS_RGB_CAMERA
+        if (m_rgbSensor) {
+            const aditof::RGBSensorConfig rgbCfg = m_rgbSensor->getConfig();
+            warnIfRGBPrincipalPointOff(raw, rgbCfg.width, rgbCfg.height);
+        }
+#endif
     }
 
-    // Issue GET_RGBD_CALIBRATION_DATA (0x30) burst read.
-    // MUST be called AFTER setMode() and BEFORE start() (STREAMON):
-    //   - Before setMode: firmware needs a valid mode; failure leaves chip in
-    //     burst mode, breaking all subsequent commands (errno=5 cascade).
-    //   - During streaming: SWITCH_TO_BURST_MODE halts frame output (drops).
-    Status status =
-        m_adsd3500Hardware->adsd3500_read_payload_cmd(0x30, data, 160);
+    composeRGBDCalibration(data);
+    return Status::OK;
+}
+
+aditof::Status CameraItof::getRGBDCalibration(aditof::RGBDCalibration &calib) {
+    using namespace aditof;
+
+    uint8_t data[RecordingManager::RGBD_CALIBRATION_SIZE];
+    Status status = readRGBDCalibrationFromChip(data);
     if (status != Status::OK) {
-        LOG(INFO) << "readRGBDCalibrationFromChip: chip not provisioned "
-                     "with an RGBD calibration";
-        return Status::UNAVAILABLE;
+        return status;
     }
 
-    if (m_rotationEnabled && m_modeDetailsCache.baseResolutionHeight > 0) {
-        float tof[14];
-        std::memcpy(tof, data, sizeof(tof));
-        rotateChipToFIntrinsicsCW(tof, m_modeDetailsCache.baseResolutionHeight);
-        std::memcpy(data, tof, sizeof(tof));
+    RGBDCoregistration coreg;
+    status = coreg.loadCalibrationFrom160Bytes(data, sizeof(data));
+    if (status != Status::OK) {
+        return status;
     }
-
-    m_rgbdCalibBuf.assign(data, data + 160);
-    LOG(INFO) << "readRGBDCalibrationFromChip: 160 bytes read from chip";
+    calib = coreg.getCalibration();
     return Status::OK;
 }
 

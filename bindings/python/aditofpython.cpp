@@ -1079,90 +1079,44 @@ PYBIND11_MODULE(aditofpython, m) {
             "Load calibration from the 160-byte 0x30 chip response, e.g. from "
             "Camera.readRGBDCalibrationFromChip().")
         .def(
-            "setToFIntrinsics",
+            "colorizePointCloud",
             [](aditof::RGBDCoregistration &coreg,
-               const aditof::IntrinsicParameters &intr) {
-                aditof::CameraIntrinsicsCalib calib;
-                calib.fx = intr.fx;
-                calib.fy = intr.fy;
-                calib.cx = intr.cx;
-                calib.cy = intr.cy;
-                calib.codx = intr.codx;
-                calib.cody = intr.cody;
-                calib.k1 = intr.k1;
-                calib.k2 = intr.k2;
-                calib.k3 = intr.k3;
-                calib.k4 = intr.k4;
-                calib.k5 = intr.k5;
-                calib.k6 = intr.k6;
-                calib.p1 = intr.p1;
-                calib.p2 = intr.p2;
-                coreg.setToFIntrinsics(calib);
-            },
-            py::arg("intrinsics"),
-            "Set ToF intrinsics from an IntrinsicParameters object.")
-        .def(
-            "setToFIntrinsicsFromCamera",
-            [](aditof::RGBDCoregistration &coreg, aditof::Camera &cam) {
-                aditof::CameraDetails details;
-                aditof::Status status = cam.getDetails(details);
-                if (status != aditof::Status::OK)
-                    return status;
-                aditof::CameraIntrinsicsCalib calib;
-                calib.fx = details.intrinsics.fx;
-                calib.fy = details.intrinsics.fy;
-                calib.cx = details.intrinsics.cx;
-                calib.cy = details.intrinsics.cy;
-                calib.codx = details.intrinsics.codx;
-                calib.cody = details.intrinsics.cody;
-                calib.k1 = details.intrinsics.k1;
-                calib.k2 = details.intrinsics.k2;
-                calib.k3 = details.intrinsics.k3;
-                calib.k4 = details.intrinsics.k4;
-                calib.k5 = details.intrinsics.k5;
-                calib.k6 = details.intrinsics.k6;
-                calib.p1 = details.intrinsics.p1;
-                calib.p2 = details.intrinsics.p2;
-                coreg.setToFIntrinsics(calib);
-                return aditof::Status::OK;
-            },
-            py::arg("camera"),
-            "Read ToF intrinsics directly from a live camera (getDetails).")
-        .def(
-            "buildToFToRGBMap",
-            [](aditof::RGBDCoregistration &coreg,
-               py::array_t<uint16_t, py::array::c_style | py::array::forcecast>
-                   depth_in,
-               uint32_t tofWidth, uint32_t tofHeight, uint32_t rgbWidth,
-               uint32_t rgbHeight) {
-                py::buffer_info info = depth_in.request();
-                if (static_cast<size_t>(info.size) <
-                    static_cast<size_t>(tofWidth) * tofHeight) {
+               py::array_t<int16_t, py::array::c_style | py::array::forcecast>
+                   xyz_in,
+               py::array_t<uint8_t, py::array::c_style | py::array::forcecast>
+                   bgr_in) {
+                py::buffer_info xyz = xyz_in.request();
+                py::buffer_info bgr = bgr_in.request();
+                if (xyz.ndim < 2 || xyz.shape[xyz.ndim - 1] != 3) {
                     throw std::invalid_argument(
-                        "depth must hold tof_width * tof_height values");
+                        "xyz must end in a dimension of 3 (X, Y, Z)");
+                }
+                if (bgr.ndim != 3 || bgr.shape[2] != 3) {
+                    throw std::invalid_argument("bgr must be H x W x 3");
                 }
 
-                const std::vector<py::ssize_t> shape = {
-                    static_cast<py::ssize_t>(tofHeight),
-                    static_cast<py::ssize_t>(tofWidth)};
-                py::array_t<int32_t> rgb_u(shape);
-                py::array_t<int32_t> rgb_v(shape);
+                std::vector<py::ssize_t> shape(xyz.shape.begin(),
+                                               xyz.shape.end());
+                shape.back() = 4;
+                py::array_t<uint8_t> rgba(shape);
 
-                aditof::Status status = coreg.buildToFToRGBMap(
-                    static_cast<const uint16_t *>(info.ptr), tofWidth,
-                    tofHeight, rgb_u.mutable_data(), rgb_v.mutable_data(),
-                    rgbWidth, rgbHeight);
+                const uint32_t rgbWidth = static_cast<uint32_t>(bgr.shape[1]);
+                aditof::Status status = coreg.colorizePointCloud(
+                    static_cast<const int16_t *>(xyz.ptr),
+                    static_cast<std::size_t>(xyz.size / 3),
+                    static_cast<const uint8_t *>(bgr.ptr), rgbWidth,
+                    static_cast<uint32_t>(bgr.shape[0]), rgbWidth * 3u,
+                    rgba.mutable_data());
                 if (status != aditof::Status::OK) {
-                    throw std::runtime_error(
-                        "buildToFToRGBMap failed; is the calibration loaded?");
+                    throw std::runtime_error("colorizePointCloud failed; is "
+                                             "the calibration loaded?");
                 }
-                return py::make_tuple(rgb_u, rgb_v);
+                return rgba;
             },
-            py::arg("depth"), py::arg("tof_width"), py::arg("tof_height"),
-            py::arg("rgb_width"), py::arg("rgb_height"),
-            "For each ToF pixel (H x W uint16 mm) return the RGB pixel it "
-            "projects to as (rgb_u, rgb_v), two int32 arrays of ToF shape; "
-            "-1 where there is no mapping.")
+            py::arg("xyz"), py::arg("bgr"),
+            "Colour int16 xyz points (... x 3, mm) from a BGR image (H x W x "
+            "3). Returns ... x 4 uint8: R, G, B and a status in A (255 = "
+            "valid). Frames from a camera already carry this as xyz_color.")
         .def("isCalibrationLoaded",
              &aditof::RGBDCoregistration::isCalibrationLoaded);
 

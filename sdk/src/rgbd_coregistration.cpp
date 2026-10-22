@@ -68,16 +68,11 @@ Status RGBDCoregistration::setCalibration(const RGBDCalibration &calib) {
     return Status::OK;
 }
 
-void RGBDCoregistration::setToFIntrinsics(
-    const CameraIntrinsicsCalib &tofCalib) {
-    m_calib.tof = tofCalib;
-}
-
 // ---------------------------------------------------------------------------
 // Load from the 160-byte (40-float) GET_RGBD_CALIBRATION_DATA (0x30) response.
 //
 // Layout (all IEEE-754 LE float32, matching firmware doc):
-//   [0 –13] ToF intrinsics   (firmware, per-mode)
+//   [0 –13] ToF intrinsics   (active mode)
 //   [14–27] RGB intrinsics   (flash chunk 0x61)
 //   [28–39] Extrinsics rgb2tof: r11..r33, t1..t3  (translation in metres)
 // ---------------------------------------------------------------------------
@@ -145,50 +140,6 @@ Status RGBDCoregistration::loadCalibrationFrom160Bytes(const uint8_t *data,
 }
 
 // ---------------------------------------------------------------------------
-// Undistort a normalised ToF image point: invert the rational Brown-Conrady
-// model (OpenCV convention, same as cv::undistortPoints) by fixed-point
-// iteration. The coefficients describe ideal -> distorted, so the observed
-// pixel must be inverted, not run through the forward model.
-//
-//   radial = (1 + k1*r2 + k2*r4 + k3*r6) / (1 + k4*r2 + k5*r4 + k6*r6)
-//   x_d = radial*x + 2*p1*x*y + p2*(r2 + 2*x^2)
-//   y_d = radial*y + p1*(r2 + 2*y^2) + 2*p2*x*y
-// ---------------------------------------------------------------------------
-void RGBDCoregistration::undistortToFPoint(float x_norm, float y_norm,
-                                           float &x_undist,
-                                           float &y_undist) const {
-    const auto &K = m_calib.tof;
-    constexpr int kIterations = 5; // cv::undistortPoints default
-
-    const float x0 = x_norm - K.codx;
-    const float y0 = y_norm - K.cody;
-    float xp = x0;
-    float yp = y0;
-
-    for (int i = 0; i < kIterations; ++i) {
-        const float r2 = xp * xp + yp * yp;
-        const float r4 = r2 * r2;
-        const float r6 = r4 * r2;
-        const float numer = 1.0f + K.k1 * r2 + K.k2 * r4 + K.k3 * r6;
-        const float denom = 1.0f + K.k4 * r2 + K.k5 * r4 + K.k6 * r6;
-        const float radial = numer / denom;
-        if (!(radial > 0.0f)) {
-            // Diverged (same guard as cv::undistortPoints): keep the raw point
-            xp = x0;
-            yp = y0;
-            break;
-        }
-        const float dx = 2.0f * K.p1 * xp * yp + K.p2 * (r2 + 2.0f * xp * xp);
-        const float dy = K.p1 * (r2 + 2.0f * yp * yp) + 2.0f * K.p2 * xp * yp;
-        xp = (x0 - dx) / radial;
-        yp = (y0 - dy) / radial;
-    }
-
-    x_undist = xp + K.codx;
-    y_undist = yp + K.cody;
-}
-
-// ---------------------------------------------------------------------------
 // Project a normalised 3-D direction (X/Z, Y/Z) through the RGB lens model
 // and return pixel coordinates.
 // ---------------------------------------------------------------------------
@@ -215,75 +166,72 @@ void RGBDCoregistration::projectToRGB(float x_norm, float y_norm, float &u_px,
     v_px = K.fy * y_dist + K.cy;
 }
 
-// ---------------------------------------------------------------------------
-// Build the per-ToF-pixel lookup table into the RGB image: rgb_u/rgb_v get
-// the RGB pixel each valid ToF pixel (d > 0) projects to, or -1 when the
-// pixel has no depth, is behind the RGB camera or lands outside the image.
-// Pixels are mapped independently, so a point hidden from the RGB camera
-// still gets the colour of whatever is in front of it.
-// ---------------------------------------------------------------------------
-Status RGBDCoregistration::buildToFToRGBMap(const uint16_t *depth_mm,
-                                            uint32_t tofWidth,
-                                            uint32_t tofHeight, int32_t *rgb_u,
-                                            int32_t *rgb_v, uint32_t rgbWidth,
-                                            uint32_t rgbHeight) const {
+Status RGBDCoregistration::colorizePointCloud(
+    const int16_t *xyz, std::size_t numPoints, const uint8_t *bgr,
+    uint32_t rgbWidth, uint32_t rgbHeight, uint32_t rgbStride,
+    uint8_t *rgba) const {
 
     if (!m_calibLoaded) {
         LOG(ERROR) << "RGBDCoregistration: calibration not loaded";
         return Status::UNAVAILABLE;
     }
-    if (!depth_mm || !rgb_u || !rgb_v) {
+    if (!xyz || !bgr || !rgba || rgbStride < rgbWidth * 3u) {
         return Status::INVALID_ARGUMENT;
     }
 
-    const std::size_t nPixels = static_cast<std::size_t>(tofWidth) * tofHeight;
-    std::fill(rgb_u, rgb_u + nPixels, -1);
-    std::fill(rgb_v, rgb_v + nPixels, -1);
-
-    const auto &tofK = m_calib.tof;
     const float *R = m_calib.extrinsics.R;
     const float *t = m_calib.extrinsics.t;
+    const auto &K = m_calib.rgb;
     const int iRgbW = static_cast<int>(rgbWidth);
     const int iRgbH = static_cast<int>(rgbHeight);
 
-    for (uint32_t row = 0; row < tofHeight; ++row) {
-        for (uint32_t col = 0; col < tofWidth; ++col) {
-            const uint32_t idx = row * tofWidth + col;
-            const uint16_t d = depth_mm[idx];
-            if (d == 0)
-                continue;
+    // The rational lens model can fold far off-image rays back into the
+    // image; rays well beyond the image corners are rejected first.
+    const float edgeX =
+        std::max(K.cx, static_cast<float>(rgbWidth) - K.cx) / K.fx;
+    const float edgeY =
+        std::max(K.cy, static_cast<float>(rgbHeight) - K.cy) / K.fy;
+    const float maxRay2 = 2.0f * (edgeX * edgeX + edgeY * edgeY);
 
-            float x_norm = (static_cast<float>(col) - tofK.cx) / tofK.fx;
-            float y_norm = (static_cast<float>(row) - tofK.cy) / tofK.fy;
+    for (std::size_t i = 0; i < numPoints; ++i) {
+        const int16_t *p = xyz + 3 * i;
+        uint8_t *out = rgba + 4 * i;
+        out[0] = out[1] = out[2] = 0;
 
-            float x_u, y_u;
-            undistortToFPoint(x_norm, y_norm, x_u, y_u);
-
-            // d is radial depth — convert to Z-depth before back-projection
-            float ray_len = std::sqrt(x_u * x_u + y_u * y_u + 1.0f);
-            float Zf = static_cast<float>(d) / ray_len;
-            float Xf = x_u * Zf;
-            float Yf = y_u * Zf;
-
-            float Xr = R[0] * Xf + R[1] * Yf + R[2] * Zf + t[0];
-            float Yr = R[3] * Xf + R[4] * Yf + R[5] * Zf + t[1];
-            float Zr = R[6] * Xf + R[7] * Yf + R[8] * Zf + t[2];
-
-            if (Zr <= 0.0f)
-                continue;
-
-            float u_px, v_px;
-            projectToRGB(Xr / Zr, Yr / Zr, u_px, v_px);
-
-            int u = static_cast<int>(u_px + 0.5f);
-            int v = static_cast<int>(v_px + 0.5f);
-
-            if (u < 0 || u >= iRgbW || v < 0 || v >= iRgbH)
-                continue;
-
-            rgb_u[idx] = u;
-            rgb_v[idx] = v;
+        if (p[2] == 0) {
+            out[3] = static_cast<uint8_t>(XYZColorStatus::NoDepth);
+            continue;
         }
+
+        const float X = p[0], Y = p[1], Z = p[2];
+        const float Xr = R[0] * X + R[1] * Y + R[2] * Z + t[0];
+        const float Yr = R[3] * X + R[4] * Y + R[5] * Z + t[1];
+        const float Zr = R[6] * X + R[7] * Y + R[8] * Z + t[2];
+        out[3] = static_cast<uint8_t>(XYZColorStatus::OutOfView);
+        if (Zr <= 0.0f) {
+            continue;
+        }
+
+        const float xn = Xr / Zr;
+        const float yn = Yr / Zr;
+        if (xn * xn + yn * yn > maxRay2) {
+            continue;
+        }
+
+        float u_px, v_px;
+        projectToRGB(xn, yn, u_px, v_px);
+        const int u = static_cast<int>(std::lround(u_px));
+        const int v = static_cast<int>(std::lround(v_px));
+        if (u < 0 || u >= iRgbW || v < 0 || v >= iRgbH) {
+            continue;
+        }
+
+        const uint8_t *px = bgr + static_cast<std::size_t>(v) * rgbStride +
+                            static_cast<std::size_t>(u) * 3u;
+        out[0] = px[2];
+        out[1] = px[1];
+        out[2] = px[0];
+        out[3] = static_cast<uint8_t>(XYZColorStatus::Valid);
     }
 
     return Status::OK;

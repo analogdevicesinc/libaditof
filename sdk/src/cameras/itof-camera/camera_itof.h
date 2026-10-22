@@ -31,6 +31,7 @@
 #include "managers/camera_frame_acquisition_manager.h"
 #include "managers/camera_initialization_manager.h"
 #include "managers/recording_manager.h"
+#include "managers/rgbd_fusion_manager.h"
 #include "tofi/tofi_compute.h"
 #include "tofi/tofi_config.h"
 #include "tofi/tofi_util.h"
@@ -198,6 +199,9 @@ class CameraItof : public aditof::Camera {
      */
     aditof::Status setRotationEnabled(bool enable) override;
     aditof::Status readRGBDCalibrationFromChip(uint8_t data[160]) override;
+    aditof::Status getRGBDCalibration(aditof::RGBDCalibration &calib) override;
+    // m_rgbdCalibBuf with the ToF intrinsics set for the active mode.
+    void composeRGBDCalibration(uint8_t data[160]) const;
 
     /**
      * Configure ADSD3500 with ini parameters
@@ -240,6 +244,8 @@ class CameraItof : public aditof::Camera {
     std::unique_ptr<aditof::CameraInitializationManager> m_initManager;
     // Camera frame acquisition manager (Phase 8C refactoring)
     std::unique_ptr<aditof::CameraFrameAcquisitionManager> m_frameAcqManager;
+    // RGB + point cloud fusion
+    std::unique_ptr<aditof::RgbdFusionManager> m_rgbdFusion;
 
     aditof::CameraDetails m_details;
     std::shared_ptr<aditof::DepthSensorInterface> m_depthSensor;
@@ -255,8 +261,8 @@ class CameraItof : public aditof::Camera {
     bool m_isOffline;
     std::string m_netLinkTest;
 
-    /// 160-byte RGBD calibration pre-fetched at initialize() before streaming.
-    /// Empty if chip is not provisioned.  Returned by readRGBDCalibrationFromChip().
+    /// Raw 0x30 response (full-sensor ToF intrinsics), read once per session.
+    /// Empty if the chip is not provisioned.
     std::vector<uint8_t> m_rgbdCalibBuf;
 
     uint8_t m_depthBitsPerPixel;

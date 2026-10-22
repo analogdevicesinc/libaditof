@@ -25,6 +25,7 @@
 #define CAMERA_H
 
 #include "aditof/adsd_errs.h"
+#include "aditof/rgbd_coregistration.h"
 #include "camera_definitions.h"
 #include "sdk_exports.h"
 #include "status_definitions.h"
@@ -651,7 +652,8 @@ class SDK_API Camera {
      * Issues the GET_RGBD_CALIBRATION_DATA burst command (0x30) to the
      * ADSD3500 and returns the 160-byte response.  The response contains
      * 40 IEEE-754 LE float32 values:
-     *   [0 –13] ToF intrinsics  (firmware, per-mode)
+     *   [0 –13] ToF intrinsics  (active mode: binning, crop and rotation
+     *                            applied by the SDK)
      *   [14–27] RGB intrinsics  (flash chunk 0x61)
      *   [28–39] Extrinsics rgb2tof — rotation then translation (metres)
      *
@@ -666,6 +668,20 @@ class SDK_API Camera {
      *         in playback, the recording has no calibration.
      */
     virtual aditof::Status readRGBDCalibrationFromChip(uint8_t data[160]) = 0;
+
+    /**
+     * @brief Get the RGBD calibration (command 0x30), decoded.
+     *
+     * Same source and timing rules as readRGBDCalibrationFromChip(). ToF
+     * intrinsics follow the active mode and rotation; extrinsics are tof2rgb
+     * with the translation in mm.
+     *
+     * @param[out] calib Decoded calibration, written only on success.
+     * @return Status::OK on success; Status::UNAVAILABLE if there is no
+     *         calibration.
+     */
+    virtual aditof::Status
+    getRGBDCalibration(aditof::RGBDCalibration &calib) = 0;
 };
 
 } // namespace aditof

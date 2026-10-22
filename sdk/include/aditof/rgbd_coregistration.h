@@ -31,20 +31,15 @@
 
 /**
  * @file rgbd_coregistration.h
- * @brief RGB-Depth coregistration: maps ToF depth pixels into RGB camera space.
+ * @brief RGB-Depth coregistration: colours ToF points from the RGB image.
  *
  * Algorithm overview
  * ==================
- * For each valid ToF pixel (u, v) with depth d (mm):
- *  1. Normalize:  x = (u - cx_tof) / fx_tof,  y = (v - cy_tof) / fy_tof
- *  2. Undistort by inverting the Brown-Conrady model (k1–k6, p1, p2, codx, cody)
- *  3. Back-project to 3-D using the radial depth d:
- *     Z = d / sqrt(x_u² + y_u² + 1),  P_tof = [x_u * Z,  y_u * Z,  Z]
- *  4. Transform:  P_rgb = R * P_tof + t   (tof2rgb extrinsics, t in mm)
- *  5. Project onto RGB image with optional RGB lens distortion
- *  6. The projected RGB pixel (u, v) is the result for that ToF pixel; it is
- *     -1 when the pixel has no depth, is behind the RGB camera or lands
- *     outside the RGB image.
+ * For each ToF point P_tof (the "xyz" frame, mm, already undistorted):
+ *  1. Transform:  P_rgb = R * P_tof + t   (tof2rgb extrinsics, t in mm)
+ *  2. Project onto the RGB image with the RGB lens distortion
+ *  3. Take the colour of the nearest RGB pixel; points with no depth, behind
+ *     the RGB camera or outside the RGB image get a status instead.
  *
  * Calibration source
  * ==================
@@ -110,8 +105,22 @@ struct RGBDCalibration {
 };
 
 /**
+ * @brief Alpha byte of a coloured point (R, G, B, A).
+ */
+enum class XYZColorStatus : uint8_t {
+    NoDepth = 0,   ///< The point has no depth
+    OutOfView = 1, ///< The point is behind or outside the RGB image
+    Occluded = 2,  ///< A nearer point hides it from the RGB camera
+    NoColor = 3,   ///< In the RGB view, but this frame has no RGB image
+    Valid = 255    ///< R, G, B hold the colour of the point
+};
+
+/**
  * @class RGBDCoregistration
- * @brief Maps a ToF depth frame into RGB camera image space.
+ * @brief Colours a ToF point cloud from the RGB image.
+ *
+ * The camera does this itself and returns the result as "xyz_color"; use
+ * this class directly only for data captured elsewhere.
  *
  * Usage:
  * @code
@@ -120,13 +129,13 @@ struct RGBDCalibration {
  *   camera->readRGBDCalibrationFromChip(calib);
  *   coreg.loadCalibrationFrom160Bytes(calib, sizeof(calib));
  *
- *   std::vector<int32_t> rgbU(tofW * tofH), rgbV(tofW * tofH);
- *   coreg.buildToFToRGBMap(depth.data(), tofW, tofH, rgbU.data(),
- *                          rgbV.data(), rgbW, rgbH);
+ *   std::vector<uint8_t> rgba(numPoints * 4);
+ *   coreg.colorizePointCloud(xyz, numPoints, bgr, rgbW, rgbH, rgbW * 3,
+ *                            rgba.data());
  * @endcode
  *
- * Thread safety: const methods (buildToFToRGBMap) are safe to call
- * concurrently from multiple threads once calibration is loaded.
+ * Thread safety: const methods are safe to call concurrently once the
+ * calibration is loaded.
  */
 class SDK_API RGBDCoregistration {
   public:
@@ -144,12 +153,10 @@ class SDK_API RGBDCoregistration {
      *        (command 0x30) chip response.
      *
      * Layout: 40 × 4-byte LE float32
-     *   [0 –13] ToF intrinsics  (from firmware, per active mode)
+     *   [0 –13] ToF intrinsics  (active mode)
      *   [14–27] RGB intrinsics  (from flash chunk 0x61)
      *   [28–39] Extrinsics rgb2tof — rotation (row-major) then translation (m)
      *
-     * Both the ToF and RGB intrinsics are stored; the separate
-     * setToFIntrinsics() call is therefore NOT needed after this.
      * Translation is converted internally from metres to mm and the
      * rgb2tof extrinsic is inverted to tof2rgb.
      *
@@ -161,18 +168,6 @@ class SDK_API RGBDCoregistration {
     Status loadCalibrationFrom160Bytes(const uint8_t *data, std::size_t size);
 
     /**
-     * @brief Set ToF camera intrinsics (obtained from ADSD3500 ISP).
-     *
-     * Overrides the ToF intrinsics stored by loadCalibrationFrom160Bytes(),
-     * e.g. with the intrinsics reported by the camera details.
-     * The CameraIntrinsicsCalib field order matches CameraIntrinsics from
-     * tofi_camera_intrinsics.h exactly.
-     *
-     * @param tofCalib ToF intrinsics (fx,fy,cx,cy,codx,cody,k1–k6,p2,p1).
-     */
-    void setToFIntrinsics(const CameraIntrinsicsCalib &tofCalib);
-
-    /**
      * @brief Set calibration directly from a fully populated struct.
      * @param calib Calibration data (extrinsics must be tof2rgb, t in mm).
      * @return Status::OK always.
@@ -180,33 +175,27 @@ class SDK_API RGBDCoregistration {
     Status setCalibration(const RGBDCalibration &calib);
 
     /**
-     * @brief Build a per-ToF-pixel lookup table mapping each ToF pixel to its
-     *        corresponding (u, v) coordinate in the RGB image plane.
+     * @brief Colour each ToF point with the RGB pixel it projects to.
      *
-     * For each ToF pixel (col, row) with depth d > 0, applies the full
-     * tof→rgb geometric transform and writes the projected RGB pixel
-     * coordinates into rgb_u and rgb_v.  Pixels that are invalid (d == 0),
-     * behind the RGB camera, or project outside [0, rgbWidth) × [0, rgbHeight)
-     * are written as -1.
+     * Each point is moved into the RGB camera (tof2rgb), projected through
+     * the RGB lens model and given the colour of the nearest RGB pixel.
      *
-     * Pixels are mapped independently: a point hidden from the RGB camera by
-     * a nearer one still gets the nearer one's pixel.
-     *
-     * Output arrays must be pre-allocated to tofWidth × tofHeight elements.
-     *
-     * @param depth_mm   ToF depth image, row-major, uint16 mm (0 = invalid).
-     * @param tofWidth   Width of the ToF frame.
-     * @param tofHeight  Height of the ToF frame.
-     * @param rgb_u      Output u (column) in RGB space per ToF pixel, or -1.
-     * @param rgb_v      Output v (row)    in RGB space per ToF pixel, or -1.
-     * @param rgbWidth   Width of the RGB frame.
-     * @param rgbHeight  Height of the RGB frame.
+     * @param xyz        Points, int16 mm, X Y Z per point (the "xyz" frame).
+     * @param numPoints  Number of points.
+     * @param bgr        RGB image, 3 bytes per pixel in B, G, R order.
+     * @param rgbWidth   Width of the RGB image.
+     * @param rgbHeight  Height of the RGB image.
+     * @param rgbStride  Bytes per row of the RGB image.
+     * @param rgba       Output, 4 bytes per point: R, G, B and an
+     *                   XYZColorStatus in A. R, G, B are 0 unless A is Valid.
      * @return Status::OK on success; Status::UNAVAILABLE if calibration not
-     *         loaded; Status::INVALID_ARGUMENT if any pointer is null.
+     *         loaded; Status::INVALID_ARGUMENT on a null pointer or a stride
+     *         smaller than one row.
      */
-    Status buildToFToRGBMap(const uint16_t *depth_mm, uint32_t tofWidth,
-                            uint32_t tofHeight, int32_t *rgb_u, int32_t *rgb_v,
-                            uint32_t rgbWidth, uint32_t rgbHeight) const;
+    Status colorizePointCloud(const int16_t *xyz, std::size_t numPoints,
+                              const uint8_t *bgr, uint32_t rgbWidth,
+                              uint32_t rgbHeight, uint32_t rgbStride,
+                              uint8_t *rgba) const;
 
     /** @return true once a calibration has been successfully loaded. */
     bool isCalibrationLoaded() const { return m_calibLoaded; }
@@ -215,20 +204,6 @@ class SDK_API RGBDCoregistration {
     const RGBDCalibration &getCalibration() const { return m_calib; }
 
   private:
-    /**
-     * @brief Undistort a normalised ToF image point in-place.
-     *
-     * Inverts the rational Brown-Conrady distortion model (iteratively, like
-     * cv::undistortPoints) using the ToF intrinsics stored in m_calib.tof.
-     *
-     * @param[in]  x_norm   Normalized x coordinate: (u - cx) / fx
-     * @param[in]  y_norm   Normalized y coordinate: (v - cy) / fy
-     * @param[out] x_undist Undistorted normalised x
-     * @param[out] y_undist Undistorted normalised y
-     */
-    void undistortToFPoint(float x_norm, float y_norm, float &x_undist,
-                           float &y_undist) const;
-
     /**
      * @brief Project a normalised 3-D ray onto the RGB image with distortion.
      *
