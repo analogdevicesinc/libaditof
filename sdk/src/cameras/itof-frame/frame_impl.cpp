@@ -39,8 +39,7 @@ struct FrameImpl::ImplData {
         m_dataLocations; /**< Map of frame data type names to pointers within m_allData buffer */
     std::shared_ptr<uint16_t[]>
         m_allData; /**< Consolidated heap buffer holding every data type listed in the frame details */
-    size_t allDataNbBytes =
-        0; /**< Total size in bytes of m_allData */
+    size_t allDataNbBytes = 0; /**< Total size in bytes of m_allData */
 };
 
 /**
@@ -317,6 +316,10 @@ void FrameImpl::allocFrameData(const aditof::FrameDetails &details) {
                                           3 +
                                       sizeof(uint16_t) - 1) /
                                      sizeof(uint16_t));
+        } else if (frameDetail.type == "xyz_color") {
+            // R, G, B, A per point
+            sz = (unsigned long int)(frameDetail.height * frameDetail.width *
+                                     4 / sizeof(uint16_t));
         } else {
             sz = (unsigned long int)(frameDetail.height * frameDetail.width);
         }
