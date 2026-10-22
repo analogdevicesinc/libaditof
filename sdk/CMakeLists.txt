@@ -215,6 +215,7 @@ add_library(${PROJECT_NAME} SHARED
     $<$<BOOL:${WITH_OFFLINE}>:${OFFLINE_HEADERS}>
     $<$<BOOL:${WITH_RGB_CAMERA}>:${RGB_CAMERA_ALL_SOURCES}>
     $<$<BOOL:${WITH_RGB_CAMERA}>:${RGB_CAMERA_ALL_HEADERS}>
+    src/cameras/itof-camera/managers/rgbd_fusion_manager.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE crc32)

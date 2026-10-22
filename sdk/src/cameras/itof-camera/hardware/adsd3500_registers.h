@@ -65,6 +65,9 @@
 /** Burst mode command (switch to burst mode) */
 #define ADSD3500_REG_BURST_MODE_CMD 0x0019
 
+/** Burst read of the 160-byte RGBD calibration (ToF K, RGB K, rgb2tof) */
+#define ADSD3500_CMD_GET_RGBD_CALIBRATION 0x0030
+
 // ============================================================================
 // Threshold Configuration (Write + Read Register Pairs)
 // ============================================================================
