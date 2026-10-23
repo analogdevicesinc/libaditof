@@ -1422,8 +1422,6 @@ void BufferProcessor::captureRGBFrameThread() {
     uint64_t rgbOverflows = 0;
     uint64_t rgbConversionFailures = 0;
     while (!stopThreadsFlag.load(std::memory_order_acquire)) {
-        // Snapshot both atomics once per iteration so we use a consistent
-        // view and avoid TOCTOU between the null-check and the getFrame call.
         aditof::RGBSensor *sensor = m_rgbSensor.load(std::memory_order_acquire);
         bool enabled = m_rgbCaptureEnabled.load(std::memory_order_acquire);
         if (!sensor || !enabled) {
