@@ -10,6 +10,7 @@
 #ifdef HAS_RGB_CAMERA
 
 #include "aditof/ar0234_sensor.h"
+#include "rgb_camera_contract.h"
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -99,6 +100,7 @@ class RGBV4L2FrameGrabberBackend : public RGBBackend_Internal {
     std::atomic<uint64_t> m_missedFrames{0};
     bool m_haveSequence = false;
     uint32_t m_lastSequence = 0;
+    StandInFrameCounter m_standInCounter;
 
     /// 10-bit sample to 8-bit output, per channel (B, G, R), with gain and gamma.
     std::array<std::array<uint8_t, 1024>, 3> m_lut;

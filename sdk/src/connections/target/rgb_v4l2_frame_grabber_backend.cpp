@@ -296,6 +296,7 @@ bool RGBV4L2FrameGrabberBackend::start() {
     m_flickerGain = 1.0;
     m_levelAvg = 0;
     m_haveSequence = false;
+    m_standInCounter.reset();
     m_frameCount = 0;
     m_missedFrames = 0;
 
@@ -438,8 +439,8 @@ bool RGBV4L2FrameGrabberBackend::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
 
     // Stand-in for the GW5200 embedded data: this sensor sends none.
     RgbFrameMetadata metadata;
-    metadata.outputFrameCount = sequence;
-    metadata.inputFrameCount = sequence;
+    metadata.outputFrameCount = m_standInCounter.next(monotonicUs);
+    metadata.inputFrameCount = metadata.outputFrameCount;
     metadata.outputTimestampMs = frame.monotonicUs / 1000;
     metadata.inputTimestampMs = metadata.outputTimestampMs;
     writeGw5AncillaryData(metadata, frame.embeddedData);
