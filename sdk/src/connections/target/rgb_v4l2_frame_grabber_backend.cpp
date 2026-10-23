@@ -6,7 +6,7 @@
  */
 #include "rgb_v4l2_frame_grabber_backend.h"
 
-#if defined(HAS_RGB_CAMERA) && defined(HAS_V4L2_BACKEND)
+#ifdef HAS_RGB_CAMERA
 
 #include <algorithm>
 #include <cctype>
@@ -384,15 +384,6 @@ bool RGBV4L2FrameGrabberBackend::requeueBuffer(v4l2_buffer &buf) {
     return true;
 }
 
-bool RGBV4L2FrameGrabberBackend::discardFrame(uint32_t timeoutMs) {
-    v4l2_buffer buf;
-    if (!dequeueBuffer(buf, timeoutMs)) {
-        return false;
-    }
-    const bool ok = acceptBuffer(buf);
-    return requeueBuffer(buf) && ok;
-}
-
 bool RGBV4L2FrameGrabberBackend::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
     v4l2_buffer buf;
     if (!dequeueBuffer(buf, timeoutMs)) {
@@ -688,4 +679,4 @@ std::string RGBV4L2FrameGrabberBackend::getStatistics() const {
 
 } // namespace aditof
 
-#endif // HAS_RGB_CAMERA && HAS_V4L2_BACKEND
+#endif // HAS_RGB_CAMERA

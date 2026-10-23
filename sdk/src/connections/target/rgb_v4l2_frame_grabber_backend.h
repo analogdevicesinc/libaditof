@@ -7,7 +7,7 @@
 #ifndef RGB_V4L2_FRAME_GRABBER_BACKEND_H
 #define RGB_V4L2_FRAME_GRABBER_BACKEND_H
 
-#if defined(HAS_RGB_CAMERA) && defined(HAS_V4L2_BACKEND)
+#ifdef HAS_RGB_CAMERA
 
 #include "aditof/ar0234_sensor.h"
 #include <array>
@@ -54,7 +54,6 @@ class RGBV4L2FrameGrabberBackend : public RGBBackend_Internal {
     bool stop() override;
     bool isRunning() const override { return m_isRunning; }
     bool getFrame(RGBFrame &frame, uint32_t timeoutMs = 1000) override;
-    bool discardFrame(uint32_t timeoutMs = 1000) override;
     std::string getStatistics() const override;
 
   private:
@@ -112,6 +111,6 @@ class RGBV4L2FrameGrabberBackend : public RGBBackend_Internal {
 
 } // namespace aditof
 
-#endif // HAS_RGB_CAMERA && HAS_V4L2_BACKEND
+#endif // HAS_RGB_CAMERA
 
 #endif // RGB_V4L2_FRAME_GRABBER_BACKEND_H

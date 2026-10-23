@@ -37,7 +37,6 @@
  * Thread-safe queue management ensures proper buffer lifecycle and prevents memory leaks.
  */
 
-#include "../nv12_to_rgb.h"
 #include "platform/platform_impl.h"
 #include <aditof/log.h>
 #include <aditof/utils.h>
@@ -1391,23 +1390,9 @@ aditof::Status BufferProcessor::setRGBSensor(aditof::RGBSensor *sensor) {
     return aditof::Status::OK;
 }
 
-size_t BufferProcessor::flushReadyDepthFrames() {
-    size_t flushed = 0;
-    Tofi_v4l2_buffer frame;
-    while (m_process_done_Q.pop(frame, std::chrono::milliseconds(0))) {
-        if (frame.data)
-            m_v4l2_input_buffer_Q.push(frame.data);
-        if (frame.tofiBuffer)
-            m_tofi_io_Buffer_Q.push(frame.tofiBuffer);
-        ++flushed;
-    }
-    return flushed;
-}
-
-aditof::Status BufferProcessor::enableRGBCapture(bool enable, int dropFrames) {
+aditof::Status BufferProcessor::enableRGBCapture(bool enable) {
     if (enable) {
         m_rgb_frame_Q.clear();
-        m_rgbDropCount.store(dropFrames, std::memory_order_release);
     }
     m_rgbCaptureEnabled.store(enable, std::memory_order_release);
     return aditof::Status::OK;
@@ -1448,49 +1433,16 @@ void BufferProcessor::captureRGBFrameThread() {
             continue;
         }
         loggedWaiting = false;
-        int toDrop = m_rgbDropCount.load(std::memory_order_acquire);
-        if (toDrop > 0) {
-            const aditof::Status dropStatus = sensor->discardFrame(200);
-            if (dropStatus == aditof::Status::OK &&
-                m_rgbDropCount.compare_exchange_strong(
-                    toDrop, toDrop - 1, std::memory_order_acq_rel)) {
-                LOG(INFO) << "captureRGBFrameThread: dropped RGB frame, "
-                          << toDrop - 1 << " more to drop";
-            } else if (dropStatus == aditof::Status::UNAVAILABLE) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
-            }
-            continue;
-        }
-        aditof::RGBFrame rawFrame;
-        aditof::Status status = sensor->getFrame(rawFrame, 200);
-        if (status == aditof::Status::OK && rawFrame.isValid()) {
-            aditof::RGBFrame bgrFrame;
-            bool converted = true;
-            if (rawFrame.format == aditof::RGBPixelFormat::BGR) {
-                bgrFrame = std::move(rawFrame);
-            } else {
-                // Convert NV12 to BGR (3 bytes/pixel) before queuing
-                bgrFrame.width = rawFrame.width;
-                bgrFrame.height = rawFrame.height;
-                bgrFrame.timestamp = rawFrame.timestamp;
-                bgrFrame.format = aditof::RGBPixelFormat::BGR;
-                converted = aditof::convertNV12toBGR(
-                                rawFrame.data, bgrFrame.data, rawFrame.width,
-                                rawFrame.height) == aditof::Status::OK;
-            }
-            if (converted) {
-                if (m_rgb_frame_Q.push_overwrite(std::move(bgrFrame))) {
-                    // Consumer is slower than the camera; pairing drifts from here.
-                    if (++rgbOverflows == 1 || rgbOverflows % 100 == 0) {
-                        LOG(WARNING)
-                            << "captureRGBFrameThread: RGB queue full, "
-                               "dropped oldest frame ("
-                            << rgbOverflows << " total)";
-                    }
+        aditof::RGBFrame rgbFrame;
+        aditof::Status status = sensor->getFrame(rgbFrame, 200);
+        if (status == aditof::Status::OK && rgbFrame.isValid()) {
+            if (m_rgb_frame_Q.push_overwrite(std::move(rgbFrame))) {
+                // Consumer is slower than the camera; pairing drifts from here.
+                if (++rgbOverflows == 1 || rgbOverflows % 100 == 0) {
+                    LOG(WARNING) << "captureRGBFrameThread: RGB queue full, "
+                                    "dropped oldest frame ("
+                                 << rgbOverflows << " total)";
                 }
-            } else {
-                LOG(ERROR)
-                    << "captureRGBFrameThread: NV12->BGR conversion failed";
             }
         } else if (status == aditof::Status::UNAVAILABLE) {
             std::this_thread::sleep_for(std::chrono::milliseconds(20));

@@ -820,7 +820,7 @@ aditof::Status FrameHandlerImpl::SnapShotFrames(const char *baseFileName,
                          frameDetails.width, frameDetails.height);
     }
 
-    // Save RGB frame if available (convert from NV12 BGR output to RGB JPEG)
+    // Save RGB frame if available (convert from BGR to RGB JPEG)
     if (rgbFrame != nullptr) {
         FrameDataDetails rgbDetails;
         status = frame->getDataDetails("rgb", rgbDetails);

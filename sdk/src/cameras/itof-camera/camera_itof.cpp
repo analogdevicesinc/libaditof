@@ -354,13 +354,11 @@ aditof::Status CameraItof::start() {
 #ifdef HAS_RGB_CAMERA
     m_rgbSync = RgbSyncStats();
 
-    // The V4L2 RGB sensor is triggered by the depth stream, so it has to be
-    // armed first; its start() returns once it waits for triggers.
-    const bool rgbFirst =
-        m_rgbEnabled && m_rgbSensor &&
-        m_rgbSensor->getBackendType() == aditof::RGBBackend::V4L2;
+    // The RGB sensor is triggered by the depth stream, so it has to be armed
+    // first; its start() returns once it waits for triggers.
+    const bool useRgb = m_rgbEnabled && m_rgbSensor;
     BufferProcessor *rgbBufProc = nullptr;
-    if (rgbFirst) {
+    if (useRgb) {
         if (m_rgbSensor->start() != Status::OK) {
             LOG(WARNING)
                 << "Failed to start RGB sensor; continuing without RGB";
@@ -376,7 +374,7 @@ aditof::Status CameraItof::start() {
                 // The backend returns with its frame queue empty, so every RGB
                 // frame from here on is triggered by the depth stream.
                 rgbBufProc->setRGBSensor(m_rgbSensor.get());
-                rgbBufProc->enableRGBCapture(true, 0);
+                rgbBufProc->enableRGBCapture(true);
                 LOG(INFO) << "RGB sensor started before depth";
             }
         }
@@ -388,7 +386,7 @@ aditof::Status CameraItof::start() {
     if (Status::OK != status) {
         LOG(ERROR) << "Error starting adsd3500.";
 #ifdef HAS_RGB_CAMERA
-        if (rgbFirst && m_rgbSensor->isCapturing()) {
+        if (useRgb && m_rgbSensor->isCapturing()) {
             if (rgbBufProc) {
                 rgbBufProc->enableRGBCapture(false);
             }
@@ -398,38 +396,6 @@ aditof::Status CameraItof::start() {
         return status;
     }
     m_devStreaming = true;
-
-#ifdef HAS_RGB_CAMERA
-    // Start RGB sensor AFTER depth with a delay to let ToF fully initialize
-    // before Argus starts. Starting Argus before V4L2 STREAMON is settled
-    // disrupts the ADSD3500 MIPI link and stops V4L2 frame delivery.
-    if (!rgbFirst && m_rgbEnabled && m_rgbSensor) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        if (m_rgbSensor->start() != Status::OK) {
-            LOG(WARNING)
-                << "Failed to start RGB sensor; continuing without RGB";
-            m_rgbStatus.enabled = false;
-        } else {
-            LOG(INFO) << "RGB sensor started";
-            // Wire RGB sensor to BufferProcessor NOW that Argus is fully PLAYING
-            auto adsd3500Sensor =
-                std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
-            if (adsd3500Sensor) {
-                auto *bufProc = dynamic_cast<BufferProcessor *>(
-                    adsd3500Sensor->getBufferProcessor());
-                if (bufProc) {
-                    bufProc->setRGBSensor(m_rgbSensor.get());
-                    bufProc->enableRGBCapture(true);
-                    // Depth frames queued while Argus started have no RGB partner.
-                    const size_t flushed = bufProc->flushReadyDepthFrames();
-                    LOG(INFO) << "Dropped " << flushed
-                              << " queued depth frames that predate RGB";
-                    LOG(INFO) << "RGB sensor wired to BufferProcessor";
-                }
-            }
-        }
-    }
-#endif
 
     return aditof::Status::OK;
 }
@@ -464,10 +430,7 @@ aditof::Status CameraItof::stop() {
 #ifdef HAS_RGB_CAMERA
     // Disable RGB capture in the BufferProcessor before any teardown so that
     // captureRGBFrameThread gates itself immediately if it is restarted by a
-    // subsequent setMode() call before start() re-enables it.  Without this,
-    // the thread restarts with m_rgbCaptureEnabled=true and calls getFrame()
-    // against an already-stopped GStreamer pipeline → "RGBSensor not
-    // capturing" error.
+    // subsequent setMode() call before start() re-enables it.
     {
         auto adsd3500Sensor =
             std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
@@ -877,7 +840,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             } else if (item == "conf") {
                 fDataDetails.subelementSize = sizeof(float);
             } else if (item == "rgb") {
-                // BGR, 3 bytes per pixel (GStreamer NV12 is converted to BGR)
+                // BGR, 3 bytes per pixel
                 fDataDetails.width = 1920;
                 fDataDetails.height = 1200;
 #ifdef HAS_RGB_CAMERA

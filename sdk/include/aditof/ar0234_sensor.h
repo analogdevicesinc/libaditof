@@ -4,7 +4,7 @@
  * High-level sensor class for AR0234 1920x1200 RGB camera.
  * This file contains everything needed for AR0234 camera:
  * - Sensor configuration and frame structures
- * - Internal backend interface (for GStreamer/V4L2)
+ * - Internal backend interface (V4L2)
  * - Main RGBSensor class for applications
  * 
  * Copyright (c) 2025 Analog Devices, Inc.
@@ -31,8 +31,9 @@ namespace aditof {
  * @brief Pixel layout of RGBFrame::data
  */
 enum class RGBPixelFormat {
-    NV12, ///< YUV 4:2:0 semi-planar, 1.5 bytes per pixel (GStreamer backend)
-    BGR   ///< 3 bytes per pixel, B G R order (V4L2 backend)
+    BGR,  ///< 3 bytes per pixel, B G R order (Bayer V4L2 backend)
+    UYVY, ///< YUV 4:2:2 packed, 2 bytes per pixel, U Y0 V Y1 order
+    YUYV  ///< YUV 4:2:2 packed, 2 bytes per pixel, Y0 U Y1 V order
 };
 
 /**
@@ -42,11 +43,11 @@ struct RGBFrame {
     std::vector<uint8_t> data; ///< Pixel data, laid out as described by format
     uint32_t width;            ///< Frame width in pixels
     uint32_t height;           ///< Frame height in pixels
-    uint64_t timestamp;        ///< Microseconds (V4L2 backend); GStreamer backend reports nanoseconds of pipeline time
+    uint64_t timestamp;        ///< V4L2 buffer timestamp in microseconds
     RGBPixelFormat format;     ///< Pixel layout of data
 
     RGBFrame()
-        : width(0), height(0), timestamp(0), format(RGBPixelFormat::NV12) {}
+        : width(0), height(0), timestamp(0), format(RGBPixelFormat::BGR) {}
 
     /// Get frame size in bytes
     size_t size() const { return data.size(); }
@@ -147,19 +148,16 @@ struct RGBSensorConfig {
  * @brief Backend type - which capture method is being used
  */
 enum class RGBBackend {
-    GSTREAMER, ///< GStreamer-based capture (nvarguscamerasrc)
-    V4L2,      ///< Direct V4L2 capture of the raw Bayer stream
+    V4L2, ///< Direct V4L2 capture of the raw Bayer stream
     UNKNOWN
 };
 
 /**
  * @brief Internal interface for RGB camera backends
  * 
- * This is used internally by RGBSensor to communicate with different
- * capture backends (GStreamer, V4L2). Applications should use
- * RGBSensor class instead of using this interface directly.
- * 
- * Each backend (GStreamer, V4L2) implements these methods.
+ * This is used internally by RGBSensor to communicate with the capture
+ * backend. Applications should use RGBSensor class instead of using this
+ * interface directly.
  */
 class RGBBackend_Internal {
   public:
@@ -201,14 +199,6 @@ class RGBBackend_Internal {
     virtual bool getFrame(RGBFrame &frame, uint32_t timeoutMs = 1000) = 0;
 
     /**
-     * @brief Get the next frame and throw it away, without converting it
-     */
-    virtual bool discardFrame(uint32_t timeoutMs = 1000) {
-        RGBFrame frame;
-        return getFrame(frame, timeoutMs);
-    }
-
-    /**
      * @brief Get statistics string
      */
     virtual std::string getStatistics() const = 0;
@@ -225,8 +215,7 @@ class RGBBackend_Internal {
  * This is the class applications should use. It provides a simple sensor-style
  * interface similar to other sensors in the SDK (like Adsd3500Sensor).
  * 
- * Internally, it uses one of the available backends (GStreamer or V4L2)
- * to actually capture frames, but you don't need to know which one.
+ * Internally, it uses a V4L2 backend to capture frames.
  * 
  * Usage Example:
  * ```cpp
@@ -275,8 +264,7 @@ class RGBSensor {
     /**
      * @brief Prepare the backend before start(), e.g. in setMode()
      *
-     * Opens and configures the V4L2 device. Does nothing for the GStreamer
-     * backend, whose pipeline is built in start().
+     * Opens and configures the V4L2 device.
      * @return Status::OK on success, Status::BUSY while capturing
      */
     Status initialize();
@@ -300,13 +288,6 @@ class RGBSensor {
      * @return Status::OK on success, Status::GENERIC_ERROR on timeout/error
      */
     Status getFrame(RGBFrame &frame, uint32_t timeoutMs = 1000);
-
-    /**
-     * @brief Wait for the next frame and drop it
-     * @param timeoutMs Timeout in milliseconds (default: 1000ms)
-     * @return Status::OK on success, Status::GENERIC_ERROR on timeout/error
-     */
-    Status discardFrame(uint32_t timeoutMs = 1000);
 
     /**
      * @brief Check if sensor is currently capturing
@@ -334,7 +315,7 @@ class RGBSensor {
 
     /**
      * @brief Get backend name being used
-     * @return Backend name (e.g., "GStreamer", "V4L2")
+     * @return Backend name (e.g., "V4L2")
      */
     std::string getBackendName() const;
 
@@ -355,7 +336,6 @@ class RGBSensor {
         m_backend;             ///< Internal backend implementation
     RGBSensorConfig m_config;  ///< Current configuration
     bool m_isOpen;             ///< Open state flag
-    bool m_argusProbeOk;       ///< True after first successful Argus probe
     bool m_backendInitialized; ///< True after initialize() prepared the backend
     uint64_t m_frameCount;     ///< Total frames captured
 };
