@@ -396,6 +396,15 @@ bool RGBV4L2FrameGrabberBackend::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
         return false;
     }
 
+    // VIDIOC_QBUF rewrites buf, so take its sequence and time first.
+    const uint32_t sequence = buf.sequence;
+    const uint64_t monotonicUs =
+        (buf.flags & V4L2_BUF_FLAG_TIMESTAMP_MASK) ==
+                V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
+            ? static_cast<uint64_t>(buf.timestamp.tv_sec) * 1000000ULL +
+                  static_cast<uint64_t>(buf.timestamp.tv_usec)
+            : 0;
+
     // The mapped buffer is not cached: demosaicing straight from it takes
     // about 20 times longer than from a copy.
     m_rawCopy.resize(static_cast<size_t>(m_stridePx) * m_config.height);
@@ -405,18 +414,13 @@ bool RGBV4L2FrameGrabberBackend::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
     }
 
     convertToBgr(m_rawCopy.data(), frame);
-    frame.sequence = buf.sequence;
-    frame.monotonicUs =
-        (buf.flags & V4L2_BUF_FLAG_TIMESTAMP_MASK) ==
-                V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
-            ? static_cast<uint64_t>(buf.timestamp.tv_sec) * 1000000ULL +
-                  static_cast<uint64_t>(buf.timestamp.tv_usec)
-            : 0;
+    frame.sequence = sequence;
+    frame.monotonicUs = monotonicUs;
 
     // Stand-in for the GW5200 embedded data: this sensor sends none.
     RgbFrameMetadata metadata;
-    metadata.outputFrameCount = buf.sequence;
-    metadata.inputFrameCount = buf.sequence;
+    metadata.outputFrameCount = sequence;
+    metadata.inputFrameCount = sequence;
     metadata.outputTimestampMs = frame.monotonicUs / 1000;
     metadata.inputTimestampMs = metadata.outputTimestampMs;
     writeGw5AncillaryData(metadata, frame.embeddedData);
