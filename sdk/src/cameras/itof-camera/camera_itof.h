@@ -305,12 +305,19 @@ class CameraItof : public aditof::Camera {
         uint64_t depthFrames = 0;
         uint64_t late = 0;
         uint64_t missing = 0;
-        uint64_t backlog = 0;
+        uint64_t skipped = 0; // RGB frames whose depth frame was lost
+        uint64_t resyncs = 0;
         uint64_t suppressed = 0;
         double waitSumMs = 0.0;
         double waitMaxMs = 0.0;
         uint64_t depthAheadSum = 0;
         size_t depthAheadMax = 0;
+        // RGB frame number minus depth frame number, from the first pair.
+        bool haveOffset = false;
+        uint32_t offset = 0;
+        // RGB frame that belongs to a later depth frame.
+        bool heldValid = false;
+        aditof::RGBFrame held;
         std::chrono::steady_clock::time_point lastLateLog;
         std::chrono::steady_clock::time_point lastSummary;
     } m_rgbSync;

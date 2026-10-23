@@ -1347,13 +1347,82 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                         m_cameraFps > 0 ? 1000 / m_cameraFps : 100;
                     const auto rgbTimeout = std::chrono::milliseconds(
                         std::max<int64_t>(periodMs, 100) * 11 / 10);
-                    size_t pending = 0;
                     const size_t depthAhead = bufProc->getReadyDepthFrames();
                     const auto waitStart = std::chrono::steady_clock::now();
-                    bool gotRgb = bufProc->getLatestRGBFrame(
-                                      rgbFrame, rgbTimeout, &pending) ==
-                                      aditof::Status::OK &&
-                                  rgbFrame.isValid();
+                    const auto deadline = waitStart + rgbTimeout;
+                    aditof::Metadata depthMeta;
+                    const bool haveDepthNumber =
+                        frame->getMetadataStruct(depthMeta) ==
+                        aditof::Status::OK;
+                    auto &sync = m_rgbSync;
+                    uint64_t skippedNow = 0;
+                    bool gotRgb = false;
+                    // Pair by frame number: a depth frame lost before it gets
+                    // here still triggered an RGB frame, so arrival order
+                    // would shift every later pair.
+                    while (true) {
+                        if (sync.heldValid) {
+                            rgbFrame = std::move(sync.held);
+                            sync.heldValid = false;
+                        } else {
+                            const auto remaining = std::max(
+                                std::chrono::duration_cast<
+                                    std::chrono::milliseconds>(
+                                    deadline -
+                                    std::chrono::steady_clock::now()),
+                                std::chrono::milliseconds(0));
+                            if (bufProc->getLatestRGBFrame(rgbFrame,
+                                                           remaining) !=
+                                    aditof::Status::OK ||
+                                !rgbFrame.isValid()) {
+                                break;
+                            }
+                        }
+                        if (!haveDepthNumber || !rgbFrame.hasMetadata) {
+                            gotRgb = true; // no frame numbers: arrival order
+                            break;
+                        }
+                        const uint32_t rgbNumber =
+                            rgbFrame.metadata.outputFrameCount;
+                        const int32_t diff = static_cast<int32_t>(
+                            rgbNumber - (depthMeta.frameNumber + sync.offset));
+                        // Far beyond what the queues can hold: a counter was
+                        // reset, so start counting again from this pair.
+                        if (!sync.haveOffset || diff > 16 || diff < -16) {
+                            if (sync.haveOffset) {
+                                ++sync.resyncs;
+                                LOG(WARNING) << "RGB pairing: frame numbers "
+                                                "jumped by "
+                                             << diff << ", re-synchronising";
+                            }
+                            sync.offset = rgbNumber - depthMeta.frameNumber;
+                            sync.haveOffset = true;
+                            LOG(INFO) << "RGB pairing: RGB frame " << rgbNumber
+                                      << " pairs with depth frame "
+                                      << depthMeta.frameNumber;
+                            gotRgb = true;
+                            break;
+                        }
+                        if (diff < 0) {
+                            ++skippedNow; // its depth frame was lost
+                            continue;
+                        }
+                        if (diff > 0) {
+                            // This depth frame's RGB frame was lost.
+                            sync.held = std::move(rgbFrame);
+                            sync.heldValid = true;
+                            break;
+                        }
+                        gotRgb = true;
+                        break;
+                    }
+                    if (skippedNow) {
+                        sync.skipped += skippedNow;
+                        LOG(WARNING) << "RGB pairing: skipped " << skippedNow
+                                     << " RGB frame(s) whose depth frame was "
+                                        "lost before depth frame "
+                                     << depthMeta.frameNumber;
+                    }
                     if (gotRgb &&
                         rgbFrame.data.size() != rgbDetails.bytesCount) {
                         if (!m_rgbSync.sizeMismatchLogged) {
@@ -1372,7 +1441,6 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                                                                   waitStart)
                             .count();
 
-                    auto &sync = m_rgbSync;
                     ++sync.depthFrames;
                     sync.waitSumMs += waitMs;
                     sync.waitMaxMs = std::max(sync.waitMaxMs, waitMs);
@@ -1409,14 +1477,6 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                             ++sync.suppressed;
                         }
                     }
-                    if (gotRgb && pending > 1) {
-                        ++sync.backlog;
-                        LOG(WARNING)
-                            << "RGB queue held " << pending
-                            << " frames at depth frame #" << sync.depthFrames
-                            << ", paired with an RGB frame " << pending - 1
-                            << " frame(s) old";
-                    }
                     if (waitEnd - sync.lastSummary > std::chrono::seconds(10)) {
                         if (sync.lastSummary.time_since_epoch().count() != 0) {
                             LOG(INFO)
@@ -1425,7 +1485,8 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                                 << sync.waitSumMs / sync.depthFrames
                                 << " ms max " << sync.waitMaxMs << " ms, late "
                                 << sync.late << ", missing " << sync.missing
-                                << ", queue backlog " << sync.backlog
+                                << ", skipped " << sync.skipped
+                                << ", resyncs " << sync.resyncs
                                 << ", depth queued ahead avg "
                                 << double(sync.depthAheadSum) / sync.depthFrames
                                 << " max " << sync.depthAheadMax;
