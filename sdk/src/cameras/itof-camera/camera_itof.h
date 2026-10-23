@@ -303,10 +303,8 @@ class CameraItof : public aditof::Camera {
     struct RgbSyncStats {
         bool sizeMismatchLogged = false;
         uint64_t depthFrames = 0;
-        uint64_t late = 0;
         uint64_t missing = 0;
         uint64_t skipped = 0; // RGB frames whose depth frame was lost
-        uint64_t suppressed = 0;
         double waitSumMs = 0.0;
         double waitMaxMs = 0.0;
         uint64_t depthAheadSum = 0;
@@ -317,7 +315,6 @@ class CameraItof : public aditof::Camera {
         // RGB frame that belongs to a later depth frame.
         bool heldValid = false;
         aditof::RGBFrame held;
-        std::chrono::steady_clock::time_point lastLateLog;
         std::chrono::steady_clock::time_point lastSummary;
     } m_rgbSync;
     std::unique_ptr<aditof::RGBSensor> m_rgbSensor;

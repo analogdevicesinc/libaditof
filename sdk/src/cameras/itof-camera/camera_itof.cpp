@@ -1365,12 +1365,12 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                             rgbFrame = std::move(sync.held);
                             sync.heldValid = false;
                         } else {
-                            const auto remaining = std::max(
-                                std::chrono::duration_cast<
-                                    std::chrono::milliseconds>(
-                                    deadline -
-                                    std::chrono::steady_clock::now()),
-                                std::chrono::milliseconds(0));
+                            const auto remaining =
+                                std::max(std::chrono::duration_cast<
+                                             std::chrono::milliseconds>(
+                                             deadline -
+                                             std::chrono::steady_clock::now()),
+                                         std::chrono::milliseconds(0));
                             if (bufProc->getLatestRGBFrame(rgbFrame,
                                                            remaining) !=
                                     aditof::Status::OK ||
@@ -1440,43 +1440,24 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                     sync.depthAheadMax =
                         std::max(sync.depthAheadMax, depthAhead);
 
-                    // RGB trails depth by design; flag it once the wait passes
-                    // half a period, where the pair may no longer match.
+                    // The RGB frame ends a few ms after its depth frame and
+                    // still has to be converted, so a wait is normal; only
+                    // the summary below reports it.
                     if (!gotRgb) {
                         ++sync.missing;
                         LOG(WARNING)
                             << "RGB frame missing for depth frame #"
                             << sync.depthFrames << " (waited " << waitMs
                             << " ms, limit " << rgbTimeout.count() << " ms)";
-                    } else if (waitMs > periodMs / 2.0) {
-                        ++sync.late;
-                        if (waitEnd - sync.lastLateLog >
-                            std::chrono::seconds(1)) {
-                            LOG(INFO)
-                                << "RGB frame late for depth frame #"
-                                << sync.depthFrames << ": waited " << waitMs
-                                << " ms (frame period " << periodMs
-                                << " ms), depth frames queued ahead: "
-                                << depthAhead
-                                << (sync.suppressed
-                                        ? ", " +
-                                              std::to_string(sync.suppressed) +
-                                              " similar lines suppressed"
-                                        : std::string());
-                            sync.lastLateLog = waitEnd;
-                            sync.suppressed = 0;
-                        } else {
-                            ++sync.suppressed;
-                        }
                     }
                     if (waitEnd - sync.lastSummary > std::chrono::seconds(10)) {
                         if (sync.lastSummary.time_since_epoch().count() != 0) {
                             LOG(INFO)
                                 << "RGB sync: " << sync.depthFrames
-                                << " depth frames, wait avg "
+                                << " depth frames, RGB wait after depth avg "
                                 << sync.waitSumMs / sync.depthFrames
-                                << " ms max " << sync.waitMaxMs << " ms, late "
-                                << sync.late << ", missing " << sync.missing
+                                << " ms max " << sync.waitMaxMs
+                                << " ms, missing " << sync.missing
                                 << ", skipped " << sync.skipped
                                 << ", depth queued ahead avg "
                                 << double(sync.depthAheadSum) / sync.depthFrames
