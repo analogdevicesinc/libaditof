@@ -238,6 +238,7 @@ bool RGBV4L2YuvBackend::start() {
     }
 
     m_haveSequence = false;
+    m_standInCounter.reset();
     m_frameCount = 0;
     m_missedFrames = 0;
     m_badFrames = 0;
@@ -377,8 +378,8 @@ bool RGBV4L2YuvBackend::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
 
     if (m_config.embeddedData == RGBEmbeddedDataLocation::NONE) {
         RgbFrameMetadata metadata;
-        metadata.outputFrameCount = sequence;
-        metadata.inputFrameCount = sequence;
+        metadata.outputFrameCount = m_standInCounter.next(monotonicUs);
+        metadata.inputFrameCount = metadata.outputFrameCount;
         metadata.outputTimestampMs = monotonicUs / 1000;
         metadata.inputTimestampMs = metadata.outputTimestampMs;
         writeGw5AncillaryData(metadata, frame.embeddedData);
