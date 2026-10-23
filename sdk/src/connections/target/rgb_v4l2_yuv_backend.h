@@ -10,6 +10,7 @@
 #ifdef HAS_RGB_CAMERA
 
 #include "aditof/ar0234_sensor.h"
+#include "rgb_camera_contract.h"
 #include <atomic>
 #include <cstdint>
 #include <string>
@@ -77,6 +78,7 @@ class RGBV4L2YuvBackend : public RGBBackend_Internal {
     std::atomic<uint64_t> m_badFrames{0};
     bool m_haveSequence = false;
     uint32_t m_lastSequence = 0;
+    StandInFrameCounter m_standInCounter;
 };
 
 } // namespace aditof

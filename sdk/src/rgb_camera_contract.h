@@ -64,6 +64,28 @@ Gw5AncillaryStatus parseGw5AncillaryData(const uint8_t *data, size_t size,
 void writeGw5AncillaryData(const RgbFrameMetadata &metadata,
                            std::vector<uint8_t> &packet);
 
+/**
+ * @brief Frame count for the stand-in packet that, like the GW5200 counter,
+ * also advances for frames the host never received.
+ *
+ * The V4L2 sequence counts delivered frames only, so frames the driver drops
+ * (consumer stalled) would put it behind the depth frame number for good.
+ * Here each frame advances the count by the number of trigger periods since
+ * the previous one, measured from the V4L2 timestamps.
+ */
+class StandInFrameCounter {
+  public:
+    void reset() { *this = StandInFrameCounter(); }
+    /// Count for a frame captured at @p monotonicUs (0: unknown, adds one).
+    uint32_t next(uint64_t monotonicUs);
+
+  private:
+    bool m_started = false;
+    uint32_t m_count = 0;
+    uint64_t m_lastUs = 0;
+    uint64_t m_periodUs = 0;
+};
+
 } // namespace aditof
 
 #endif // HAS_RGB_CAMERA

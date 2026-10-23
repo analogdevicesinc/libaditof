@@ -179,6 +179,32 @@ void writeGw5AncillaryData(const RgbFrameMetadata &metadata,
     packet[PAYLOAD_END] = sum;
 }
 
+uint32_t StandInFrameCounter::next(uint64_t monotonicUs) {
+    if (!m_started || monotonicUs == 0 || monotonicUs <= m_lastUs) {
+        m_count += m_started ? 1 : 0;
+        m_started = true;
+        m_lastUs = monotonicUs;
+        return m_count;
+    }
+    const uint64_t intervalUs = monotonicUs - m_lastUs;
+    m_lastUs = monotonicUs;
+    // The shortest interval seen is one trigger period; a longer first
+    // interval (frames already dropped) is corrected once a shorter one comes.
+    if (m_periodUs == 0 || intervalUs * 4 < m_periodUs * 3) {
+        m_periodUs = intervalUs;
+    }
+    const uint64_t periods = (intervalUs + m_periodUs / 2) / m_periodUs;
+    if (periods <= 1) {
+        m_periodUs += (static_cast<int64_t>(intervalUs) -
+                       static_cast<int64_t>(m_periodUs)) /
+                      8;
+        m_count += 1;
+    } else {
+        m_count += static_cast<uint32_t>(periods);
+    }
+    return m_count;
+}
+
 } // namespace aditof
 
 #endif // HAS_RGB_CAMERA
