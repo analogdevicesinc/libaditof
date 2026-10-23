@@ -8,6 +8,8 @@
 
 #ifdef HAS_RGB_CAMERA
 
+#include "rgb_camera_contract.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
@@ -403,8 +405,22 @@ bool RGBV4L2FrameGrabberBackend::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
     }
 
     convertToBgr(m_rawCopy.data(), frame);
-    frame.timestamp = static_cast<uint64_t>(buf.timestamp.tv_sec) * 1000000ULL +
-                      static_cast<uint64_t>(buf.timestamp.tv_usec);
+    frame.sequence = buf.sequence;
+    frame.monotonicUs =
+        (buf.flags & V4L2_BUF_FLAG_TIMESTAMP_MASK) ==
+                V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
+            ? static_cast<uint64_t>(buf.timestamp.tv_sec) * 1000000ULL +
+                  static_cast<uint64_t>(buf.timestamp.tv_usec)
+            : 0;
+
+    // Stand-in for the GW5200 embedded data: this sensor sends none.
+    RgbFrameMetadata metadata;
+    metadata.outputFrameCount = buf.sequence;
+    metadata.inputFrameCount = buf.sequence;
+    metadata.outputTimestampMs = frame.monotonicUs / 1000;
+    metadata.inputTimestampMs = metadata.outputTimestampMs;
+    writeGw5AncillaryData(metadata, frame.embeddedData);
+
     ++m_frameCount;
     return true;
 }
@@ -644,6 +660,7 @@ void RGBV4L2FrameGrabberBackend::convertToBgr(const uint16_t *raw,
     const uint32_t h = static_cast<uint32_t>(m_config.height);
     frame.width = w;
     frame.height = h;
+    frame.stride = w * 3;
     frame.format = RGBPixelFormat::BGR;
     frame.data.resize(static_cast<size_t>(w) * h * 3);
     uint8_t *bgr = frame.data.data();

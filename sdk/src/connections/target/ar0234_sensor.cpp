@@ -8,6 +8,7 @@
 
 #ifdef HAS_RGB_CAMERA
 
+#include "rgb_camera_contract.h"
 #include "rgb_v4l2_frame_grabber_backend.h"
 
 #include <chrono>
@@ -164,6 +165,20 @@ Status RGBSensor::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
     // Get frame directly from backend (already uses RGBFrame)
     if (!m_backend->getFrame(frame, timeoutMs)) {
         return Status::GENERIC_ERROR;
+    }
+
+    frame.hasMetadata = false;
+    if (!frame.embeddedData.empty()) {
+        const Gw5AncillaryStatus parsed = parseGw5AncillaryData(
+            frame.embeddedData.data(), frame.embeddedData.size(),
+            frame.metadata);
+        frame.hasMetadata = parsed == Gw5AncillaryStatus::OK;
+        if (!frame.hasMetadata &&
+            (++m_badMetadata == 1 || m_badMetadata % 100 == 0)) {
+            LOG(WARNING) << "RGB embedded data rejected (status "
+                         << static_cast<int>(parsed) << ", " << m_badMetadata
+                         << " frames so far)";
+        }
     }
 
     m_frameCount++;
