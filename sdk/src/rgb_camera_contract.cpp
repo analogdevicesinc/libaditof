@@ -24,6 +24,8 @@
 
 #include "rgb_camera_contract.h"
 
+#ifdef HAS_RGB_CAMERA
+
 #include <cstring>
 
 #if defined(__BYTE_ORDER__) && __BYTE_ORDER__ != __ORDER_LITTLE_ENDIAN__
@@ -144,4 +146,39 @@ Gw5AncillaryStatus parseGw5AncillaryData(const uint8_t *data, size_t size,
     return Gw5AncillaryStatus::OK;
 }
 
+void writeGw5AncillaryData(const RgbFrameMetadata &metadata,
+                           std::vector<uint8_t> &packet) {
+    Gw5AncillaryWire wire;
+    std::memset(&wire, 0, sizeof(wire));
+    std::memcpy(wire.header, GW5_MAGIC, sizeof(GW5_MAGIC));
+    wire.payloadMajorVersion = GW5_PAYLOAD_MAJOR_VERSION;
+    wire.payloadMinorVersion = 1;
+    wire.payloadNumBytes = PAYLOAD_SIZE;
+
+    wire.gw5State = metadata.ispState;
+    wire.gw5Temperature = metadata.ispTemperatureC;
+    wire.inputFrameErrorCount = metadata.inputFrameErrorCount;
+    wire.inputFrameCount = metadata.inputFrameCount;
+    wire.inputFrameTimestampMs = metadata.inputTimestampMs;
+    wire.outputFrameCount = metadata.outputFrameCount;
+    wire.outputFrameTimestampMs = metadata.outputTimestampMs;
+    wire.frameRate = metadata.frameRate;
+    wire.vts = metadata.vts;
+    std::memcpy(wire.integrationLines, metadata.integrationLines,
+                sizeof(wire.integrationLines));
+    std::memcpy(wire.totalGain, metadata.totalGain, sizeof(wire.totalGain));
+    std::memcpy(wire.sensorGain, metadata.sensorGain, sizeof(wire.sensorGain));
+    std::memcpy(wire.ispGain, metadata.ispGain, sizeof(wire.ispGain));
+
+    packet.resize(GW5_ANCILLARY_DATA_SIZE);
+    std::memcpy(packet.data(), &wire, sizeof(wire));
+    uint8_t sum = 0;
+    for (size_t i = PAYLOAD_BEGIN; i < PAYLOAD_END; ++i) {
+        sum = static_cast<uint8_t>(sum + packet[i]);
+    }
+    packet[PAYLOAD_END] = sum;
+}
+
 } // namespace aditof
+
+#endif // HAS_RGB_CAMERA

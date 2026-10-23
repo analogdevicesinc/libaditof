@@ -37,17 +37,44 @@ enum class RGBPixelFormat {
 };
 
 /**
+ * @brief Per-frame metadata reported by the RGB camera (GW5200 embedded data).
+ *
+ * Timestamps are on the camera ISP clock (ms), not the host clock.
+ */
+struct RgbFrameMetadata {
+    uint32_t outputFrameCount = 0;
+    uint32_t inputFrameCount = 0;
+    uint32_t inputFrameErrorCount = 0;
+    uint64_t outputTimestampMs = 0;
+    uint64_t inputTimestampMs = 0;
+    uint32_t ispState = 0;
+    float ispTemperatureC = 0.0f;
+    float frameRate = 0.0f;
+    uint16_t vts = 0;
+    uint16_t integrationLines[4] = {};
+    float totalGain[4] = {};
+    float sensorGain[4] = {};
+    float ispGain[4] = {};
+};
+
+/**
  * @brief Frame captured from RGB sensor
  */
 struct RGBFrame {
     std::vector<uint8_t> data; ///< Pixel data, laid out as described by format
     uint32_t width;            ///< Frame width in pixels
     uint32_t height;           ///< Frame height in pixels
-    uint64_t timestamp;        ///< V4L2 buffer timestamp in microseconds
+    uint32_t stride;           ///< Bytes per row of data
+    uint32_t sequence;         ///< V4L2 frame sequence number
+    uint64_t monotonicUs;      ///< CLOCK_MONOTONIC time (us), 0 if unknown
     RGBPixelFormat format;     ///< Pixel layout of data
+    std::vector<uint8_t> embeddedData; ///< GW5 ancillary data, empty if none
+    RgbFrameMetadata metadata;         ///< Decoded embeddedData
+    bool hasMetadata;                  ///< metadata is valid
 
     RGBFrame()
-        : width(0), height(0), timestamp(0), format(RGBPixelFormat::BGR) {}
+        : width(0), height(0), stride(0), sequence(0), monotonicUs(0),
+          format(RGBPixelFormat::BGR), hasMetadata(false) {}
 
     /// Get frame size in bytes
     size_t size() const { return data.size(); }
@@ -338,6 +365,7 @@ class RGBSensor {
     bool m_isOpen;             ///< Open state flag
     bool m_backendInitialized; ///< True after initialize() prepared the backend
     uint64_t m_frameCount;     ///< Total frames captured
+    uint64_t m_badMetadata = 0; ///< Frames whose embedded data failed to parse
 };
 
 } // namespace aditof
