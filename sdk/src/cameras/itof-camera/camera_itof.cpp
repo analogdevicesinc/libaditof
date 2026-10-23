@@ -1384,17 +1384,7 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                         }
                         const uint32_t rgbNumber =
                             rgbFrame.metadata.outputFrameCount;
-                        const int32_t diff = static_cast<int32_t>(
-                            rgbNumber - (depthMeta.frameNumber + sync.offset));
-                        // Far beyond what the queues can hold: a counter was
-                        // reset, so start counting again from this pair.
-                        if (!sync.haveOffset || diff > 16 || diff < -16) {
-                            if (sync.haveOffset) {
-                                ++sync.resyncs;
-                                LOG(WARNING) << "RGB pairing: frame numbers "
-                                                "jumped by "
-                                             << diff << ", re-synchronising";
-                            }
+                        if (!sync.haveOffset) {
                             sync.offset = rgbNumber - depthMeta.frameNumber;
                             sync.haveOffset = true;
                             LOG(INFO) << "RGB pairing: RGB frame " << rgbNumber
@@ -1403,6 +1393,8 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                             gotRgb = true;
                             break;
                         }
+                        const int32_t diff = static_cast<int32_t>(
+                            rgbNumber - (depthMeta.frameNumber + sync.offset));
                         if (diff < 0) {
                             ++skippedNow; // its depth frame was lost
                             continue;
@@ -1486,7 +1478,6 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                                 << " ms max " << sync.waitMaxMs << " ms, late "
                                 << sync.late << ", missing " << sync.missing
                                 << ", skipped " << sync.skipped
-                                << ", resyncs " << sync.resyncs
                                 << ", depth queued ahead avg "
                                 << double(sync.depthAheadSum) / sync.depthFrames
                                 << " max " << sync.depthAheadMax;

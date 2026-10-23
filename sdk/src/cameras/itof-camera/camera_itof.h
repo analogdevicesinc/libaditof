@@ -306,7 +306,6 @@ class CameraItof : public aditof::Camera {
         uint64_t late = 0;
         uint64_t missing = 0;
         uint64_t skipped = 0; // RGB frames whose depth frame was lost
-        uint64_t resyncs = 0;
         uint64_t suppressed = 0;
         double waitSumMs = 0.0;
         double waitMaxMs = 0.0;
