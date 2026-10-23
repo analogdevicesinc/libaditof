@@ -842,7 +842,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             } else if (item == "rgb") {
                 // BGR, 3 bytes per pixel
                 fDataDetails.width = 1920;
-                fDataDetails.height = 1200;
+                fDataDetails.height = 1080;
 #ifdef HAS_RGB_CAMERA
                 if (m_rgbSensor) {
                     const aditof::RGBSensorConfig rgbCfg =

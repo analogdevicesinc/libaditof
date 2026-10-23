@@ -155,7 +155,7 @@ struct RGBSensorConfig {
     bool yuvFullRange; ///< YUV uses 0-255 (true) or 16-235/240 (false)
 
     RGBSensorConfig()
-        : sensorId(0), mode(0), width(1920), height(1200), fps(60),
+        : sensorId(0), mode(1), width(1920), height(1080), fps(30),
           devicePath("/dev/video0"), yuvFormat(RGBPixelFormat::UYVY),
           embeddedData(RGBEmbeddedDataLocation::NONE),
           yuvMatrix(RGBYuvMatrix::BT601), yuvFullRange(false) {}
@@ -281,7 +281,7 @@ class RGBBackend_Internal {
  * RGBSensorConfig config;
  * config.sensorId = 0;
  * config.width = 1920;
- * config.height = 1200;
+ * config.height = 1080;
  * config.fps = 60;
  * 
  * if (sensor.open(config) == Status::OK) {

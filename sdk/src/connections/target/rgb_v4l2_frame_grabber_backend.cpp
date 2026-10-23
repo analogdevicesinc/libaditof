@@ -183,6 +183,25 @@ bool RGBV4L2FrameGrabberBackend::initialize(RGBSensorConfig &config) {
         LOG(WARNING) << "V4L2 RGB: could not set override_capture_timeout_ms";
     }
 
+    // The driver selects its mode from sensor_mode, not from S_FMT; the frame
+    // sizes are listed in mode order.
+    bool modeSelected = false;
+    v4l2_frmsizeenum size;
+    std::memset(&size, 0, sizeof(size));
+    size.pixel_format = V4L2_PIX_FMT_SGRBG10;
+    while (!modeSelected && xioctl(m_fd, VIDIOC_ENUM_FRAMESIZES, &size) == 0) {
+        if (size.type == V4L2_FRMSIZE_TYPE_DISCRETE &&
+            size.discrete.width == static_cast<uint32_t>(m_config.width) &&
+            size.discrete.height == static_cast<uint32_t>(m_config.height)) {
+            modeSelected = setControlByName("sensor_mode", size.index);
+        }
+        ++size.index;
+    }
+    if (!modeSelected) {
+        LOG(WARNING) << "V4L2 RGB: could not select the sensor mode for "
+                     << m_config.width << "x" << m_config.height;
+    }
+
     v4l2_format fmt;
     std::memset(&fmt, 0, sizeof(fmt));
     fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
