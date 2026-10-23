@@ -237,7 +237,7 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"phaseInvalid", "0"},
     {"enableRotation", "0"},
     {"xyzEnable", "1"},
-    {"fps", "40"},
+    {"fps", "30"},
     {"rgbCameraEnable", "1"}};
 
 #endif
