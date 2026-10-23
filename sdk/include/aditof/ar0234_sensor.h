@@ -119,6 +119,26 @@ static const RGBModeConfig RGB_MODES[] = {
 };
 
 /**
+ * @brief Where the GW5200 embedded data (DT 0x12) sits in the V4L2 buffer.
+ *
+ * BUFFER_START / BUFFER_END assume it occupies one line of the image stride
+ * before or after the image; to be confirmed on the Jetson driver (O12).
+ */
+enum class RGBEmbeddedDataLocation {
+    NONE,         ///< Not delivered; a stand-in packet is written per frame
+    BUFFER_START, ///< One stride-sized line before the image
+    BUFFER_END    ///< One stride-sized line after the image
+};
+
+/**
+ * @brief YUV to RGB colour matrix of a YUV422 camera
+ */
+enum class RGBYuvMatrix {
+    BT601, ///< ITU-R BT.601 (SD)
+    BT709  ///< ITU-R BT.709 (HD)
+};
+
+/**
  * @brief Configuration for RGB camera sensor
  */
 struct RGBSensorConfig {
@@ -129,10 +149,16 @@ struct RGBSensorConfig {
     int fps;      ///< Target frames per second
     std::string
         devicePath; ///< V4L2 device path (e.g., "/dev/video0", "/dev/video1")
+    RGBPixelFormat yuvFormat; ///< Byte order requested from a YUV422 camera
+    RGBEmbeddedDataLocation embeddedData; ///< Embedded data in the buffer
+    RGBYuvMatrix yuvMatrix;               ///< YUV to RGB conversion matrix
+    bool yuvFullRange; ///< YUV uses 0-255 (true) or 16-235/240 (false)
 
     RGBSensorConfig()
         : sensorId(0), mode(0), width(1920), height(1200), fps(60),
-          devicePath("/dev/video0") {}
+          devicePath("/dev/video0"), yuvFormat(RGBPixelFormat::UYVY),
+          embeddedData(RGBEmbeddedDataLocation::NONE),
+          yuvMatrix(RGBYuvMatrix::BT601), yuvFullRange(false) {}
 
     /**
      * @brief Create config from predefined mode enum
@@ -175,7 +201,8 @@ struct RGBSensorConfig {
  * @brief Backend type - which capture method is being used
  */
 enum class RGBBackend {
-    V4L2, ///< Direct V4L2 capture of the raw Bayer stream
+    V4L2,     ///< Direct V4L2 capture of the raw Bayer stream
+    V4L2_YUV, ///< Direct V4L2 capture of YUV422 from the GW5200 ISP
     UNKNOWN
 };
 
@@ -202,8 +229,11 @@ class RGBBackend_Internal {
 
     /**
      * @brief Initialize the backend with configuration
+     *
+     * A backend whose frame size is set by the camera writes it back into
+     * @p config.
      */
-    virtual bool initialize(const RGBSensorConfig &config) = 0;
+    virtual bool initialize(RGBSensorConfig &config) = 0;
 
     /**
      * @brief Start frame capture

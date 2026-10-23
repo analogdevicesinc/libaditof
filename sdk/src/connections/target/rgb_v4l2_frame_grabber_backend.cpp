@@ -153,7 +153,7 @@ bool RGBV4L2FrameGrabberBackend::getControlByName(const char *name,
     return true;
 }
 
-bool RGBV4L2FrameGrabberBackend::initialize(const RGBSensorConfig &config) {
+bool RGBV4L2FrameGrabberBackend::initialize(RGBSensorConfig &config) {
     closeDevice();
     m_config = config;
 
