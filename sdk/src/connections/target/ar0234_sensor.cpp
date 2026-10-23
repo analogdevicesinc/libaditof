@@ -10,6 +10,7 @@
 
 #include "rgb_camera_contract.h"
 #include "rgb_v4l2_frame_grabber_backend.h"
+#include "rgb_v4l2_yuv_backend.h"
 
 #include <chrono>
 #include <sstream>
@@ -55,7 +56,13 @@ Status RGBSensor::open(const RGBSensorConfig &config) {
                   << m_config.devicePath;
     }
 
-    m_backend = std::make_unique<RGBV4L2FrameGrabberBackend>();
+    // A camera with the GW5200 ISP offers YUV422; the bare AR0234 only Bayer.
+    if (RGBV4L2YuvBackend::supportsYuv422(m_config.devicePath)) {
+        m_backend = std::make_unique<RGBV4L2YuvBackend>();
+    } else {
+        m_backend = std::make_unique<RGBV4L2FrameGrabberBackend>();
+    }
+    LOG(INFO) << "RGBSensor backend: " << m_backend->getBackendName();
 
     // The V4L2 device is opened and configured by initialize().
     m_isOpen = true;

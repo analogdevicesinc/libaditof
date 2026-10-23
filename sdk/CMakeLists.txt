@@ -166,9 +166,13 @@ if(WITH_RGB_CAMERA)
     set(RGB_CAMERA_ALL_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/ar0234_sensor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/rgb_v4l2_frame_grabber_backend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/rgb_v4l2_yuv_backend.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/yuv422_to_bgr.cpp
     )
     set(RGB_CAMERA_ALL_HEADERS
         ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/rgb_v4l2_frame_grabber_backend.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/rgb_v4l2_yuv_backend.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/${OS_SPECIFIC_DIR}/yuv422_to_bgr.h
     )
     add_definitions(-DHAS_RGB_CAMERA)
     message(STATUS "RGB Camera support enabled")
@@ -192,6 +196,9 @@ add_library(${PROJECT_NAME} SHARED
     $<$<BOOL:${WITH_RGB_CAMERA}>:${RGB_CAMERA_ALL_HEADERS}>
     src/cameras/itof-camera/managers/rgbd_fusion_manager.cpp
     src/rgb_camera_contract.cpp
+    src/connections/target/rgb_v4l2_yuv_backend.h
+    src/connections/target/yuv422_to_bgr.h
+    src/connections/target/yuv422_to_bgr.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PRIVATE crc32)

@@ -37,6 +37,7 @@
  * Thread-safe queue management ensures proper buffer lifecycle and prevents memory leaks.
  */
 
+#include "../yuv422_to_bgr.h"
 #include "platform/platform_impl.h"
 #include <aditof/log.h>
 #include <aditof/utils.h>
@@ -1419,6 +1420,7 @@ void BufferProcessor::captureRGBFrameThread() {
     LOG(INFO) << "captureRGBFrameThread: started";
     bool loggedWaiting = false;
     uint64_t rgbOverflows = 0;
+    uint64_t rgbConversionFailures = 0;
     while (!stopThreadsFlag.load(std::memory_order_acquire)) {
         // Snapshot both atomics once per iteration so we use a consistent
         // view and avoid TOCTOU between the null-check and the getFrame call.
@@ -1435,9 +1437,24 @@ void BufferProcessor::captureRGBFrameThread() {
         loggedWaiting = false;
         aditof::RGBFrame rgbFrame;
         aditof::Status status = sensor->getFrame(rgbFrame, 200);
+        if (status == aditof::Status::OK && rgbFrame.isValid() &&
+            rgbFrame.format != aditof::RGBPixelFormat::BGR) {
+            const aditof::RGBSensorConfig config = sensor->getConfig();
+            if (!aditof::convertYuv422ToBgr(rgbFrame, config.yuvMatrix,
+                                            config.yuvFullRange)) {
+                if (++rgbConversionFailures == 1 ||
+                    rgbConversionFailures % 100 == 0) {
+                    LOG(ERROR) << "captureRGBFrameThread: cannot convert "
+                                  "RGB frame to BGR ("
+                               << rgbConversionFailures << " total)";
+                }
+                continue;
+            }
+        }
         if (status == aditof::Status::OK && rgbFrame.isValid()) {
             if (m_rgb_frame_Q.push_overwrite(std::move(rgbFrame))) {
-                // Consumer is slower than the camera; pairing drifts from here.
+                // Consumer is slower than the camera; the dropped frame's
+                // depth partner will get no colour.
                 if (++rgbOverflows == 1 || rgbOverflows % 100 == 0) {
                     LOG(WARNING) << "captureRGBFrameThread: RGB queue full, "
                                     "dropped oldest frame ("

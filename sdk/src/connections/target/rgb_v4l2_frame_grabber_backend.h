@@ -49,7 +49,7 @@ class RGBV4L2FrameGrabberBackend : public RGBBackend_Internal {
     RGBBackend getBackendType() const override { return RGBBackend::V4L2; }
     std::string getBackendName() const override { return "V4L2"; }
 
-    bool initialize(const RGBSensorConfig &config) override;
+    bool initialize(RGBSensorConfig &config) override;
     bool start() override;
     bool stop() override;
     bool isRunning() const override { return m_isRunning; }
