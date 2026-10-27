@@ -28,11 +28,11 @@ namespace aditof {
  *
  * The sensor (BA10, 10-bit GRBG in 16-bit words) is read with mmap buffers and
  * converted to BGR here: bilinear demosaic, gray-world white balance and a
- * gamma of 2.2. Without the Argus ISP there is no auto exposure, so start()
- * searches for one exposure before the depth stream runs, and white balance
- * and the frame-to-frame level (light flicker) are tracked from the Bayer data.
- * The sensor is never written to while the depth stream runs: a control write
- * makes it emit extra frames that would break the pairing.
+ * gamma of 2.2. Without the Argus ISP there is no auto exposure; the sensor
+ * runs at its default exposure, and white balance and the frame-to-frame
+ * level (light flicker) are tracked from the Bayer data.
+ * The sensor is never written to once streaming: a control write makes it
+ * emit extra frames that would break the pairing.
  *
  * initialize() opens the device and sets controls and format, so it belongs in
  * setMode(); start() and stop() only stream, and the device stays open until
@@ -67,14 +67,10 @@ class RGBV4L2FrameGrabberBackend : public RGBBackend_Internal {
     struct SceneStats {
         double r = 0, g = 0, b = 0;
         size_t cells = 0;
-        double clippedFraction = 0;
     };
 
     bool findControl(const char *name, v4l2_query_ext_ctrl &found);
     bool setControlByName(const char *name, int32_t value);
-    bool getControlByName(const char *name, int64_t &value);
-    void settleExposure();
-    bool measureLastFrame(SceneStats &stats, uint32_t firstWaitMs);
     SceneStats measureScene(const uint16_t *raw) const;
     void rebuildColorTables();
     void trackColor(const uint16_t *raw);
