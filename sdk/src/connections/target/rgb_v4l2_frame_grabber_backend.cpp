@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cerrno>
-#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <fcntl.h>
@@ -42,21 +41,12 @@ constexpr unsigned kMaxConvertThreads = 3;
 
 // White balance is tracked every few frames and smoothed.
 constexpr uint64_t kAutoInterval = 4;
-constexpr uint16_t kClipRaw = 1000u << 6; // counted as clipped
+constexpr uint16_t kClipRaw = 1000u << 6; // left out of the scene statistics
 constexpr double kMinFlickerGain = 0.7;
 constexpr double kMaxFlickerGain = 1.4;
 constexpr double kLevelAverageAlpha = 0.05;
 
-// Exposure is searched once per start, before the depth stream runs.
-constexpr double kTargetLevel = 0.25;  // linear mid-gray
-constexpr double kFullScale = 65472.0; // 10-bit sample in the upper bits
-constexpr double kMaxClippedFraction = 0.03;
-constexpr int32_t kStartExposureUs = 3000;
-constexpr int32_t kMinExposureUs = 100;
-constexpr int32_t kMaxExposureUs = 16667; // limit of the sensor control
-constexpr int kExposureSteps = 6;
-constexpr uint32_t kBurstWaitMs = 1000; // for the first frame after a write
-constexpr uint32_t kQuietMs = 300;      // gap that ends a burst of frames
+constexpr uint32_t kQuietMs = 300; // gap that ends the frames before a trigger
 
 int xioctl(int fd, unsigned long request, void *arg) {
     int ret;
@@ -108,7 +98,7 @@ bool RGBV4L2FrameGrabberBackend::findControl(const char *name,
     return false;
 }
 
-// Exposure is a 64-bit control, which VIDIOC_S_CTRL and VIDIOC_G_CTRL reject.
+// sensor_mode is a 64-bit control, which VIDIOC_S_CTRL rejects.
 bool RGBV4L2FrameGrabberBackend::setControlByName(const char *name,
                                                   int32_t value) {
     v4l2_query_ext_ctrl query;
@@ -129,28 +119,6 @@ bool RGBV4L2FrameGrabberBackend::setControlByName(const char *name,
     controls.count = 1;
     controls.controls = &control;
     return xioctl(m_fd, VIDIOC_S_EXT_CTRLS, &controls) == 0;
-}
-
-bool RGBV4L2FrameGrabberBackend::getControlByName(const char *name,
-                                                  int64_t &value) {
-    v4l2_query_ext_ctrl query;
-    if (!findControl(name, query)) {
-        return false;
-    }
-    v4l2_ext_control control;
-    std::memset(&control, 0, sizeof(control));
-    control.id = query.id;
-    v4l2_ext_controls controls;
-    std::memset(&controls, 0, sizeof(controls));
-    controls.ctrl_class = V4L2_CTRL_ID2CLASS(query.id);
-    controls.count = 1;
-    controls.controls = &control;
-    if (xioctl(m_fd, VIDIOC_G_EXT_CTRLS, &controls) != 0) {
-        return false;
-    }
-    value = query.type == V4L2_CTRL_TYPE_INTEGER64 ? control.value64
-                                                   : control.value;
-    return true;
 }
 
 bool RGBV4L2FrameGrabberBackend::initialize(RGBSensorConfig &config) {
@@ -300,8 +268,8 @@ bool RGBV4L2FrameGrabberBackend::start() {
     m_frameCount = 0;
     m_missedFrames = 0;
 
-    // Only tells that the sensor is armed; settleExposure() then reads every
-    // frame that came before the depth trigger.
+    // The sensor sends one frame on its own once armed; it and anything else
+    // before the first depth trigger has no depth partner.
     pollfd pfd;
     pfd.fd = m_fd;
     pfd.events = POLLIN;
@@ -314,7 +282,12 @@ bool RGBV4L2FrameGrabberBackend::start() {
     }
 
     m_isRunning = true;
-    settleExposure();
+    // Writing exposure here would make the module answer the first trigger
+    // of modes 1 and 7 with an extra frame, so the sensor keeps its default.
+    v4l2_buffer buf;
+    while (dequeueBuffer(buf, kQuietMs)) {
+        requeueBuffer(buf);
+    }
     LOG(INFO) << "V4L2 RGB: streaming, sensor armed";
     return true;
 }
@@ -452,10 +425,8 @@ bool RGBV4L2FrameGrabberBackend::getFrame(RGBFrame &frame, uint32_t timeoutMs) {
 RGBV4L2FrameGrabberBackend::SceneStats
 RGBV4L2FrameGrabberBackend::measureScene(const uint16_t *raw) const {
     // Sparse sample of the Bayer cells; clipped cells would skew the white
-    // balance and the level, so they are only counted.
+    // balance and the level, so they are skipped.
     SceneStats stats;
-    size_t total = 0;
-    size_t clipped = 0;
     for (uint32_t y = 0; y + 1 < static_cast<uint32_t>(m_config.height);
          y += 8) {
         const uint16_t *row0 = raw + static_cast<size_t>(y) * m_stridePx;
@@ -464,9 +435,7 @@ RGBV4L2FrameGrabberBackend::measureScene(const uint16_t *raw) const {
              x += 8) {
             const uint16_t g0 = row0[x], g1 = row1[x + 1];
             const uint16_t r = row0[x + 1], b = row1[x];
-            ++total;
             if (std::max(std::max(g0, g1), std::max(r, b)) >= kClipRaw) {
-                ++clipped;
                 continue;
             }
             stats.g += (g0 + g1) * 0.5;
@@ -475,114 +444,7 @@ RGBV4L2FrameGrabberBackend::measureScene(const uint16_t *raw) const {
             ++stats.cells;
         }
     }
-    stats.clippedFraction =
-        total ? static_cast<double>(clipped) / static_cast<double>(total) : 0.0;
     return stats;
-}
-
-bool RGBV4L2FrameGrabberBackend::measureLastFrame(SceneStats &stats,
-                                                  uint32_t firstWaitMs) {
-    // Reads every queued frame and the burst that follows, and measures the
-    // last one. The queue is empty afterwards.
-    bool measured = false;
-    uint32_t waitMs = firstWaitMs;
-    v4l2_buffer buf;
-    while (dequeueBuffer(buf, waitMs)) {
-        waitMs = kQuietMs;
-        if (acceptBuffer(buf)) {
-            m_rawCopy.resize(static_cast<size_t>(m_stridePx) * m_config.height);
-            std::memcpy(m_rawCopy.data(), m_buffers[buf.index].start,
-                        m_minFrameBytes);
-            measured = true;
-        }
-        requeueBuffer(buf);
-    }
-    if (measured) {
-        stats = measureScene(m_rawCopy.data());
-    }
-    return measured;
-}
-
-void RGBV4L2FrameGrabberBackend::settleExposure() {
-    // Nothing triggers the sensor yet, so every frame read here has no depth
-    // partner and is thrown away. Writing exposure makes the module send a
-    // burst of frames, which is why it is done only now and never while the
-    // depth stream runs: the extra frames would break the pairing.
-    const auto begin = std::chrono::steady_clock::now();
-    int32_t exposure = kStartExposureUs;
-    int64_t current = 0;
-    if (getControlByName("exposure", current) && current == exposure) {
-        ++exposure; // an unchanged value never reaches the module
-    }
-
-    bool drained = false;
-    int32_t previousExposure = 0;
-    double previousLevel = 0;
-    for (int step = 0; step < kExposureSteps; ++step) {
-        drained = false;
-        SceneStats stats;
-        if (!setControlByName("exposure", exposure)) {
-            LOG(WARNING) << "V4L2 RGB: could not set exposure";
-            break;
-        }
-        // Only the first write after STREAMON sends a burst of frames; later
-        // ones are applied silently, so they cannot be measured.
-        const bool measured =
-            measureLastFrame(stats, step == 0 ? kBurstWaitMs : kQuietMs);
-        drained = true;
-        if (!measured) {
-            if (step == 0) {
-                LOG(WARNING) << "V4L2 RGB: no frame after the exposure write";
-            }
-            break;
-        }
-
-        const double level =
-            stats.cells
-                ? stats.g / static_cast<double>(stats.cells) / kFullScale
-                : 1.0;
-        LOG(INFO) << "V4L2 RGB: exposure " << exposure << " us gives level "
-                  << level << ", " << stats.clippedFraction * 100
-                  << "% clipped";
-        if (previousExposure > 0 && stats.clippedFraction < 0.5 &&
-            std::fabs(static_cast<double>(exposure) / previousExposure - 1) >
-                0.5 &&
-            std::fabs(level / std::max(previousLevel, 1e-4) - 1) < 0.1) {
-            LOG(WARNING) << "V4L2 RGB: the exposure control has no effect";
-            break;
-        }
-        previousExposure = exposure;
-        previousLevel = level;
-
-        double ratio = kTargetLevel / std::max(level, 1e-4);
-        if (stats.clippedFraction > kMaxClippedFraction) {
-            ratio = std::min(ratio, 0.6);
-        }
-        if (std::fabs(ratio - 1.0) < 0.15) {
-            break;
-        }
-        const int32_t next = std::max(
-            kMinExposureUs,
-            std::min(kMaxExposureUs,
-                     static_cast<int32_t>(std::lround(
-                         exposure * std::max(0.25, std::min(4.0, ratio))))));
-        if (next == exposure) {
-            break;
-        }
-        exposure = next;
-    }
-
-    if (!drained) {
-        v4l2_buffer buf;
-        while (dequeueBuffer(buf, kQuietMs)) {
-            requeueBuffer(buf);
-        }
-    }
-    LOG(INFO) << "V4L2 RGB: exposure settled at " << exposure << " us in "
-              << std::chrono::duration<double, std::milli>(
-                     std::chrono::steady_clock::now() - begin)
-                     .count()
-              << " ms, frame queue empty";
 }
 
 void RGBV4L2FrameGrabberBackend::rebuildColorTables() {
