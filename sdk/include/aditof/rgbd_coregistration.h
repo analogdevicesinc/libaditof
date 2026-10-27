@@ -31,15 +31,17 @@
 
 /**
  * @file rgbd_coregistration.h
- * @brief RGB-Depth coregistration: colours ToF points from the RGB image.
+ * @brief RGB-Depth coregistration: colours ToF points from the RGB image and
+ *        maps the RGB image onto the ToF pixel grid.
  *
  * Algorithm overview
  * ==================
  * For each ToF point P_tof (the "xyz" frame, mm, already undistorted):
  *  1. Transform:  P_rgb = R * P_tof + t   (tof2rgb extrinsics, t in mm)
  *  2. Project onto the RGB image with the RGB lens distortion
- *  3. Take the colour of the nearest RGB pixel; points with no depth, behind
- *     the RGB camera or outside the RGB image get a status instead.
+ *  3. Sample the RGB image bilinearly at the projected position; points with
+ *     no depth, behind the RGB camera or outside the RGB image get a status
+ *     instead.
  *
  * Calibration source
  * ==================
@@ -117,10 +119,11 @@ enum class XYZColorStatus : uint8_t {
 
 /**
  * @class RGBDCoregistration
- * @brief Colours a ToF point cloud from the RGB image.
+ * @brief Colours ToF points from the RGB image and maps the RGB image onto
+ *        the ToF pixel grid.
  *
- * The camera does this itself and returns the result as "xyz_color"; use
- * this class directly only for data captured elsewhere.
+ * The camera does this itself and returns the result as "xyz_color" and
+ * "rgb"; use this class directly only for data captured elsewhere.
  *
  * Usage:
  * @code
@@ -175,30 +178,76 @@ class SDK_API RGBDCoregistration {
     Status setCalibration(const RGBDCalibration &calib);
 
     /**
-     * @brief Colour each ToF point with the RGB pixel it projects to.
+     * @brief Colour each ToF point from the RGB image.
      *
      * Each point is moved into the RGB camera (tof2rgb), projected through
-     * the RGB lens model and given the colour of the nearest RGB pixel.
+     * the RGB lens model and sampled bilinearly.
      *
      * @param xyz        Points, int16 mm, X Y Z per point (the "xyz" frame).
      * @param numPoints  Number of points.
-     * @param bgr        RGB image, 3 bytes per pixel in B, G, R order.
+     * @param bgr        RGB image, 3 bytes per pixel in B, G, R order; nullptr
+     *                   when there is no RGB image (points in view are then
+     *                   NoColor).
      * @param rgbWidth   Width of the RGB image.
      * @param rgbHeight  Height of the RGB image.
      * @param rgbStride  Bytes per row of the RGB image.
      * @param rgba       Output, 4 bytes per point: R, G, B and an
      *                   XYZColorStatus in A. R, G, B are 0 unless A is Valid.
      * @return Status::OK on success; Status::UNAVAILABLE if calibration not
-     *         loaded; Status::INVALID_ARGUMENT on a null pointer or a stride
-     *         smaller than one row.
+     *         loaded; Status::INVALID_ARGUMENT on a null xyz or rgba, an RGB
+     *         image smaller than 2x2 or a stride smaller than one row.
      */
     Status colorizePointCloud(const int16_t *xyz, std::size_t numPoints,
                               const uint8_t *bgr, uint32_t rgbWidth,
                               uint32_t rgbHeight, uint32_t rgbStride,
                               uint8_t *rgba) const;
 
+    /**
+     * @brief Position in the RGB image of each ToF point.
+     *
+     * With each ToF pixel's ray at a far distance as the points, this gives
+     * a fixed map of the RGB image into the ToF view, for remapRGB().
+     *
+     * @param xyz        Points, int16 mm, X Y Z per point.
+     * @param numPoints  Number of points.
+     * @param rgbWidth   Width of the RGB image.
+     * @param rgbHeight  Height of the RGB image.
+     * @param uv         Output, 2 floats per point: column and row in the RGB
+     *                   image; -1 for a point with no depth or out of view.
+     * @return Status::OK on success; Status::UNAVAILABLE if calibration not
+     *         loaded; Status::INVALID_ARGUMENT on a null pointer or an RGB
+     *         image smaller than 2x2.
+     */
+    Status mapToRGB(const int16_t *xyz, std::size_t numPoints,
+                    uint32_t rgbWidth, uint32_t rgbHeight, float *uv) const;
+
+    /**
+     * @brief Sample the RGB image bilinearly at the positions from mapToRGB().
+     *
+     * @param uv         Positions, 2 floats per output pixel; -1 gives 0.
+     * @param numPoints  Number of output pixels.
+     * @param bgr        RGB image, 3 bytes per pixel in B, G, R order.
+     * @param rgbWidth   Width of the RGB image.
+     * @param rgbHeight  Height of the RGB image.
+     * @param rgbStride  Bytes per row of the RGB image.
+     * @param bgrOut     Output, 3 bytes per pixel in B, G, R order.
+     * @return Status::OK on success; Status::INVALID_ARGUMENT on a null
+     *         pointer, an RGB image smaller than 2x2 or a stride smaller than
+     *         one row.
+     */
+    static Status remapRGB(const float *uv, std::size_t numPoints,
+                           const uint8_t *bgr, uint32_t rgbWidth,
+                           uint32_t rgbHeight, uint32_t rgbStride,
+                           uint8_t *bgrOut);
+
     /** @return true once a calibration has been successfully loaded. */
     bool isCalibrationLoaded() const { return m_calibLoaded; }
+
+    /**
+     * @brief Set when the RGB image arrives rotated 180° from the image the
+     *        calibration was made with; positions are rotated to match.
+     */
+    void setImageRotated180(bool rotated) { m_rotated180 = rotated; }
 
     /** @return Reference to the active calibration (valid after load). */
     const RGBDCalibration &getCalibration() const { return m_calib; }
@@ -215,8 +264,16 @@ class SDK_API RGBDCoregistration {
     void projectToRGB(float x_norm, float y_norm, float &u_px,
                       float &v_px) const;
 
+    // Squared limit on X/Z, Y/Z beyond which projectToRGB() is unreliable.
+    float maxRay2(uint32_t rgbWidth, uint32_t rgbHeight) const;
+
+    // False when the point has no depth or lands outside the RGB image.
+    bool projectPoint(const int16_t *p, float maxU, float maxV, float maxRay2,
+                      float &u, float &v) const;
+
     RGBDCalibration m_calib;
     bool m_calibLoaded = false;
+    bool m_rotated180 = false;
 };
 
 } // namespace aditof

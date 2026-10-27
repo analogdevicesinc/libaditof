@@ -317,6 +317,9 @@ class CameraItof : public aditof::Camera {
         aditof::RGBFrame held;
         std::chrono::steady_clock::time_point lastSummary;
     } m_rgbSync;
+    // Fills "rgb" and "xyz_color" of a frame from the paired RGB image
+    // (nullptr when none was paired).
+    void fillRgbOutputs(aditof::Frame *frame, const aditof::RGBFrame *rgbFrame);
     std::unique_ptr<aditof::RGBSensor> m_rgbSensor;
     struct {
         bool detected;    // Hardware detection result from enumeration

@@ -682,6 +682,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         auto overlapIt = iniKeyValPairs.find("xyzColorOverlapOnly");
         m_rgbdFusion->setOverlapOnly(overlapIt == iniKeyValPairs.end() ||
                                      overlapIt->second != "0");
+        // The RGB camera sends its image rotated 180° from the calibrated one.
+        auto rotate180It = iniKeyValPairs.find("rgbRotate180");
+        m_rgbdFusion->setRgbRotated180(rotate180It != iniKeyValPairs.end() &&
+                                       rotate180It->second == "1");
 
         status = m_depthSensor->setMode(mode);
         if (status != Status::OK) {
@@ -745,11 +749,14 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
 #ifdef HAS_RGB_CAMERA
         if (m_rgbEnabled) {
-            auto &fc = m_modeDetailsCache.frameContent;
-            // Insert "rgb" before "metadata" (always last in frameContent)
-            auto metaIt =
-                std::find(fc.begin(), fc.end(), std::string("metadata"));
-            fc.insert(metaIt, "rgb");
+            // "rgb" is placed with the XYZ tables, which PCM modes have none of.
+            if (!m_pcmFrame) {
+                auto &fc = m_modeDetailsCache.frameContent;
+                // Insert "rgb" before "metadata" (always last in frameContent)
+                auto metaIt =
+                    std::find(fc.begin(), fc.end(), std::string("metadata"));
+                fc.insert(metaIt, "rgb");
+            }
 
             if (m_rgbSensor && m_rgbSensor->initialize() != Status::OK) {
                 LOG(WARNING) << "RGB sensor initialization failed, RGB will "
@@ -840,17 +847,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             } else if (item == "conf") {
                 fDataDetails.subelementSize = sizeof(float);
             } else if (item == "rgb") {
-                // BGR, 3 bytes per pixel
-                fDataDetails.width = 1920;
-                fDataDetails.height = 1080;
-#ifdef HAS_RGB_CAMERA
-                if (m_rgbSensor) {
-                    const aditof::RGBSensorConfig rgbCfg =
-                        m_rgbSensor->getConfig();
-                    fDataDetails.width = rgbCfg.width;
-                    fDataDetails.height = rgbCfg.height;
-                }
-#endif
+                // RGB image on the depth grid: B, G, R per depth pixel
                 fDataDetails.subelementSize = sizeof(uint8_t);
                 fDataDetails.subelementsPerElement = 3;
             }
@@ -974,8 +971,9 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             }
         }
 
-        // If we compute XYZ then prepare the XYZ tables which depend on the mode
-        if (m_xyzEnabled && !m_pcmFrame) {
+        // XYZ tables, mode dependent: for the xyz frame and for registering
+        // the RGB image to the depth grid
+        if ((m_xyzEnabled || m_rgbEnabled) && !m_pcmFrame) {
             uint8_t _mode = m_modeDetailsCache.modeNumber;
 
             const int GEN_XYZ_ITERATIONS = 20;
@@ -1011,6 +1009,21 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 m_calibrationMgr->setXYZTable(xyzTable);
                 LOG(INFO) << "XYZ tables rotated successfully";
             }
+
+#ifdef HAS_RGB_CAMERA
+            if (m_rgbEnabled) {
+                // At 20 m the 30 mm baseline shifts the RGB image by under
+                // one ToF pixel, so "rgb" is placed along these rays.
+                const uint32_t w = m_details.frameType.width;
+                const uint32_t h = m_details.frameType.height;
+                const std::vector<uint16_t> farDepth(static_cast<size_t>(w) * h,
+                                                     20000);
+                std::vector<int16_t> rays(farDepth.size() * 3);
+                Algorithms::ComputeXYZ(farDepth.data(), &xyzTable, rays.data(),
+                                       h, w);
+                m_rgbdFusion->setPixelRays(std::move(rays));
+            }
+#endif
         }
 
         // If a Dynamic Mode Switching sequences has been loaded from config file then configure ADSD3500
@@ -1327,20 +1340,17 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         return status;
     }
 
-    bool rgbAttached = false;
 #ifdef HAS_RGB_CAMERA
+    aditof::RGBFrame rgbFrame;
+    bool gotRgb = false;
     if (m_rgbStatus.enabled && m_rgbSensor) {
-        uint16_t *rgbBuf = nullptr;
-        if (frame->getData("rgb", &rgbBuf) == aditof::Status::OK && rgbBuf) {
-            FrameDataDetails rgbDetails;
-            frame->getDataDetails("rgb", rgbDetails);
+        if (frame->haveDataType("rgb")) {
             auto adsd3500Sensor =
                 std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor);
             if (adsd3500Sensor) {
                 auto *bufProc = dynamic_cast<BufferProcessor *>(
                     adsd3500Sensor->getBufferProcessor());
                 if (bufProc) {
-                    aditof::RGBFrame rgbFrame;
                     // Measured depth-to-RGB gap never exceeded 100 ms; below
                     // 10 fps wait a frame period. 10% on top of either.
                     const int64_t periodMs =
@@ -1356,7 +1366,6 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                         aditof::Status::OK;
                     auto &sync = m_rgbSync;
                     uint64_t skippedNow = 0;
-                    bool gotRgb = false;
                     // Pair by frame number: a depth frame lost before it gets
                     // here still triggered an RGB frame, so arrival order
                     // would shift every later pair.
@@ -1416,13 +1425,17 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                                      << depthMeta.frameNumber;
                     }
                     if (gotRgb &&
-                        rgbFrame.data.size() != rgbDetails.bytesCount) {
+                        (rgbFrame.format != aditof::RGBPixelFormat::BGR ||
+                         rgbFrame.stride < rgbFrame.width * 3u ||
+                         rgbFrame.data.size() <
+                             static_cast<size_t>(rgbFrame.stride) *
+                                 rgbFrame.height)) {
                         if (!m_rgbSync.sizeMismatchLogged) {
                             LOG(ERROR)
-                                << "RGB frame is " << rgbFrame.data.size()
-                                << " bytes but the frame slot holds "
-                                << rgbDetails.bytesCount
-                                << "; the RGB data is dropped";
+                                << "RGB frame is not a " << rgbFrame.width
+                                << "x" << rgbFrame.height << " BGR image ("
+                                << rgbFrame.data.size()
+                                << " bytes); the RGB data is dropped";
                             m_rgbSync.sizeMismatchLogged = true;
                         }
                         gotRgb = false;
@@ -1465,26 +1478,41 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
                         }
                         sync.lastSummary = waitEnd;
                     }
-
-                    if (gotRgb) {
-                        memcpy(reinterpret_cast<uint8_t *>(rgbBuf),
-                               rgbFrame.data.data(), rgbFrame.data.size());
-                        rgbAttached = true;
-                    } else {
-                        memset(rgbBuf, 0, rgbDetails.bytesCount);
-                    }
                 }
             }
         }
     }
-#endif
-
-    if (frame->haveDataType("xyz_color")) {
-        m_rgbdFusion->colorize(frame, rgbAttached);
+    if (frame->haveDataType("rgb") || frame->haveDataType("xyz_color")) {
+        fillRgbOutputs(frame, gotRgb ? &rgbFrame : nullptr);
     }
+#endif
 
     return status;
 }
+
+#ifdef HAS_RGB_CAMERA
+void CameraItof::fillRgbOutputs(aditof::Frame *frame,
+                                const aditof::RGBFrame *rgbFrame) {
+    using namespace aditof;
+
+    int16_t *xyz = nullptr;
+    uint16_t *xyzRaw = nullptr;
+    if (frame->haveDataType("xyz") &&
+        frame->getData("xyz", &xyzRaw) == Status::OK && xyzRaw) {
+        xyz = reinterpret_cast<int16_t *>(xyzRaw);
+    }
+
+    if (rgbFrame) {
+        m_rgbdFusion->fuse(frame, xyz, rgbFrame->data.data(), rgbFrame->width,
+                           rgbFrame->height, rgbFrame->stride);
+    } else {
+        // Size only matters for the projection bounds; no image is read.
+        const RGBSensorConfig cfg =
+            m_rgbSensor ? m_rgbSensor->getConfig() : RGBSensorConfig();
+        m_rgbdFusion->fuse(frame, xyz, nullptr, cfg.width, cfg.height, 0);
+    }
+}
+#endif
 
 /**
  * @brief Retrieves detailed camera information and configuration.
