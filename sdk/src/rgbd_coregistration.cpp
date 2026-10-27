@@ -166,6 +166,70 @@ void RGBDCoregistration::projectToRGB(float x_norm, float y_norm, float &u_px,
     v_px = K.fy * y_dist + K.cy;
 }
 
+float RGBDCoregistration::maxRay2(uint32_t rgbWidth, uint32_t rgbHeight) const {
+    // The rational lens model can fold far off-image rays back into the
+    // image; rays well beyond the image corners are rejected first.
+    const auto &K = m_calib.rgb;
+    const float edgeX =
+        std::max(K.cx, static_cast<float>(rgbWidth) - K.cx) / K.fx;
+    const float edgeY =
+        std::max(K.cy, static_cast<float>(rgbHeight) - K.cy) / K.fy;
+    return 2.0f * (edgeX * edgeX + edgeY * edgeY);
+}
+
+bool RGBDCoregistration::projectPoint(const int16_t *p, float maxU, float maxV,
+                                      float maxRay2, float &u, float &v) const {
+    if (p[2] == 0) {
+        return false;
+    }
+    const float *R = m_calib.extrinsics.R;
+    const float *t = m_calib.extrinsics.t;
+    const float X = p[0], Y = p[1], Z = p[2];
+    const float Xr = R[0] * X + R[1] * Y + R[2] * Z + t[0];
+    const float Yr = R[3] * X + R[4] * Y + R[5] * Z + t[1];
+    const float Zr = R[6] * X + R[7] * Y + R[8] * Z + t[2];
+    if (Zr <= 0.0f) {
+        return false;
+    }
+    const float invZ = 1.0f / Zr;
+    const float xn = Xr * invZ;
+    const float yn = Yr * invZ;
+    if (xn * xn + yn * yn > maxRay2) {
+        return false;
+    }
+    projectToRGB(xn, yn, u, v);
+    if (!(u >= 0.0f && u <= maxU && v >= 0.0f && v <= maxV)) {
+        return false;
+    }
+    if (m_rotated180) {
+        u = maxU - u;
+        v = maxV - v;
+    }
+    return true;
+}
+
+// Bilinear sample of a B, G, R image at (u, v) inside the image.
+static void sampleBilinear(const uint8_t *bgr, uint32_t width, uint32_t height,
+                           uint32_t stride, float u, float v, uint8_t out[3]) {
+    const int x0 = static_cast<int>(u);
+    const int y0 = static_cast<int>(v);
+    const int x1 = std::min(x0 + 1, static_cast<int>(width) - 1);
+    const int y1 = std::min(y0 + 1, static_cast<int>(height) - 1);
+    // Weights in 1/256 steps
+    const uint32_t wx = static_cast<uint32_t>((u - x0) * 256.0f);
+    const uint32_t wy = static_cast<uint32_t>((v - y0) * 256.0f);
+    const uint8_t *row0 = bgr + static_cast<std::size_t>(y0) * stride;
+    const uint8_t *row1 = bgr + static_cast<std::size_t>(y1) * stride;
+    const uint8_t *p00 = row0 + x0 * 3, *p01 = row0 + x1 * 3;
+    const uint8_t *p10 = row1 + x0 * 3, *p11 = row1 + x1 * 3;
+    for (int c = 0; c < 3; ++c) {
+        const uint32_t top = p00[c] * (256 - wx) + p01[c] * wx;
+        const uint32_t bottom = p10[c] * (256 - wx) + p11[c] * wx;
+        out[c] = static_cast<uint8_t>(
+            (top * (256 - wy) + bottom * wy + 32768) >> 16);
+    }
+}
+
 Status RGBDCoregistration::colorizePointCloud(
     const int16_t *xyz, std::size_t numPoints, const uint8_t *bgr,
     uint32_t rgbWidth, uint32_t rgbHeight, uint32_t rgbStride,
@@ -175,65 +239,82 @@ Status RGBDCoregistration::colorizePointCloud(
         LOG(ERROR) << "RGBDCoregistration: calibration not loaded";
         return Status::UNAVAILABLE;
     }
-    if (!xyz || !bgr || !rgba || rgbStride < rgbWidth * 3u) {
+    if (!xyz || !rgba || rgbWidth < 2 || rgbHeight < 2 ||
+        (bgr && rgbStride < rgbWidth * 3u)) {
         return Status::INVALID_ARGUMENT;
     }
 
-    const float *R = m_calib.extrinsics.R;
-    const float *t = m_calib.extrinsics.t;
-    const auto &K = m_calib.rgb;
-    const int iRgbW = static_cast<int>(rgbWidth);
-    const int iRgbH = static_cast<int>(rgbHeight);
-
-    // The rational lens model can fold far off-image rays back into the
-    // image; rays well beyond the image corners are rejected first.
-    const float edgeX =
-        std::max(K.cx, static_cast<float>(rgbWidth) - K.cx) / K.fx;
-    const float edgeY =
-        std::max(K.cy, static_cast<float>(rgbHeight) - K.cy) / K.fy;
-    const float maxRay2 = 2.0f * (edgeX * edgeX + edgeY * edgeY);
+    const float maxU = static_cast<float>(rgbWidth - 1);
+    const float maxV = static_cast<float>(rgbHeight - 1);
+    const float rayLimit2 = maxRay2(rgbWidth, rgbHeight);
 
     for (std::size_t i = 0; i < numPoints; ++i) {
         const int16_t *p = xyz + 3 * i;
         uint8_t *out = rgba + 4 * i;
         out[0] = out[1] = out[2] = 0;
-
+        float u, v;
         if (p[2] == 0) {
             out[3] = static_cast<uint8_t>(XYZColorStatus::NoDepth);
-            continue;
+        } else if (!projectPoint(p, maxU, maxV, rayLimit2, u, v)) {
+            out[3] = static_cast<uint8_t>(XYZColorStatus::OutOfView);
+        } else if (!bgr) {
+            out[3] = static_cast<uint8_t>(XYZColorStatus::NoColor);
+        } else {
+            uint8_t px[3];
+            sampleBilinear(bgr, rgbWidth, rgbHeight, rgbStride, u, v, px);
+            out[0] = px[2];
+            out[1] = px[1];
+            out[2] = px[0];
+            out[3] = static_cast<uint8_t>(XYZColorStatus::Valid);
         }
-
-        const float X = p[0], Y = p[1], Z = p[2];
-        const float Xr = R[0] * X + R[1] * Y + R[2] * Z + t[0];
-        const float Yr = R[3] * X + R[4] * Y + R[5] * Z + t[1];
-        const float Zr = R[6] * X + R[7] * Y + R[8] * Z + t[2];
-        out[3] = static_cast<uint8_t>(XYZColorStatus::OutOfView);
-        if (Zr <= 0.0f) {
-            continue;
-        }
-
-        const float xn = Xr / Zr;
-        const float yn = Yr / Zr;
-        if (xn * xn + yn * yn > maxRay2) {
-            continue;
-        }
-
-        float u_px, v_px;
-        projectToRGB(xn, yn, u_px, v_px);
-        const int u = static_cast<int>(std::lround(u_px));
-        const int v = static_cast<int>(std::lround(v_px));
-        if (u < 0 || u >= iRgbW || v < 0 || v >= iRgbH) {
-            continue;
-        }
-
-        const uint8_t *px = bgr + static_cast<std::size_t>(v) * rgbStride +
-                            static_cast<std::size_t>(u) * 3u;
-        out[0] = px[2];
-        out[1] = px[1];
-        out[2] = px[0];
-        out[3] = static_cast<uint8_t>(XYZColorStatus::Valid);
     }
 
+    return Status::OK;
+}
+
+Status RGBDCoregistration::mapToRGB(const int16_t *xyz, std::size_t numPoints,
+                                    uint32_t rgbWidth, uint32_t rgbHeight,
+                                    float *uv) const {
+    if (!m_calibLoaded) {
+        LOG(ERROR) << "RGBDCoregistration: calibration not loaded";
+        return Status::UNAVAILABLE;
+    }
+    if (!xyz || !uv || rgbWidth < 2 || rgbHeight < 2) {
+        return Status::INVALID_ARGUMENT;
+    }
+
+    const float maxU = static_cast<float>(rgbWidth - 1);
+    const float maxV = static_cast<float>(rgbHeight - 1);
+    const float rayLimit2 = maxRay2(rgbWidth, rgbHeight);
+    for (std::size_t i = 0; i < numPoints; ++i) {
+        float u, v;
+        if (projectPoint(xyz + 3 * i, maxU, maxV, rayLimit2, u, v)) {
+            uv[2 * i] = u;
+            uv[2 * i + 1] = v;
+        } else {
+            uv[2 * i] = uv[2 * i + 1] = -1.0f;
+        }
+    }
+    return Status::OK;
+}
+
+Status RGBDCoregistration::remapRGB(const float *uv, std::size_t numPoints,
+                                    const uint8_t *bgr, uint32_t rgbWidth,
+                                    uint32_t rgbHeight, uint32_t rgbStride,
+                                    uint8_t *bgrOut) {
+    if (!uv || !bgr || !bgrOut || rgbWidth < 2 || rgbHeight < 2 ||
+        rgbStride < rgbWidth * 3u) {
+        return Status::INVALID_ARGUMENT;
+    }
+    for (std::size_t i = 0; i < numPoints; ++i) {
+        uint8_t *out = bgrOut + 3 * i;
+        if (uv[2 * i] < 0.0f) {
+            out[0] = out[1] = out[2] = 0;
+        } else {
+            sampleBilinear(bgr, rgbWidth, rgbHeight, rgbStride, uv[2 * i],
+                           uv[2 * i + 1], out);
+        }
+    }
     return Status::OK;
 }
 
