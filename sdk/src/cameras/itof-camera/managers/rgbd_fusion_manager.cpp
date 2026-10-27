@@ -22,62 +22,110 @@ Status RgbdFusionManager::loadCalibration(const uint8_t *data,
     return status;
 }
 
-void RgbdFusionManager::reset() {
-    m_coreg = RGBDCoregistration();
-    m_warnedUnavailable = false;
+void RgbdFusionManager::setRgbRotated180(bool rotated) {
+    m_rgbRotated180 = rotated;
+    m_coreg.setImageRotated180(rotated);
+    m_rgbMap.clear();
 }
 
-Status RgbdFusionManager::colorize(Frame *frame, bool rgbValid) {
-    uint16_t *colorRaw = nullptr;
-    FrameDataDetails colorDetails;
-    if (frame->getData("xyz_color", &colorRaw) != Status::OK || !colorRaw ||
-        frame->getDataDetails("xyz_color", colorDetails) != Status::OK) {
-        return Status::UNAVAILABLE;
-    }
-    uint8_t *color = reinterpret_cast<uint8_t *>(colorRaw);
+void RgbdFusionManager::reset() {
+    m_coreg = RGBDCoregistration();
+    m_coreg.setImageRotated180(m_rgbRotated180);
+    m_warnedUnavailable = false;
+    m_rgbMap.clear();
+}
 
-    uint16_t *xyzRaw = nullptr;
+void RgbdFusionManager::setPixelRays(std::vector<int16_t> rays) {
+    m_rays = std::move(rays);
+    m_rgbMap.clear();
+}
+
+Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const uint8_t *bgr,
+                               uint32_t bgrWidth, uint32_t bgrHeight,
+                               uint32_t bgrStride) {
     uint16_t *rgbRaw = nullptr;
-    FrameDataDetails xyzDetails, rgbDetails;
-    const bool haveInputs =
-        isReady() && frame->getData("xyz", &xyzRaw) == Status::OK && xyzRaw &&
-        frame->getData("rgb", &rgbRaw) == Status::OK && rgbRaw &&
-        frame->getDataDetails("xyz", xyzDetails) == Status::OK &&
-        frame->getDataDetails("rgb", rgbDetails) == Status::OK &&
-        xyzDetails.width == colorDetails.width &&
-        xyzDetails.height == colorDetails.height;
-    if (!haveInputs) {
+    uint16_t *colorRaw = nullptr;
+    FrameDataDetails rgbDetails, colorDetails;
+    const bool haveRgb = frame->getData("rgb", &rgbRaw) == Status::OK &&
+                         rgbRaw &&
+                         frame->getDataDetails("rgb", rgbDetails) == Status::OK;
+    const bool haveColor =
+        frame->getData("xyz_color", &colorRaw) == Status::OK && colorRaw &&
+        frame->getDataDetails("xyz_color", colorDetails) == Status::OK;
+    uint8_t *rgbOut = haveRgb ? reinterpret_cast<uint8_t *>(rgbRaw) : nullptr;
+    uint8_t *color =
+        haveColor ? reinterpret_cast<uint8_t *>(colorRaw) : nullptr;
+    const bool needPoints = xyz && color;
+    if (!rgbOut && !needPoints) {
+        if (color) {
+            std::memset(color, 0, colorDetails.bytesCount);
+        }
+        return Status::OK;
+    }
+
+    if (!isReady()) {
         if (!m_warnedUnavailable) {
-            LOG(WARNING) << "RGBD fusion: no calibration or frame data, "
-                            "xyz_color left empty";
+            LOG(WARNING) << "RGBD fusion: no calibration, rgb and xyz_color "
+                            "left empty";
             m_warnedUnavailable = true;
         }
-        std::memset(color, 0, colorDetails.bytesCount);
+        if (rgbOut) {
+            std::memset(rgbOut, 0, rgbDetails.bytesCount);
+        }
+        if (color) {
+            std::memset(color, 0, colorDetails.bytesCount);
+        }
         return Status::UNAVAILABLE;
     }
 
-    int16_t *xyz = reinterpret_cast<int16_t *>(xyzRaw);
-    const std::size_t numPoints =
-        static_cast<std::size_t>(xyzDetails.width) * xyzDetails.height;
-    Status status = m_coreg.colorizePointCloud(
-        xyz, numPoints, reinterpret_cast<const uint8_t *>(rgbRaw),
-        rgbDetails.width, rgbDetails.height, rgbDetails.width * 3u, color);
-    if (status != Status::OK) {
-        std::memset(color, 0, colorDetails.bytesCount);
-        return status;
+    Status status = Status::OK;
+    if (rgbOut) {
+        const std::size_t numPixels =
+            static_cast<std::size_t>(rgbDetails.width) * rgbDetails.height;
+        if (bgr && (m_rgbMap.size() != numPixels * 2 ||
+                    m_rgbMapWidth != bgrWidth || m_rgbMapHeight != bgrHeight)) {
+            m_rgbMap.clear();
+            if (m_rays.size() == numPixels * 3) {
+                m_rgbMap.resize(numPixels * 2);
+                if (m_coreg.mapToRGB(m_rays.data(), numPixels, bgrWidth,
+                                     bgrHeight,
+                                     m_rgbMap.data()) != Status::OK) {
+                    m_rgbMap.clear();
+                }
+                m_rgbMapWidth = bgrWidth;
+                m_rgbMapHeight = bgrHeight;
+            }
+        }
+        if (bgr && !m_rgbMap.empty()) {
+            status = RGBDCoregistration::remapRGB(m_rgbMap.data(), numPixels,
+                                                  bgr, bgrWidth, bgrHeight,
+                                                  bgrStride, rgbOut);
+        }
+        if (!bgr || m_rgbMap.empty() || status != Status::OK) {
+            std::memset(rgbOut, 0, rgbDetails.bytesCount);
+        }
     }
 
-    const uint8_t valid = static_cast<uint8_t>(XYZColorStatus::Valid);
-    const uint8_t noColor = static_cast<uint8_t>(XYZColorStatus::NoColor);
-    for (std::size_t i = 0; i < numPoints; ++i) {
-        uint8_t *out = color + 4 * i;
-        if (!rgbValid && out[3] == valid) {
-            out[0] = out[1] = out[2] = 0;
-            out[3] = noColor;
-        }
-        if (m_overlapOnly && out[3] != valid && out[3] != noColor) {
-            xyz[3 * i] = xyz[3 * i + 1] = xyz[3 * i + 2] = 0;
+    if (!needPoints) {
+        return status;
+    }
+    const std::size_t numPoints =
+        static_cast<std::size_t>(colorDetails.width) * colorDetails.height;
+    Status colorStatus = m_coreg.colorizePointCloud(
+        xyz, numPoints, bgr, bgrWidth, bgrHeight, bgrStride, color);
+    if (colorStatus != Status::OK) {
+        std::memset(color, 0, colorDetails.bytesCount);
+        return colorStatus;
+    }
+
+    if (m_overlapOnly) {
+        const uint8_t outOfView =
+            static_cast<uint8_t>(XYZColorStatus::OutOfView);
+        for (std::size_t i = 0; i < numPoints; ++i) {
+            if (color[4 * i + 3] == outOfView) {
+                xyz[3 * i] = xyz[3 * i + 1] = xyz[3 * i + 2] = 0;
+            }
         }
     }
-    return Status::OK;
+    return status;
 }
