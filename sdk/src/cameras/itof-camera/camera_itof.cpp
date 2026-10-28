@@ -569,6 +569,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 return status;
             }
         }
+        m_frameAcqManager->setXyzFromSensor(false);
 
         auto modeIt = std::find_if(m_availableSensorModeDetails.begin(),
                                    m_availableSensorModeDetails.end(),
@@ -1025,6 +1026,43 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             }
 #endif
         }
+
+#ifdef ADITOF_ON_TARGET
+        // With xyzEnable in the depth INI the depth compute library computes
+        // XYZ; it goes straight into the frame when the frame's xyz follows
+        // depth/AB/conf, otherwise requestFrame() computes it.
+        if (auto adsd3500Sensor =
+                std::dynamic_pointer_cast<Adsd3500Sensor>(m_depthSensor)) {
+            BufferProcessorInterface *bufProc =
+                adsd3500Sensor->getBufferProcessor();
+            const auto xyzIniIt = iniKeyValPairs.find("xyzEnable");
+            uint32_t xyzOffset = 0;
+            uint32_t xyzSize = 0;
+            if (!m_pcmFrame && !m_modeDetailsCache.isRawBypass &&
+                m_xyzEnabled && m_depthEnabled &&
+                xyzIniIt != iniKeyValPairs.end() && xyzIniIt->second != "0") {
+                Frame layout;
+                uint16_t *frameData = nullptr;
+                uint16_t *xyz = nullptr;
+                FrameDataDetails xyzDetails;
+                if (layout.setDetails(m_details.frameType, m_confBitsPerPixel,
+                                      m_abBitsPerPixel) == Status::OK &&
+                    layout.haveDataType("xyz") &&
+                    layout.getData("frameData", &frameData) == Status::OK &&
+                    layout.getData("xyz", &xyz) == Status::OK &&
+                    layout.getDataDetails("xyz", xyzDetails) == Status::OK) {
+                    xyzOffset = static_cast<uint32_t>(xyz - frameData);
+                    xyzSize = xyzDetails.width * xyzDetails.height * 3;
+                }
+            }
+            const bool xyzFromSensor =
+                bufProc && bufProc->setComputeXyzOutput(xyzOffset, xyzSize);
+            if (xyzFromSensor) {
+                LOG(INFO) << "XYZ from the depth compute library";
+            }
+            m_frameAcqManager->setXyzFromSensor(xyzFromSensor);
+        }
+#endif
 
         // If a Dynamic Mode Switching sequences has been loaded from config file then configure ADSD3500
         const auto &dmsSequence = m_config->getDmsSequence();

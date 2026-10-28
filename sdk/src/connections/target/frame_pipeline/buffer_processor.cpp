@@ -233,13 +233,6 @@ aditof::Status BufferProcessor::setVideoProperties(
         }
     }
 
-    {
-        std::shared_ptr<uint16_t> clr_buffer;
-        while (m_tofi_io_Buffer_Q.pop(clr_buffer)) {
-            // Buffer deallocation via shared_ptr
-        }
-    }
-
     using namespace aditof;
     Status status = Status::OK;
     m_vidPropSet = true;
@@ -281,17 +274,46 @@ aditof::Status BufferProcessor::setVideoProperties(
 
     calculateFrameSize(bitsInAB, bitsInConf);
 
+    // The library XYZ is enabled per mode, after the frame layout is known
+    m_xyzBlockSize = 0;
+
+    aditof::Status allocStatus = allocateToFiBuffers();
+    if (allocStatus != aditof::Status::OK) {
+        return allocStatus;
+    }
+
+    return status;
+}
+
+/**
+ * @brief (Re)allocates the ToFi output buffer pool and the rotation buffer.
+ *
+ * Each buffer holds depth/AB/conf (m_tofiBufferSize) plus the library XYZ
+ * block (m_xyzBlockSize, 0 when off). Only while the threads are stopped.
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on allocation failure
+ */
+aditof::Status BufferProcessor::allocateToFiBuffers() {
+    {
+        std::shared_ptr<uint16_t> clr_buffer;
+        while (m_tofi_io_Buffer_Q.pop(clr_buffer)) {
+            // Buffer deallocation via shared_ptr
+        }
+    }
+
+    const uint32_t bufferSize = m_tofiBufferSize + m_xyzBlockSize;
+
     LOG(INFO) << __func__ << ": Allocating " << MAX_QUEUE_SIZE
-              << " ToFi buffers, each of size "
-              << m_tofiBufferSize * sizeof(uint16_t) << " bytes (total: "
-              << (MAX_QUEUE_SIZE * m_tofiBufferSize * sizeof(uint16_t)) /
+              << " ToFi buffers, each of size " << bufferSize * sizeof(uint16_t)
+              << " bytes (total: "
+              << (MAX_QUEUE_SIZE * bufferSize * sizeof(uint16_t)) /
                      (1024.0 * 1024.0)
               << " MB)";
     for (int i = 0; i < (int)MAX_QUEUE_SIZE; ++i) {
         auto buffer = std::shared_ptr<uint16_t>(
-            new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
+            new uint16_t[bufferSize], std::default_delete<uint16_t[]>());
         if (!buffer) {
-            LOG(ERROR) << "setVideoProperties: Failed to allocate ToFi buffer!";
+            LOG(ERROR) << __func__ << ": Failed to allocate ToFi buffer!";
             return aditof::Status::GENERIC_ERROR;
         }
         m_tofi_io_Buffer_Q.push(buffer);
@@ -299,14 +321,80 @@ aditof::Status BufferProcessor::setVideoProperties(
 
     // Allocate the rotation ping-pong output buffer (avoids per-frame memcpy)
     m_rotationOutputBuffer = std::shared_ptr<uint16_t>(
-        new uint16_t[m_tofiBufferSize], std::default_delete<uint16_t[]>());
+        new uint16_t[bufferSize], std::default_delete<uint16_t[]>());
     if (!m_rotationOutputBuffer) {
-        LOG(ERROR)
-            << "setVideoProperties: Failed to allocate rotation output buffer!";
+        LOG(ERROR) << __func__
+                   << ": Failed to allocate rotation output buffer!";
         return aditof::Status::GENERIC_ERROR;
     }
 
-    return status;
+    return aditof::Status::OK;
+}
+
+/**
+ * @brief Enables putting the depth compute library's XYZ in the frame.
+ *
+ * With xyzEnable in the depth INI, TofiCompute() also computes XYZ
+ * (unrotated, interleaved int16 x, y, z). The processing buffers get a block
+ * for it right after depth/AB/conf, so it lands in the frame's "xyz" only
+ * when that is exactly where the frame has it.
+ *
+ * @param[in] frameXyzOffset Offset of the frame's "xyz" in uint16_t units, 0 to disable
+ * @param[in] frameXyzSize Size of the frame's "xyz" in uint16_t units
+ *
+ * @return true if enabled
+ */
+bool BufferProcessor::setComputeXyzOutput(uint32_t frameXyzOffset,
+                                          uint32_t frameXyzSize) {
+    const uint32_t numPixels =
+        static_cast<uint32_t>(m_outputFrameWidth) * m_outputFrameHeight;
+    const bool enable =
+        frameXyzOffset != 0 && m_vidPropSet && !m_isRawBypassMode &&
+        m_tofiComputeContext && m_tofiComputeContext->p_xyz_frame &&
+        frameXyzOffset == m_tofiBufferSize && frameXyzSize == numPixels * 3;
+    const uint32_t xyzBlockSize = enable ? numPixels * 3 : 0;
+
+    if (xyzBlockSize == m_xyzBlockSize) {
+        return enable;
+    }
+    if (!stopThreadsFlag.load(std::memory_order_acquire)) {
+        LOG(ERROR) << __func__ << ": Not allowed while streaming";
+        return false;
+    }
+
+    m_xyzBlockSize = xyzBlockSize;
+    return allocateToFiBuffers() == aditof::Status::OK && enable;
+}
+
+/**
+ * @brief Rotates the library XYZ block like the rest of the frame.
+ *
+ * Rotation is 90 degrees clockwise: pixel (r, c) goes to (c, H - 1 - r) and
+ * the point (x, y, z) to (-y, x, z), as rotateXYZTables() does.
+ *
+ * @param[in] src Unrotated XYZ block (3 values per pixel)
+ * @param[out] dst Rotated XYZ block
+ */
+void BufferProcessor::rotateComputeXyz(const int16_t *src, int16_t *dst) const {
+    const uint32_t W = m_outputFrameWidth;
+    const uint32_t H = m_outputFrameHeight;
+
+    // Blocks of T source rows: reads stay in L1, each column's writes are contiguous
+    constexpr uint32_t T = 64;
+    for (uint32_t r0 = 0; r0 < H; r0 += T) {
+        const uint32_t rEnd = std::min(r0 + T, H);
+        for (uint32_t c = 0; c < W; ++c) {
+            int16_t *__restrict__ d = dst + (c * H + (H - rEnd)) * 3;
+            for (int32_t r = static_cast<int32_t>(rEnd) - 1;
+                 r >= static_cast<int32_t>(r0); --r) {
+                const int16_t *__restrict__ s = src + (r * W + c) * 3;
+                d[0] = static_cast<int16_t>(-s[1]);
+                d[1] = s[0];
+                d[2] = s[2];
+                d += 3;
+            }
+        }
+    }
 }
 
 /**
@@ -871,6 +959,7 @@ void BufferProcessor::processThread() {
         uint16_t *tempDepthFrame = m_tofiComputeContext->p_depth_frame;
         uint16_t *tempAbFrame = m_tofiComputeContext->p_ab_frame;
         float *tempConfFrame = m_tofiComputeContext->p_conf_frame;
+        int16_t *tempXyzFrame = m_tofiComputeContext->p_xyz_frame;
 
         if (tofi_compute_io_buff) {
 
@@ -913,6 +1002,11 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
             }
 
+            if (m_xyzBlockSize > 0) {
+                m_tofiComputeContext->p_xyz_frame = reinterpret_cast<int16_t *>(
+                    tofi_compute_io_buff.get() + m_tofiBufferSize);
+            }
+
             // Strip NVIDIA Tegra VI alignment padding AND Pulsatrix extra bytes.
             // Exact ToFi payload = outW × outH × (bitsInDepth + bitsInAB + bitsInConf) / 8
             // bitsInDepth comes from bitsInPhaseOrDepth INI param (default 16).
@@ -938,11 +1032,13 @@ void BufferProcessor::processThread() {
                 m_tofiComputeContext->p_depth_frame = tempDepthFrame;
                 m_tofiComputeContext->p_ab_frame = tempAbFrame;
                 m_tofiComputeContext->p_conf_frame = tempConfFrame;
+                m_tofiComputeContext->p_xyz_frame = tempXyzFrame;
                 continue;
             }
             m_tofiComputeContext->p_depth_frame = tempDepthFrame;
             m_tofiComputeContext->p_ab_frame = tempAbFrame;
             m_tofiComputeContext->p_conf_frame = tempConfFrame;
+            m_tofiComputeContext->p_xyz_frame = tempXyzFrame;
 
         } // end if (tofi_compute_io_buff)
 
@@ -966,6 +1062,13 @@ void BufferProcessor::processThread() {
                 tofi_compute_io_buff.get(), m_rotationOutputBuffer.get(),
                 m_outputFrameWidth, m_outputFrameHeight, m_tofiBufferSize);
             std::swap(tofi_compute_io_buff, m_rotationOutputBuffer);
+            if (m_xyzBlockSize > 0) {
+                rotateComputeXyz(
+                    reinterpret_cast<const int16_t *>(
+                        m_rotationOutputBuffer.get() + m_tofiBufferSize),
+                    reinterpret_cast<int16_t *>(tofi_compute_io_buff.get() +
+                                                m_tofiBufferSize));
+            }
 
             // Restore metadata to the first 128 bytes of the AB section
             memcpy(reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
@@ -985,7 +1088,7 @@ void BufferProcessor::processThread() {
         }
 
         process_frame.tofiBuffer = tofi_compute_io_buff;
-        process_frame.size = m_tofiBufferSize;
+        process_frame.size = m_tofiBufferSize + m_xyzBlockSize;
 
         if (!m_process_done_Q.push(std::move(process_frame))) {
             LOG(WARNING) << "processThread: Push timeout to "
