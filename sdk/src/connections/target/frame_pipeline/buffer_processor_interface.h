@@ -114,6 +114,21 @@ class BufferProcessorInterface {
     virtual Status processBuffer(uint16_t *buffer) = 0;
 
     /**
+     * @brief Appends the depth compute library's XYZ (3 x int16 per pixel)
+     *        after depth/AB/conf in each processed frame.
+     *
+     * Only for modes whose depth INI has xyzEnable set. Reallocates the
+     * processing buffers, so only while not streaming.
+     * @param frameXyzOffset Offset of the frame's "xyz" in uint16_t units
+     *        from the start of the frame, 0 to disable
+     * @param frameXyzSize Size of the frame's "xyz" in uint16_t units
+     * @return true if enabled: the offset is right after depth/AB/conf and
+     *         the size is 3 values per depth pixel
+     */
+    virtual bool setComputeXyzOutput(uint32_t frameXyzOffset,
+                                     uint32_t frameXyzSize) = 0;
+
+    /**
      * @brief Gets the ToFi configuration object.
      *
      * @return Pointer to TofiConfig, or nullptr if not initialized

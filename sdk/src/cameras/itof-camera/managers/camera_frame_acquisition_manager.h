@@ -107,6 +107,14 @@ class CameraFrameAcquisitionManager {
                         uint8_t confBitsPerPixel, uint8_t abBitsPerPixel,
                         uint8_t depthBitsPerPixel);
 
+    /**
+     * @brief Sets whether the sensor already puts the depth compute library's
+     *        XYZ in the frame's "xyz", so it is not computed again.
+     *
+     * @param[in] fromSensor True when the sensor fills "xyz"
+     */
+    void setXyzFromSensor(bool fromSensor) { m_xyzFromSensor = fromSensor; }
+
   private:
     /**
      * @brief Validates and updates frame buffer configuration if needed.
@@ -221,6 +229,7 @@ class CameraFrameAcquisitionManager {
     std::shared_ptr<DepthSensorInterface> m_depthSensor;
     CalibrationManager *m_calibrationMgr;
     CameraConfiguration *m_config;
+    bool m_xyzFromSensor = false;
 };
 
 } // namespace aditof
