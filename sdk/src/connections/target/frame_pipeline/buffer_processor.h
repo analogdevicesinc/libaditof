@@ -169,6 +169,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
                                           uint32_t calDataLength, uint16_t mode,
                                           bool ispEnabled) override;
     aditof::Status processBuffer(uint16_t *buffer) override;
+    bool setComputeXyzOutput(uint32_t frameXyzOffset,
+                             uint32_t frameXyzSize) override;
 #ifdef HAS_RGB_CAMERA
     aditof::Status processBuffer(uint16_t *depthBuffer,
                                  aditof::RGBFrame *rgbFrame);
@@ -271,12 +273,14 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     // 0xFFFFFFFF if unreadable.
     uint32_t readRawFrameNumber(const uint8_t *raw, size_t size) const;
     void calculateFrameSize(uint8_t &bitsInAB, uint8_t &bitsInConf);
+    aditof::Status allocateToFiBuffers();
 #ifdef HAS_RGB_CAMERA
     void captureRGBFrameThread();
 #endif
     void rotateEntireToFiBuffer(const uint16_t *src, uint16_t *dst,
                                 uint32_t width, uint32_t height,
                                 uint32_t bufferSize);
+    void rotateComputeXyz(const int16_t *src, int16_t *dst) const;
 
     // Alternate-mode (Dynamic Mode Switching) support
     struct AltModeConfig;
@@ -369,7 +373,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     ThreadSafeQueue<Tofi_v4l2_buffer> m_process_done_Q;
 
     uint32_t m_rawFrameBufferSize;
-    uint32_t m_tofiBufferSize;
+    uint32_t m_tofiBufferSize;   ///< depth + AB + conf, uint16_t units
+    uint32_t m_xyzBlockSize = 0; ///< library XYZ after them, 0 when off
     uint32_t
         m_abFrameSize; ///< AB plane size in uint16_t units (0 when bitsInAB=0)
     // Ping-pong output buffer for rotation: avoids final memcpy by swapping with
