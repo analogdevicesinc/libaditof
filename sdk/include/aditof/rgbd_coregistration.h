@@ -264,12 +264,9 @@ class SDK_API RGBDCoregistration {
     void projectToRGB(float x_norm, float y_norm, float &u_px,
                       float &v_px) const;
 
-    // Squared limit on X/Z, Y/Z beyond which projectToRGB() is unreliable.
-    float maxRay2(uint32_t rgbWidth, uint32_t rgbHeight) const;
-
     // False when the point has no depth or lands outside the RGB image.
-    bool projectPoint(const int16_t *p, float maxU, float maxV, float maxRay2,
-                      float &u, float &v) const;
+    bool projectPoint(const int16_t *p, float maxU, float maxV, float &u,
+                      float &v) const;
 
     RGBDCalibration m_calib;
     bool m_calibLoaded = false;

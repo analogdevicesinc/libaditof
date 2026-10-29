@@ -166,19 +166,8 @@ void RGBDCoregistration::projectToRGB(float x_norm, float y_norm, float &u_px,
     v_px = K.fy * y_dist + K.cy;
 }
 
-float RGBDCoregistration::maxRay2(uint32_t rgbWidth, uint32_t rgbHeight) const {
-    // The rational lens model can fold far off-image rays back into the
-    // image; rays well beyond the image corners are rejected first.
-    const auto &K = m_calib.rgb;
-    const float edgeX =
-        std::max(K.cx, static_cast<float>(rgbWidth) - K.cx) / K.fx;
-    const float edgeY =
-        std::max(K.cy, static_cast<float>(rgbHeight) - K.cy) / K.fy;
-    return 2.0f * (edgeX * edgeX + edgeY * edgeY);
-}
-
 bool RGBDCoregistration::projectPoint(const int16_t *p, float maxU, float maxV,
-                                      float maxRay2, float &u, float &v) const {
+                                      float &u, float &v) const {
     if (p[2] == 0) {
         return false;
     }
@@ -192,12 +181,7 @@ bool RGBDCoregistration::projectPoint(const int16_t *p, float maxU, float maxV,
         return false;
     }
     const float invZ = 1.0f / Zr;
-    const float xn = Xr * invZ;
-    const float yn = Yr * invZ;
-    if (xn * xn + yn * yn > maxRay2) {
-        return false;
-    }
-    projectToRGB(xn, yn, u, v);
+    projectToRGB(Xr * invZ, Yr * invZ, u, v);
     if (!(u >= 0.0f && u <= maxU && v >= 0.0f && v <= maxV)) {
         return false;
     }
@@ -246,7 +230,6 @@ Status RGBDCoregistration::colorizePointCloud(
 
     const float maxU = static_cast<float>(rgbWidth - 1);
     const float maxV = static_cast<float>(rgbHeight - 1);
-    const float rayLimit2 = maxRay2(rgbWidth, rgbHeight);
 
     for (std::size_t i = 0; i < numPoints; ++i) {
         const int16_t *p = xyz + 3 * i;
@@ -255,7 +238,7 @@ Status RGBDCoregistration::colorizePointCloud(
         float u, v;
         if (p[2] == 0) {
             out[3] = static_cast<uint8_t>(XYZColorStatus::NoDepth);
-        } else if (!projectPoint(p, maxU, maxV, rayLimit2, u, v)) {
+        } else if (!projectPoint(p, maxU, maxV, u, v)) {
             out[3] = static_cast<uint8_t>(XYZColorStatus::OutOfView);
         } else if (!bgr) {
             out[3] = static_cast<uint8_t>(XYZColorStatus::NoColor);
@@ -285,10 +268,9 @@ Status RGBDCoregistration::mapToRGB(const int16_t *xyz, std::size_t numPoints,
 
     const float maxU = static_cast<float>(rgbWidth - 1);
     const float maxV = static_cast<float>(rgbHeight - 1);
-    const float rayLimit2 = maxRay2(rgbWidth, rgbHeight);
     for (std::size_t i = 0; i < numPoints; ++i) {
         float u, v;
-        if (projectPoint(xyz + 3 * i, maxU, maxV, rayLimit2, u, v)) {
+        if (projectPoint(xyz + 3 * i, maxU, maxV, u, v)) {
             uv[2 * i] = u;
             uv[2 * i + 1] = v;
         } else {
