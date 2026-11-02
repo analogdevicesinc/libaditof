@@ -28,6 +28,7 @@
 #include "frame_definitions.h"
 #include "status_definitions.h"
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -197,6 +198,20 @@ const std::map<ImagerType, std::string> imagerType{
     {ImagerType::ADSD3030, "adsd3030"},
     {ImagerType::ADTF3080, "adtf3080"},
     {ImagerType::ADTF3066, "adtf3066"}};
+
+/**
+ * @brief Whether a mode is an ADTF3066 long-range (LR) mode (7, 8).
+ */
+inline bool isAdtf3066LongRangeMode(uint8_t mode) {
+    return mode == 7 || mode == 8;
+}
+
+/**
+ * @brief Whether a mode is an ADTF3066 short-range (SR) mode (0, 1, 3, 6).
+ */
+inline bool isAdtf3066ShortRangeMode(uint8_t mode) {
+    return mode == 0 || mode == 1 || mode == 3 || mode == 6;
+}
 
 } // namespace aditof
 

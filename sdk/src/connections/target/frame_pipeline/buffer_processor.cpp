@@ -38,6 +38,7 @@
  */
 
 #include "platform/platform_impl.h"
+#include <aditof/camera_definitions.h>
 #include <aditof/log.h>
 #include <aditof/utils.h>
 #include <algorithm>
@@ -493,6 +494,9 @@ aditof::Status BufferProcessor::setProcessorProperties(
         parseIniBoolFlag(iniFile, iniFileLength, "modeFusionEnabled", false);
     m_isSRFrameFirst =
         parseIniBoolFlag(iniFile, iniFileLength, "IsSRFrameFirst", false);
+    LOG(INFO) << __func__ << ": mode " << mode
+              << " ini to library: modeFusionEnabled=" << m_modeFusionEnabled
+              << ", IsSRFrameFirst=" << m_isSRFrameFirst;
 
     // Log libtofi_compute version once per mode change.
     {
@@ -596,19 +600,6 @@ aditof::Status BufferProcessor::createModeTofiContext(
                 LOG(ERROR) << "Failed to get the camera Intrinsics for mode "
                            << mode;
                 return aditof::Status::GENERIC_ERROR;
-            }
-            // Diagnostic: dump the exact ini bytes handed to the library for
-            // this mode's context, so two runs (e.g. different DMS orders)
-            // can be byte-diffed to confirm the library truly receives
-            // identical input regardless of which mode was primary/alternate.
-            if (std::getenv("DMS_INI_DUMP")) {
-                std::string path = "/tmp/tofi_ini_mode" +
-                                   std::to_string(mode) + ".bin";
-                std::ofstream oi(path, std::ios::binary);
-                oi.write(reinterpret_cast<const char *>(iniFile),
-                        iniFileLength);
-                LOG(INFO) << "DMS-INI dumped " << iniFileLength
-                          << " bytes for mode " << mode << " to " << path;
             }
             try {
                 outConfig = InitTofiConfig_isp(
@@ -794,6 +785,9 @@ aditof::Status BufferProcessor::setAlternateModeConfiguration(
         parseIniBoolFlag(iniFile, iniFileLength, "modeFusionEnabled", false);
     cfg.isSRFrameFirst =
         parseIniBoolFlag(iniFile, iniFileLength, "IsSRFrameFirst", false);
+    LOG(INFO) << __func__ << ": mode " << (int)modeNumber
+              << " ini to library: modeFusionEnabled=" << cfg.modeFusionEnabled
+              << ", IsSRFrameFirst=" << cfg.isSRFrameFirst;
 
     cfg.rawFrameBufferSize =
         aditof::platform::Platform::getInstance().calculateBufferSize(
@@ -882,17 +876,19 @@ aditof::Status BufferProcessor::setAlternateModeConfiguration(
     m_dmsPos.store(0, std::memory_order_release);
     // Drop any half-paired frame left over from a previous DMS session so the
     // first pair of this session can't mix a stale frame with a fresh one.
-    m_pendingPrimaryRaw.reset();
-    m_pendingAltRaw.reset();
-    m_pendingPrimarySize = 0;
-    m_pendingAltSize = 0;
+    recyclePendingFusionFrames();
     m_dmsActive.store(true, std::memory_order_release);
 
     LOG(INFO) << "setAlternateModeConfiguration: mode " << (int)modeNumber
               << " active (" << cfg.outputFrameWidth << "x"
               << cfg.outputFrameHeight << ", rawBypass=" << cfg.isRawBypass
               << "), pattern=" << (int)repeatPrimary << "/"
-              << (int)repeatAlternate;
+              << (int)repeatAlternate << ", driver " << cfg.driverFrameWidth
+              << "x" << cfg.driverFrameHeight
+              << " B (primary " << m_driverFrameWidth << "x"
+              << m_driverFrameHeight << " B), bits D/AB/C "
+              << (int)cfg.bitsInDepth << "/" << (int)cfg.bitsInAB << "/"
+              << (int)cfg.bitsInConf;
 
     return aditof::Status::OK;
 }
@@ -907,10 +903,7 @@ aditof::Status BufferProcessor::clearAlternateModeConfiguration() {
     m_dmsActive.store(false, std::memory_order_release);
     m_dmsPattern.clear();
     m_dmsPos.store(0, std::memory_order_release);
-    m_pendingPrimaryRaw.reset();
-    m_pendingAltRaw.reset();
-    m_pendingPrimarySize = 0;
-    m_pendingAltSize = 0;
+    recyclePendingFusionFrames();
 
     if (m_altConfig.tofiComputeContext != nullptr) {
         FreeTofiCompute(m_altConfig.tofiComputeContext);
@@ -922,6 +915,25 @@ aditof::Status BufferProcessor::clearAlternateModeConfiguration() {
     m_altConfigValid = false;
 
     return aditof::Status::OK;
+}
+
+/**
+ * @function BufferProcessor::recyclePendingFusionFrames
+ *
+ * Returns any half-paired SR/LR raw frames to the V4L2 input pool so they
+ * are not lost when the pairing state is reset.
+ */
+void BufferProcessor::recyclePendingFusionFrames() {
+    if (m_pendingPrimaryRaw) {
+        m_v4l2_input_buffer_Q.push(m_pendingPrimaryRaw);
+        m_pendingPrimaryRaw.reset();
+    }
+    if (m_pendingAltRaw) {
+        m_v4l2_input_buffer_Q.push(m_pendingAltRaw);
+        m_pendingAltRaw.reset();
+    }
+    m_pendingPrimarySize = 0;
+    m_pendingAltSize = 0;
 }
 
 /**
@@ -1203,17 +1215,17 @@ void BufferProcessor::processThread() {
         }
 
         // SR/LR mode fusion: concatenate one LR + one SR raw frame into a
-        // single buffer (LR first per IsSRFrameFirst=0) and hand it to the
+        // single buffer (order per IsSRFrameFirst) and hand it to the
         // fusion-enabled context as ONE frame, so the library emits a single
-        // fused output. Fusion is off at the SDK level by default; it turns on
-        // only when a program (viewer/pygame) explicitly opts in via
-        // setModeFusionEnabled(true), which rebuilds the compute contexts with
-        // modeFusionEnabled=1 (m_modeFusionEnabled). A plain DMS sequence keeps
-        // modeFusionEnabled=0, so this stays false and each mode's frames are
-        // delivered separately.
+        // fused output. Only Camera::setModeFusion() builds the contexts with
+        // modeFusionEnabled=1; otherwise each mode's frames are delivered
+        // separately.
         const bool fusionActive =
             m_dmsActive.load(std::memory_order_acquire) && m_altConfigValid &&
             m_modeFusionEnabled;
+        // LR frame's ISP metadata header, re-applied to the fused output.
+        uint8_t fusedMetadata[METADATA_SIZE];
+        bool restoreFusedMetadata = false;
         if (fusionActive) {
             // Sort this frame into the primary/alternate pending slot by its
             // ISP-embedded imagerMode rather than the DMS counter tag, so a
@@ -1233,9 +1245,15 @@ void BufferProcessor::processThread() {
             }
 
             if (frameIsAlternate) {
+                if (m_pendingAltRaw) {
+                    m_v4l2_input_buffer_Q.push(m_pendingAltRaw);
+                }
                 m_pendingAltRaw = process_frame.data;
                 m_pendingAltSize = process_frame.size;
             } else {
+                if (m_pendingPrimaryRaw) {
+                    m_v4l2_input_buffer_Q.push(m_pendingPrimaryRaw);
+                }
                 m_pendingPrimaryRaw = process_frame.data;
                 m_pendingPrimarySize = process_frame.size;
             }
@@ -1277,12 +1295,8 @@ void BufferProcessor::processThread() {
                 }
             }
 
-            // ADTF3066 range classification (hardcoded): Long Range = modes
-            // 7, 8; Short Range = modes 0, 1, 3, 6. Frequency count can't be
-            // used here since SR mode 1 and LR mode 7 are both 3-frequency.
-            auto isLRmode = [](uint8_t m) { return m == 7 || m == 8; };
-            const bool primaryIsLR = isLRmode(m_currentModeNumber);
-
+            const bool primaryIsLR =
+                aditof::isAdtf3066LongRangeMode(m_currentModeNumber);
 
             const uint8_t *lrRaw =
                 primaryIsLR ? m_pendingPrimaryRaw.get() : m_pendingAltRaw.get();
@@ -1293,19 +1307,14 @@ void BufferProcessor::processThread() {
             const size_t srSize =
                 primaryIsLR ? m_pendingAltSize : m_pendingPrimarySize;
 
-            // Diagnostic: dump the individual LR and SR raw frames going into
-            // fusion so they can be validated before concatenation.
-            if (std::getenv("DMS_FUSE_DUMP")) {
-                static bool dumped = false;
-                if (!dumped) {
-                    std::ofstream ol("/tmp/fuse_lr_raw.bin", std::ios::binary);
-                    ol.write((const char *)lrRaw, lrSize);
-                    std::ofstream os("/tmp/fuse_sr_raw.bin", std::ios::binary);
-                    os.write((const char *)srRaw, srSize);
-                    dumped = true;
-                    LOG(INFO) << "DMS-FUSE dumped LR(" << lrSize << ") + SR("
-                              << srSize << ") raw frames to /tmp";
-                }
+            // The library only carries through the header of the frame at the
+            // start of the fused buffer, which is the SR one when SR is first.
+            const size_t lrMetadataOffset =
+                static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight *
+                ((m_bitsInDepth + m_bitsInConf) / 8);
+            if (lrMetadataOffset + METADATA_SIZE <= lrSize) {
+                memcpy(fusedMetadata, lrRaw + lrMetadataOffset, METADATA_SIZE);
+                restoreFusedMetadata = true;
             }
 
             std::vector<uint8_t> fused(lrSize + srSize);
@@ -1317,6 +1326,8 @@ void BufferProcessor::processThread() {
             // on this flag, breaking the mode-selection order invariance.
             const bool srFrameFirst =
                 primaryIsLR ? m_altConfig.isSRFrameFirst : m_isSRFrameFirst;
+            // Whole raw frames: the library expects each payload followed by
+            // its numMetaDataBytes trailer.
             if (srFrameFirst) {
                 memcpy(fused.data(), srRaw, srSize);
                 memcpy(fused.data() + srSize, lrRaw, lrSize);
@@ -1324,23 +1335,6 @@ void BufferProcessor::processThread() {
                 memcpy(fused.data(), lrRaw, lrSize);
                 memcpy(fused.data() + lrSize, srRaw, srSize);
             }
-
-            // Diagnostic: dump the actual concatenated buffer so the
-            // LR-first/SR-first byte order can be verified directly, not
-            // just inferred from the separate pre-fusion halves above.
-            if (std::getenv("DMS_FUSE_DUMP")) {
-                static bool dumpedFused = false;
-                if (!dumpedFused) {
-                    std::ofstream of("/tmp/fuse_concatenated.bin",
-                                     std::ios::binary);
-                    of.write((const char *)fused.data(), fused.size());
-                    dumpedFused = true;
-                    LOG(INFO) << "DMS-FUSE dumped concatenated buffer ("
-                              << fused.size() << " bytes, srFrameFirst="
-                              << srFrameFirst << ") to /tmp";
-                }
-            }
-
 
             m_v4l2_input_buffer_Q.push(m_pendingPrimaryRaw);
             m_v4l2_input_buffer_Q.push(m_pendingAltRaw);
@@ -1581,6 +1575,15 @@ void BufferProcessor::processThread() {
             computeCtx->p_depth_frame = tempDepthFrame;
             computeCtx->p_ab_frame = tempAbFrame;
             computeCtx->p_conf_frame = tempConfFrame;
+
+            if (restoreFusedMetadata &&
+                static_cast<size_t>(tofiBufSize) * sizeof(uint16_t) >=
+                    static_cast<size_t>(numPixels) * sizeof(uint16_t) +
+                        METADATA_SIZE) {
+                memcpy(reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
+                           static_cast<size_t>(numPixels) * sizeof(uint16_t),
+                       fusedMetadata, METADATA_SIZE);
+            }
 
         } // end if (tofi_compute_io_buff)
 
@@ -1989,6 +1992,8 @@ void BufferProcessor::stopThreads() {
     // Reset thread objects
     m_captureThread = std::thread();
     m_processingThread = std::thread();
+
+    recyclePendingFusionFrames();
 
     // Now that threads are stopped, flush remaining frames from intermediate queues
     // Return buffers to their pools for potential reuse

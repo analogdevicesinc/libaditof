@@ -457,6 +457,8 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_rotationEnabled = playbackRotation;
         LOG(INFO) << "[PLAYBACK] Using rotation state: "
                   << (m_rotationEnabled ? "ENABLED" : "DISABLED");
+        m_recordingMgr->getModeFusion(m_fusionActive, m_fusionSrMode,
+                                      m_fusionLrMode);
 
         // Set rotation control on sensor for playback
         m_depthSensor->setControl("enableRotation",
@@ -479,6 +481,27 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 return status;
             }
         }
+
+        // A mode change invalidates any DMS/fusion pipeline built for the
+        // previous mode; it is rebuilt by the sequence setup if requested.
+        if (m_dmsAlternateMode != 0xFF || m_fusionActive) {
+            Status altStatus =
+                m_depthSensor->disableDynamicModeSwitchingSupport();
+            if (altStatus != Status::OK && altStatus != Status::UNAVAILABLE) {
+                LOG(WARNING) << "Could not clear DMS alternate-mode pipeline";
+            }
+        }
+        if (m_fusionActive &&
+            m_adsd3500Ctrl->setEnableDynamicModeSwitching(false) !=
+                Status::OK) {
+            LOG(WARNING) << "Could not disable Dynamic Mode Switching used "
+                            "by mode fusion";
+        }
+        m_dmsAlternateMode = 0xFF;
+        m_fusionActive = false;
+        m_fusionSrMode = 0xFF;
+        m_fusionLrMode = 0xFF;
+        m_fusionSequence.clear();
 
         auto modeIt = std::find_if(m_availableSensorModeDetails.begin(),
                                    m_availableSensorModeDetails.end(),
@@ -732,9 +755,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         if (!m_pcmFrame &&
             (!m_modeDetailsCache.isRawBypass || lensScatterEnabled)) {
-            size_t dataSize = 0;
-            std::string s;
-
             std::map<std::string, std::string> currentModeParams;
             if (m_config->getDepthParamsForMode(mode, currentModeParams) !=
                 Status::OK) {
@@ -743,46 +763,19 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 return Status::INVALID_ARGUMENT;
             }
 
-            // Create a string from the ini parameters
-            for (auto &param : currentModeParams) {
-                s += param.first + "=" + param.second + "\n";
+            // Single-mode streaming feeds one raw frame at a time, so fusion
+            // is only ever enabled by configureModeFusion().
+            auto fusionIt = currentModeParams.find("modeFusionEnabled");
+            if (fusionIt != currentModeParams.end() &&
+                fusionIt->second != "0") {
+                LOG(INFO) << "modeFusionEnabled ignored for single-mode "
+                             "streaming of mode "
+                          << (int)mode;
+                fusionIt->second = "0";
             }
-            dataSize = s.size();
 
-            aditof::Status localStatus;
-
-            // Check if ISP depth compute is enabled for this mode
-            bool ispEnabled =
-                (currentModeParams.find("depthComputeIspEnable") !=
-                     currentModeParams.end() &&
-                 currentModeParams["depthComputeIspEnable"] == "1");
-
-            if (ispEnabled) {
-                // ISP enabled: pass parsed TofiXYZDealiasData
-                LOG(INFO) << "Initializing depth compute with ISP (parsed "
-                             "dealias data)";
-                // Copy all dealias data to a buffer for transmission
-                TofiXYZDealiasData dealiasBuffer[10];
-                for (int i = 0; i < 10; i++) {
-                    m_calibrationMgr->getXYZDealiasData(i, dealiasBuffer[i]);
-                }
-                localStatus = m_depthSensor->initTargetDepthCompute(
-                    (uint8_t *)s.c_str(), dataSize, (uint8_t *)dealiasBuffer,
-                    sizeof(TofiXYZDealiasData) * 10);
-            } else {
-                // ISP disabled: pass raw CCB data
-                LOG(INFO)
-                    << "Initializing depth compute without ISP (raw CCB data)";
-                const std::string &rawCCB = m_calibrationMgr->getRawCCBData();
-                if (rawCCB.empty()) {
-                    LOG(ERROR)
-                        << "Raw CCB data not available for non-ISP mode!";
-                    return Status::GENERIC_ERROR;
-                }
-                localStatus = m_depthSensor->initTargetDepthCompute(
-                    (uint8_t *)s.c_str(), dataSize, (uint8_t *)rawCCB.c_str(),
-                    rawCCB.size());
-            }
+            aditof::Status localStatus =
+                initPrimaryDepthCompute(currentModeParams);
             if (localStatus != aditof::Status::OK) {
                 LOG(ERROR) << "Failed to initialize depth compute on target!";
                 return localStatus;
@@ -1016,7 +1009,8 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
     aditof::Status status = m_recordingMgr->startRecording(
         filePath, m_cameraFps, m_details, m_modeDetailsCache,
         m_availableSensorModeDetails, m_depthEnabled, m_abEnabled,
-        m_confEnabled, m_xyzEnabled, m_rotationEnabled);
+        m_confEnabled, m_xyzEnabled, m_rotationEnabled, m_fusionActive,
+        m_fusionSrMode, m_fusionLrMode);
 
     // Rotation state is now stored in recording header via RecordingManager
     if (status == aditof::Status::OK) {
@@ -2163,6 +2157,11 @@ aditof::Status CameraItof::adsd3500GetFrameRate(uint16_t &fps) {
         fps = m_recordingMgr->getFrameRate();
         return aditof::Status::OK;
     }
+    // The ADSD3500 rejects control access while DMS runs for fusion.
+    if (m_fusionActive && m_cameraFps > 0) {
+        fps = static_cast<uint16_t>(m_cameraFps);
+        return aditof::Status::OK;
+    }
     return m_adsd3500Ctrl->getFrameRate(fps);
 }
 
@@ -2181,6 +2180,15 @@ aditof::Status CameraItof::adsd3500GetFrameRate(uint16_t &fps) {
  */
 aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
     assert(!m_isOffline);
+
+    // The ADSD3500 rejects control writes while DMS runs and won't re-enable
+    // DMS after a pause, so rebuild fusion with the rate applied up front.
+    if (m_fusionActive && m_fusionSequence.size() == 2) {
+        const uint8_t firstMode = m_fusionSequence[0].first;
+        const uint8_t secondMode = m_fusionSequence[1].first;
+        m_fusionFps = fps;
+        return setModeFusion(firstMode, secondMode);
+    }
 
     aditof::Status status = m_adsd3500Ctrl->setFrameRate(fps);
     if (status == aditof::Status::OK) {
@@ -2610,6 +2618,25 @@ aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
             LOG(WARNING) << "Could not clear DMS alternate-mode pipeline "
                             "config";
         }
+        m_dmsAlternateMode = 0xFF;
+
+        if (m_fusionActive) {
+            m_fusionActive = false;
+            m_fusionSrMode = 0xFF;
+            m_fusionLrMode = 0xFF;
+            m_fusionSequence.clear();
+            std::map<std::string, std::string> params;
+            if (m_config->getDepthParamsForMode(m_details.mode, params) ==
+                Status::OK) {
+                params["modeFusionEnabled"] = "0";
+                Status ctxStatus = initPrimaryDepthCompute(params);
+                if (ctxStatus != Status::OK) {
+                    LOG(ERROR) << "Could not rebuild depth compute for mode "
+                               << (int)m_details.mode << " without fusion";
+                    return ctxStatus;
+                }
+            }
+        }
     }
 
     return m_adsd3500Ctrl->setEnableDynamicModeSwitching(en);
@@ -2641,188 +2668,331 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
     // Track the configured alternate mode (if this is a two-entry A/B pair
     // starting from the currently active mode) so requestFrame() can tell a
     // genuinely corrupted embedded imagerMode from a correctly-alternating
-    // one, regardless of whether fusion is requested.
+    // one.
     m_dmsAlternateMode = (sequence.size() == 2 &&
                          sequence[0].first == m_details.mode)
                             ? sequence[1].first
                             : 0xFF;
 
-    // If this is the common A/B pair and the second mode differs in
-    // resolution/bit layout from the currently active mode, the host-side
-    // frame pipeline needs its own config for it, otherwise frames for the
-    // second mode get parsed with the wrong layout (garbage metadata/depth).
-    //
-    // Fusion is only prepared when the application explicitly opted in via
-    // setModeFusionEnabled(true). A plain DMS sequence (m_modeFusionRequested
-    // == false, e.g. the dynamic_mode_switching example) leaves both compute
-    // contexts with modeFusionEnabled=0 so the pipeline delivers each mode's
-    // frames separately instead of concatenating them.
-    if (m_modeFusionRequested && sequence.size() == 2 &&
-        sequence[0].first == m_details.mode) {
-        uint8_t primaryMode = sequence[0].first;
-        uint8_t alternateMode = sequence[1].first;
-
-        // Canonical SR/LR role assignment for this physical mode pair, fixed
-        // by mode identity (ADTF3066: modes 7/8 are LR) and NOT by which one
-        // was passed as primary/m0 vs alternate/m1. Logged once up front so
-        // it's auditable that swapping m0/m1 for the same pair (e.g. 0+7 vs
-        // 7+0) always resolves to the same SR/LR roles and therefore the
-        // same ini selection, concatenation order, and compute context.
-        auto isLRmode = [](uint8_t m) { return m == 7 || m == 8; };
-        const uint8_t canonicalLR =
-            isLRmode(primaryMode) ? primaryMode : alternateMode;
-        const uint8_t canonicalSR =
-            isLRmode(primaryMode) ? alternateMode : primaryMode;
-        LOG(INFO) << "DMS fusion role assignment for pair {"
-                  << (int)primaryMode << "," << (int)alternateMode
-                  << "}: SR mode=" << (int)canonicalSR
-                  << ", LR mode=" << (int)canonicalLR
-                  << " (fixed regardless of which was passed as m0/m1)";
-
-        // Fusion is requested here. The SDK default modeFusionEnabled=0 means
-        // the compute contexts were built without fusion, so the depth-compute
-        // library would not fuse. Force modeFusionEnabled=1 into the ini blob
-        // and rebuild BOTH contexts: the fused frame is processed by the LR
-        // context, which may be the primary or the alternate depending on the
-        // mode order, so both must carry the flag.
-        auto buildFusionIni =
-            [](std::map<std::string, std::string> params) -> std::string {
-            params["modeFusionEnabled"] = "1";
-            std::string s;
-            for (auto &p : params) {
-                s += p.first + "=" + p.second + "\n";
-            }
-            return s;
-        };
-
-        // Always produce SOME ini for both modes, falling back to the chip's
-        // own CCB-sourced defaults when a mode has no JSON entry, so a
-        // context rebuild is never silently skipped. Skipping it would leave
-        // whatever context happened to exist from a previous session in
-        // place (possibly built without modeFusionEnabled, or for a
-        // different tuning) instead of a known, freshly-built one.
-        // `fromJson` is set to tell the caller (and the log) exactly which
-        // source was used, since the two look identical if the JSON and CCB
-        // values happen to match for a given key.
-        auto getParamsWithFallback =
-            [this](uint8_t mode, std::map<std::string, std::string> &outParams,
-                   bool &fromJson) -> bool {
-            if (m_config->getDepthParamsForMode(mode, outParams) ==
-                    Status::OK &&
-                !outParams.empty()) {
-                fromJson = true;
-                return true;
-            }
-            fromJson = false;
-            std::string iniArray;
-            m_depthSensor->getIniParamsArrayForMode(mode, iniArray);
-            UtilsIni::getKeyValuePairsFromString(iniArray, outParams);
-            if (!outParams.empty()) {
-                LOG(WARNING)
-                    << "Mode " << (int)mode << " not found in JSON config; "
-                       "falling back to chip/CCB-sourced ini for fusion "
-                       "(load it via loadDepthParamsFromJsonFile to tune it)";
-                return true;
-            }
-            LOG(ERROR) << "Could not obtain ini params for mode " << (int)mode
-                      << " from either JSON config or the chip/CCB; cannot "
-                         "prepare fusion for this mode";
-            return false;
-        };
-
-        // Note the resolved source (JSON vs CCB fallback) for each mode once,
-        // without dumping every key.
-        auto logFusionParams =
-            [](uint8_t mode, bool fromJson,
-               const std::map<std::string, std::string> &) {
-                LOG(INFO) << "Fusion ini for mode " << (int)mode
-                          << " (source: " << (fromJson ? "JSON config"
-                                                        : "chip/CCB fallback")
-                          << ")";
-            };
-
-        // Rebuild the PRIMARY compute context with fusion enabled.
-        std::map<std::string, std::string> primParams;
-        bool primFromJson = false;
-        bool primOk =
-            getParamsWithFallback(primaryMode, primParams, primFromJson);
-        if (primOk) {
-            logFusionParams(primaryMode, primFromJson, primParams);
-            std::string ps = buildFusionIni(primParams);
-            bool primIsp = (primParams.count("depthComputeIspEnable") &&
-                            primParams["depthComputeIspEnable"] == "1");
-            if (primIsp) {
-                TofiXYZDealiasData db[10];
-                for (int i = 0; i < 10; i++) {
-                    m_calibrationMgr->getXYZDealiasData(i, db[i]);
-                }
-                m_depthSensor->initTargetDepthCompute(
-                    (uint8_t *)ps.c_str(), ps.size(), (uint8_t *)db,
-                    sizeof(TofiXYZDealiasData) * 10);
-            } else {
-                const std::string &rawCCB = m_calibrationMgr->getRawCCBData();
-                m_depthSensor->initTargetDepthCompute(
-                    (uint8_t *)ps.c_str(), ps.size(),
-                    (uint8_t *)rawCCB.c_str(), rawCCB.size());
-            }
-        }
-
-        std::map<std::string, std::string> altParams;
-        bool altFromJson = false;
-        bool altOk =
-            getParamsWithFallback(alternateMode, altParams, altFromJson);
-        if (altOk) {
-            logFusionParams(alternateMode, altFromJson, altParams);
-            std::string s = buildFusionIni(altParams);
-
-            bool ispEnabled = (altParams.find("depthComputeIspEnable") !=
-                                    altParams.end() &&
-                               altParams["depthComputeIspEnable"] == "1");
-
-            Status altStatus;
-            if (ispEnabled) {
-                TofiXYZDealiasData dealiasBuffer[10];
-                for (int i = 0; i < 10; i++) {
-                    m_calibrationMgr->getXYZDealiasData(i, dealiasBuffer[i]);
-                }
-                altStatus = m_depthSensor->enableDynamicModeSwitchingSupport(
-                    alternateMode, (uint8_t *)s.c_str(), s.size(),
-                    (uint8_t *)dealiasBuffer,
-                    sizeof(TofiXYZDealiasData) * 10, true, sequence[0].second,
-                    sequence[1].second);
-            } else {
-                const std::string &rawCCB = m_calibrationMgr->getRawCCBData();
-                altStatus = m_depthSensor->enableDynamicModeSwitchingSupport(
-                    alternateMode, (uint8_t *)s.c_str(), s.size(),
-                    (uint8_t *)rawCCB.c_str(), rawCCB.size(), false,
-                    sequence[0].second, sequence[1].second);
-            }
-
-            // UNAVAILABLE just means the sensor doesn't support/need this
-            // (e.g. network/offline sensors); anything else is worth a warning.
-            if (altStatus != Status::OK && altStatus != Status::UNAVAILABLE) {
-                LOG(WARNING) << "Could not prepare frame pipeline for DMS "
-                                "alternate mode "
-                             << (int)alternateMode
-                             << "; its frames may be misinterpreted if its "
-                                "resolution/bit layout differs from mode "
-                             << (int)m_details.mode;
-            }
-        }
-
-        // Both getParamsWithFallback calls already logged the specific
-        // reason on failure; surface it to the caller too instead of
-        // quietly proceeding with fusion half-configured (or not at all).
-        if (!primOk || !altOk) {
-            return Status::GENERIC_ERROR;
+    if (m_fusionRequested) {
+        Status fusionStatus = configureModeFusion(sequence);
+        if (fusionStatus != Status::OK) {
+            return fusionStatus;
         }
     }
 
-    return m_adsd3500Ctrl->setDynamicModeSwitchingSequence(sequence);
+    Status status = m_adsd3500Ctrl->setDynamicModeSwitchingSequence(sequence);
+    if (status != Status::OK && m_fusionActive) {
+        m_depthSensor->disableDynamicModeSwitchingSupport();
+        m_fusionActive = false;
+        m_fusionSrMode = 0xFF;
+        m_fusionLrMode = 0xFF;
+        m_fusionSequence.clear();
+    }
+    return status;
 }
 
-aditof::Status CameraItof::setModeFusionEnabled(bool enable) {
-    m_modeFusionRequested = enable;
+/**
+ * @brief Validates an SR/LR fusion pair and builds both compute contexts.
+ *
+ * Works without a JSON config: missing modes fall back to the built-in ini
+ * defaults, and modeFusionEnabled/IsSRFrameFirst are forced into both
+ * contexts only (the stored per-mode params are left untouched).
+ * IsSRFrameFirst is 1 when the first sequence entry is the SR mode, else 0.
+ *
+ * @param[in] sequence Two-entry DMS sequence; the first entry is the active mode.
+ *
+ * @return Status::OK on success; Status::UNAVAILABLE if the imager or sensor
+ *         does not support fusion; Status::INVALID_ARGUMENT for an invalid
+ *         pair; other errors if a compute context cannot be built.
+ */
+aditof::Status CameraItof::configureModeFusion(
+    const std::vector<std::pair<uint8_t, uint8_t>> &sequence) {
+    using namespace aditof;
+
+    if (m_imagerType != ImagerType::ADTF3066) {
+        LOG(ERROR) << "Mode fusion is only supported on the ADTF3066 imager";
+        return Status::UNAVAILABLE;
+    }
+    if (sequence.size() != 2 || sequence[0].first != m_details.mode) {
+        LOG(ERROR) << "Mode fusion needs a 2-entry sequence starting with the "
+                      "active mode "
+                   << (int)m_details.mode;
+        return Status::INVALID_ARGUMENT;
+    }
+    if (sequence[0].second != 1 || sequence[1].second != 1) {
+        LOG(ERROR) << "Mode fusion needs each mode repeated exactly once";
+        return Status::INVALID_ARGUMENT;
+    }
+
+    const uint8_t primaryMode = sequence[0].first;
+    const uint8_t alternateMode = sequence[1].first;
+    const bool primaryIsLR = isAdtf3066LongRangeMode(primaryMode);
+    const uint8_t lrMode = primaryIsLR ? primaryMode : alternateMode;
+    const uint8_t srMode = primaryIsLR ? alternateMode : primaryMode;
+    if (!isAdtf3066LongRangeMode(lrMode) || !isAdtf3066ShortRangeMode(srMode)) {
+        LOG(ERROR) << "Mode fusion needs one SR mode (0, 1, 3, 6) and one LR "
+                      "mode (7, 8); got "
+                   << (int)primaryMode << " and " << (int)alternateMode;
+        return Status::INVALID_ARGUMENT;
+    }
+
+    auto findMode = [this](uint8_t m) {
+        return std::find_if(m_availableSensorModeDetails.begin(),
+                            m_availableSensorModeDetails.end(),
+                            [m](const DepthSensorModeDetails &d) {
+                                return d.modeNumber == m;
+                            });
+    };
+    auto srIt = findMode(srMode);
+    auto lrIt = findMode(lrMode);
+    if (srIt == m_availableSensorModeDetails.end() ||
+        lrIt == m_availableSensorModeDetails.end()) {
+        LOG(ERROR) << "Mode fusion pair " << (int)srMode << "/" << (int)lrMode
+                   << " is not available on this camera";
+        return Status::INVALID_ARGUMENT;
+    }
+    if (srIt->baseResolutionWidth != lrIt->baseResolutionWidth ||
+        srIt->baseResolutionHeight != lrIt->baseResolutionHeight) {
+        LOG(ERROR) << "Mode fusion needs modes of equal resolution";
+        return Status::INVALID_ARGUMENT;
+    }
+
+    auto getParams = [this](uint8_t mode,
+                            std::map<std::string, std::string> &outParams) {
+        if (m_config->getDepthParamsForMode(mode, outParams) == Status::OK &&
+            !outParams.empty()) {
+            return true;
+        }
+        std::string iniArray;
+        m_depthSensor->getIniParamsArrayForMode(mode, iniArray);
+        UtilsIni::getKeyValuePairsFromString(iniArray, outParams);
+        if (outParams.empty()) {
+            LOG(ERROR) << "Could not obtain ini params for mode " << (int)mode;
+            return false;
+        }
+        LOG(INFO) << "Mode " << (int)mode
+                  << " not in config; using built-in ini defaults for fusion";
+        return true;
+    };
+
+    std::map<std::string, std::string> primParams;
+    std::map<std::string, std::string> altParams;
+    if (!getParams(primaryMode, primParams) ||
+        !getParams(alternateMode, altParams)) {
+        return Status::GENERIC_ERROR;
+    }
+
+    // Both contexts must agree: the fused frame goes through the LR context
+    // but is concatenated using the SR context's flag.
+    const std::string srFirst = primaryIsLR ? "0" : "1";
+    for (auto *params : {&primParams, &altParams}) {
+        (*params)["modeFusionEnabled"] = "1";
+        (*params)["IsSRFrameFirst"] = srFirst;
+    }
+
+    LOG(INFO) << "Mode fusion: SR mode " << (int)srMode << ", LR mode "
+              << (int)lrMode << ", IsSRFrameFirst=" << srFirst;
+
+    Status status = initPrimaryDepthCompute(primParams);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Could not build fusion depth compute for mode "
+                   << (int)primaryMode;
+        return status;
+    }
+
+    std::string altIni;
+    for (const auto &p : altParams) {
+        altIni += p.first + "=" + p.second + "\n";
+    }
+    auto ispIt = altParams.find("depthComputeIspEnable");
+    const bool altIsp = (ispIt != altParams.end() && ispIt->second == "1");
+    if (altIsp) {
+        TofiXYZDealiasData dealiasBuffer[10];
+        for (int i = 0; i < 10; i++) {
+            m_calibrationMgr->getXYZDealiasData(i, dealiasBuffer[i]);
+        }
+        status = m_depthSensor->enableDynamicModeSwitchingSupport(
+            alternateMode, (uint8_t *)altIni.c_str(), altIni.size(),
+            (uint8_t *)dealiasBuffer, sizeof(TofiXYZDealiasData) * 10, true,
+            sequence[0].second, sequence[1].second);
+    } else {
+        const std::string &rawCCB = m_calibrationMgr->getRawCCBData();
+        status = m_depthSensor->enableDynamicModeSwitchingSupport(
+            alternateMode, (uint8_t *)altIni.c_str(), altIni.size(),
+            (uint8_t *)rawCCB.c_str(), rawCCB.size(), false,
+            sequence[0].second, sequence[1].second);
+    }
+
+    if (status != Status::OK) {
+        LOG(ERROR) << "Could not prepare frame pipeline for fusion mode "
+                   << (int)alternateMode;
+        primParams["modeFusionEnabled"] = "0";
+        initPrimaryDepthCompute(primParams);
+        return status;
+    }
+
+    m_fusionActive = true;
+    m_fusionSrMode = srMode;
+    m_fusionLrMode = lrMode;
+    m_fusionSequence = sequence;
+    return Status::OK;
+}
+
+/**
+ * @brief Starts SR/LR mode fusion for the given pair (use instead of setMode()).
+ *
+ * Performs the whole setup at camera level: sets both modes (the first mode
+ * last, so it leads the sequence), enables metadata in AB, reapplies the
+ * hardware configuration cleared by the mode switch, enables Dynamic Mode
+ * Switching (required for fusion) and programs the SR/LR sequence with
+ * fusion-enabled compute contexts. IsSRFrameFirst is 1 when firstMode is the
+ * SR mode, otherwise 0.
+ *
+ * @param[in] firstMode Mode leading the sequence (one SR, one LR in total).
+ * @param[in] secondMode The other mode of the pair.
+ *
+ * @return Status::OK on success; Status::UNAVAILABLE in playback or on a
+ *         non-ADTF3066 imager; Status::INVALID_ARGUMENT for an invalid pair;
+ *         other errors if a hardware or compute step fails.
+ */
+aditof::Status CameraItof::setModeFusion(uint8_t firstMode,
+                                         uint8_t secondMode) {
+    using namespace aditof;
+
+    if (m_isOffline) {
+        LOG(ERROR) << "Mode fusion is not available in playback";
+        return Status::UNAVAILABLE;
+    }
+    if (m_imagerType != ImagerType::ADTF3066) {
+        LOG(ERROR) << "Mode fusion is only supported on the ADTF3066 imager";
+        return Status::UNAVAILABLE;
+    }
+    const bool validPair = (isAdtf3066ShortRangeMode(firstMode) &&
+                            isAdtf3066LongRangeMode(secondMode)) ||
+                           (isAdtf3066LongRangeMode(firstMode) &&
+                            isAdtf3066ShortRangeMode(secondMode));
+    if (!validPair) {
+        LOG(ERROR) << "Mode fusion needs one SR mode (0, 1, 3, 6) and one LR "
+                      "mode (7, 8); got "
+                   << (int)firstMode << " and " << (int)secondMode;
+        return Status::INVALID_ARGUMENT;
+    }
+    const uint8_t primaryMode = firstMode;
+    const uint8_t srMode =
+        isAdtf3066ShortRangeMode(firstMode) ? firstMode : secondMode;
+    const uint8_t lrMode =
+        isAdtf3066LongRangeMode(firstMode) ? firstMode : secondMode;
+
+    Status status = setMode(secondMode);
+    if (status != Status::OK) {
+        return status;
+    }
+    status = setMode(primaryMode);
+    if (status != Status::OK) {
+        return status;
+    }
+
+    // SR/LR pairing reads the per-frame metadata embedded in AB.
+    status = adsd3500SetEnableMetadatainAB(1);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Could not enable metadata in AB for mode fusion";
+        return status;
+    }
+
+    // setMode() applied the mode's ini fps; a rate requested while fused wins.
+    if (m_fusionFps > 0) {
+        status = m_adsd3500Ctrl->setFrameRate(m_fusionFps);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Could not set frame rate " << m_fusionFps
+                       << " for mode fusion";
+            return status;
+        }
+        m_cameraFps = m_fusionFps;
+        LOG(INFO) << "Mode fusion sensor FPS: " << m_cameraFps
+                  << " (fused output: " << m_cameraFps / 2 << ")";
+    }
+
+    status = m_initManager->applyHardwareConfiguration();
+    if (status != Status::OK) {
+        LOG(ERROR) << "Could not reapply hardware configuration for mode "
+                      "fusion";
+        return status;
+    }
+    // Chip bus needs to settle after the mode-switch reset.
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    status = adsd3500setEnableDynamicModeSwitching(true);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Could not enable Dynamic Mode Switching for mode fusion";
+        return status;
+    }
+
+    m_fusionRequested = true;
+    status = adsds3500setDynamicModeSwitchingSequence(
+        {{primaryMode, 1}, {secondMode, 1}});
+    m_fusionRequested = false;
+    if (status != Status::OK) {
+        LOG(ERROR) << "Could not program the mode fusion sequence";
+        adsd3500setEnableDynamicModeSwitching(false);
+        return status;
+    }
+
+    // Chip needs a moment to apply the sequence.
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    LOG(INFO) << "Mode fusion started: SR mode " << (int)srMode << " + LR mode "
+              << (int)lrMode;
+    return Status::OK;
+}
+
+/**
+ * @brief Builds the active mode's depth-compute context from ini params.
+ *
+ * @param[in] params Ini key/value pairs for the active mode.
+ *
+ * @return Status::OK on success; error status if the context cannot be built.
+ */
+aditof::Status CameraItof::initPrimaryDepthCompute(
+    const std::map<std::string, std::string> &params) {
+    using namespace aditof;
+
+    std::string s;
+    for (const auto &param : params) {
+        s += param.first + "=" + param.second + "\n";
+    }
+
+    auto ispIt = params.find("depthComputeIspEnable");
+    const bool ispEnabled = (ispIt != params.end() && ispIt->second == "1");
+
+    if (ispEnabled) {
+        LOG(INFO) << "Initializing depth compute with ISP (parsed dealias "
+                     "data)";
+        TofiXYZDealiasData dealiasBuffer[10];
+        for (int i = 0; i < 10; i++) {
+            m_calibrationMgr->getXYZDealiasData(i, dealiasBuffer[i]);
+        }
+        return m_depthSensor->initTargetDepthCompute(
+            (uint8_t *)s.c_str(), s.size(), (uint8_t *)dealiasBuffer,
+            sizeof(TofiXYZDealiasData) * 10);
+    }
+
+    LOG(INFO) << "Initializing depth compute without ISP (raw CCB data)";
+    const std::string &rawCCB = m_calibrationMgr->getRawCCBData();
+    if (rawCCB.empty()) {
+        LOG(ERROR) << "Raw CCB data not available for non-ISP mode!";
+        return Status::GENERIC_ERROR;
+    }
+    return m_depthSensor->initTargetDepthCompute(
+        (uint8_t *)s.c_str(), s.size(), (uint8_t *)rawCCB.c_str(),
+        rawCCB.size());
+}
+
+aditof::Status CameraItof::getModeFusion(bool &enabled, uint8_t &srMode,
+                                         uint8_t &lrMode) const {
+    enabled = m_fusionActive;
+    srMode = m_fusionSrMode;
+    lrMode = m_fusionLrMode;
     return aditof::Status::OK;
 }
 
