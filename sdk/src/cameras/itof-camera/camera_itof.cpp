@@ -61,6 +61,26 @@
 #undef NDEBUG
 #include <cassert>
 
+// Logs both fusion modes' ini parameters in the same format setMode() uses.
+static void
+logFusionParams(int firstMode,
+                const std::map<std::string, std::string> &firstParams,
+                int secondMode,
+                const std::map<std::string, std::string> &secondParams) {
+    LOG(INFO) << "Using the following configuration parameters for mode "
+                 "fusion "
+              << firstMode << " + " << secondMode;
+    for (const auto &entry :
+         {std::make_pair(firstMode, &firstParams),
+          std::make_pair(secondMode, &secondParams)}) {
+        LOG(INFO) << "";
+        LOG(INFO) << "Mode " << entry.first << ":";
+        for (const auto &param : *entry.second) {
+            LOG(INFO) << param.first << " : " << param.second;
+        }
+    }
+}
+
 /**
  * @brief Rotates XYZ lookup tables 90° clockwise for portrait VGA orientation.
  *
@@ -648,6 +668,16 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         setDepthIniParams(m_config->getIniKeyValPairs(), false);
         configureSensorModeDetails();
         m_details.mode = mode;
+
+        if (!m_fusionSetupInProgress) {
+            const auto &paramsForLogging = m_config->getIniKeyValPairs();
+            LOG(INFO)
+                << "Using the following configuration parameters for mode "
+                << int(mode);
+            for (auto param : paramsForLogging) {
+                LOG(INFO) << param.first << " : " << param.second;
+            }
+        }
 
         if (m_config->getMetadataInAB() > 0) {
             if (!m_pcmFrame) {
@@ -2791,8 +2821,10 @@ aditof::Status CameraItof::configureModeFusion(
         (*params)["IsSRFrameFirst"] = srFirst;
     }
 
-    LOG(INFO) << "Mode fusion: SR mode " << (int)srMode << ", LR mode "
-              << (int)lrMode << ", IsSRFrameFirst=" << srFirst;
+    LOG(INFO) << "Mode fusion: "
+              << (primaryIsLR ? "LR mode " : "SR mode ") << (int)primaryMode
+              << ", " << (primaryIsLR ? "SR mode " : "LR mode ")
+              << (int)alternateMode << ", IsSRFrameFirst=" << srFirst;
 
     Status status = initPrimaryDepthCompute(primParams);
     if (status != Status::OK) {
@@ -2836,6 +2868,7 @@ aditof::Status CameraItof::configureModeFusion(
     m_fusionSrMode = srMode;
     m_fusionLrMode = lrMode;
     m_fusionSequence = sequence;
+    logFusionParams(primaryMode, primParams, alternateMode, altParams);
     return Status::OK;
 }
 
@@ -2881,14 +2914,14 @@ aditof::Status CameraItof::setModeFusion(uint8_t firstMode,
     const uint8_t primaryMode = firstMode;
     const uint8_t srMode =
         isAdtf3066ShortRangeMode(firstMode) ? firstMode : secondMode;
-    const uint8_t lrMode =
-        isAdtf3066LongRangeMode(firstMode) ? firstMode : secondMode;
 
+    // The fusion contexts are logged once in configureModeFusion().
+    m_fusionSetupInProgress = true;
     Status status = setMode(secondMode);
-    if (status != Status::OK) {
-        return status;
+    if (status == Status::OK) {
+        status = setMode(primaryMode);
     }
-    status = setMode(primaryMode);
+    m_fusionSetupInProgress = false;
     if (status != Status::OK) {
         return status;
     }
@@ -2941,8 +2974,11 @@ aditof::Status CameraItof::setModeFusion(uint8_t firstMode,
     // Chip needs a moment to apply the sequence.
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    LOG(INFO) << "Mode fusion started: SR mode " << (int)srMode << " + LR mode "
-              << (int)lrMode;
+    const bool srFirst = (primaryMode == srMode);
+    LOG(INFO) << "Mode fusion started: "
+              << (srFirst ? "SR mode " : "LR mode ") << (int)primaryMode
+              << " + " << (srFirst ? "LR mode " : "SR mode ")
+              << (int)secondMode << " (IsSRFrameFirst=" << srFirst << ")";
     return Status::OK;
 }
 

@@ -290,7 +290,8 @@ class CameraItof : public aditof::Camera {
         false; // True if XYZ tables and frames are rotated 90° CW
     uint8_t m_dmsAlternateMode =
         0xFF; // Second mode of the active DMS pair, 0xFF = none configured
-    bool m_fusionRequested = false; // Set only while setModeFusion() runs
+    bool m_fusionRequested = false;       // Set only while setModeFusion() runs
+    bool m_fusionSetupInProgress = false; // Mutes setMode() param logging
     bool m_fusionActive = false; // Fusion contexts built (or recorded, offline)
     uint8_t m_fusionSrMode = 0xFF;
     uint8_t m_fusionLrMode = 0xFF;

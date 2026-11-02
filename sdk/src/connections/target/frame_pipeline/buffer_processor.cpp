@@ -494,9 +494,6 @@ aditof::Status BufferProcessor::setProcessorProperties(
         parseIniBoolFlag(iniFile, iniFileLength, "modeFusionEnabled", false);
     m_isSRFrameFirst =
         parseIniBoolFlag(iniFile, iniFileLength, "IsSRFrameFirst", false);
-    LOG(INFO) << __func__ << ": mode " << mode
-              << " ini to library: modeFusionEnabled=" << m_modeFusionEnabled
-              << ", IsSRFrameFirst=" << m_isSRFrameFirst;
 
     // Log libtofi_compute version once per mode change.
     {
@@ -785,9 +782,6 @@ aditof::Status BufferProcessor::setAlternateModeConfiguration(
         parseIniBoolFlag(iniFile, iniFileLength, "modeFusionEnabled", false);
     cfg.isSRFrameFirst =
         parseIniBoolFlag(iniFile, iniFileLength, "IsSRFrameFirst", false);
-    LOG(INFO) << __func__ << ": mode " << (int)modeNumber
-              << " ini to library: modeFusionEnabled=" << cfg.modeFusionEnabled
-              << ", IsSRFrameFirst=" << cfg.isSRFrameFirst;
 
     cfg.rawFrameBufferSize =
         aditof::platform::Platform::getInstance().calculateBufferSize(
