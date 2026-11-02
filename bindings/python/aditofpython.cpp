@@ -173,7 +173,8 @@ PYBIND11_MODULE(aditofpython, m) {
         .value("UNSET", aditof::ImagerType::UNSET)
         .value("ADSD3100", aditof::ImagerType::ADSD3100)
         .value("ADSD3030", aditof::ImagerType::ADSD3030)
-        .value("ADTF3080", aditof::ImagerType::ADTF3080);
+        .value("ADTF3080", aditof::ImagerType::ADTF3080)
+        .value("ADTF3066", aditof::ImagerType::ADTF3066);
 
     py::class_<aditof::IntrinsicParameters>(m, "IntrinsicParameters")
         .def(py::init<>())
@@ -627,8 +628,17 @@ PYBIND11_MODULE(aditofpython, m) {
         .def("adsds3500setDynamicModeSwitchingSequence",
              &aditof::Camera::adsds3500setDynamicModeSwitchingSequence,
              py::arg("sequence"))
-        .def("setModeFusionEnabled", &aditof::Camera::setModeFusionEnabled,
-             py::arg("enable"))
+        .def("setModeFusion", &aditof::Camera::setModeFusion,
+             py::arg("firstMode"), py::arg("secondMode"))
+        .def("getModeFusion",
+             [](aditof::Camera &camera) {
+                 bool enabled = false;
+                 uint8_t srMode = 0xFF;
+                 uint8_t lrMode = 0xFF;
+                 aditof::Status status =
+                     camera.getModeFusion(enabled, srMode, lrMode);
+                 return std::make_tuple(status, enabled, srMode, lrMode);
+             })
         .def(
             "readSerialNumber",
             [](aditof::Camera &camera, std::string serialNumber,
