@@ -168,9 +168,6 @@ void RGBDCoregistration::projectToRGB(float x_norm, float y_norm, float &u_px,
 
 bool RGBDCoregistration::projectPoint(const int16_t *p, float maxU, float maxV,
                                       float &u, float &v) const {
-    if (p[2] == 0) {
-        return false;
-    }
     const float *R = m_calib.extrinsics.R;
     const float *t = m_calib.extrinsics.t;
     const float X = p[0], Y = p[1], Z = p[2];
@@ -252,51 +249,6 @@ Status RGBDCoregistration::colorizePointCloud(
         }
     }
 
-    return Status::OK;
-}
-
-Status RGBDCoregistration::mapToRGB(const int16_t *xyz, std::size_t numPoints,
-                                    uint32_t rgbWidth, uint32_t rgbHeight,
-                                    float *uv) const {
-    if (!m_calibLoaded) {
-        LOG(ERROR) << "RGBDCoregistration: calibration not loaded";
-        return Status::UNAVAILABLE;
-    }
-    if (!xyz || !uv || rgbWidth < 2 || rgbHeight < 2) {
-        return Status::INVALID_ARGUMENT;
-    }
-
-    const float maxU = static_cast<float>(rgbWidth - 1);
-    const float maxV = static_cast<float>(rgbHeight - 1);
-    for (std::size_t i = 0; i < numPoints; ++i) {
-        float u, v;
-        if (projectPoint(xyz + 3 * i, maxU, maxV, u, v)) {
-            uv[2 * i] = u;
-            uv[2 * i + 1] = v;
-        } else {
-            uv[2 * i] = uv[2 * i + 1] = -1.0f;
-        }
-    }
-    return Status::OK;
-}
-
-Status RGBDCoregistration::remapRGB(const float *uv, std::size_t numPoints,
-                                    const uint8_t *bgr, uint32_t rgbWidth,
-                                    uint32_t rgbHeight, uint32_t rgbStride,
-                                    uint8_t *bgrOut) {
-    if (!uv || !bgr || !bgrOut || rgbWidth < 2 || rgbHeight < 2 ||
-        rgbStride < rgbWidth * 3u) {
-        return Status::INVALID_ARGUMENT;
-    }
-    for (std::size_t i = 0; i < numPoints; ++i) {
-        uint8_t *out = bgrOut + 3 * i;
-        if (uv[2 * i] < 0.0f) {
-            out[0] = out[1] = out[2] = 0;
-        } else {
-            sampleBilinear(bgr, rgbWidth, rgbHeight, rgbStride, uv[2 * i],
-                           uv[2 * i + 1], out);
-        }
-    }
     return Status::OK;
 }
 

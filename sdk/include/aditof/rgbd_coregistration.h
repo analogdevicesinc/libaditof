@@ -31,8 +31,7 @@
 
 /**
  * @file rgbd_coregistration.h
- * @brief RGB-Depth coregistration: colours ToF points from the RGB image and
- *        maps the RGB image onto the ToF pixel grid.
+ * @brief RGB-Depth coregistration: colours ToF points from the RGB image.
  *
  * Algorithm overview
  * ==================
@@ -119,8 +118,7 @@ enum class XYZColorStatus : uint8_t {
 
 /**
  * @class RGBDCoregistration
- * @brief Colours ToF points from the RGB image and maps the RGB image onto
- *        the ToF pixel grid.
+ * @brief Colours ToF points from the RGB image.
  *
  * The camera does this itself and returns the result as "xyz_color" and
  * "rgb"; use this class directly only for data captured elsewhere.
@@ -202,44 +200,6 @@ class SDK_API RGBDCoregistration {
                               uint32_t rgbHeight, uint32_t rgbStride,
                               uint8_t *rgba) const;
 
-    /**
-     * @brief Position in the RGB image of each ToF point.
-     *
-     * With each ToF pixel's ray at a far distance as the points, this gives
-     * a fixed map of the RGB image into the ToF view, for remapRGB().
-     *
-     * @param xyz        Points, int16 mm, X Y Z per point.
-     * @param numPoints  Number of points.
-     * @param rgbWidth   Width of the RGB image.
-     * @param rgbHeight  Height of the RGB image.
-     * @param uv         Output, 2 floats per point: column and row in the RGB
-     *                   image; -1 for a point with no depth or out of view.
-     * @return Status::OK on success; Status::UNAVAILABLE if calibration not
-     *         loaded; Status::INVALID_ARGUMENT on a null pointer or an RGB
-     *         image smaller than 2x2.
-     */
-    Status mapToRGB(const int16_t *xyz, std::size_t numPoints,
-                    uint32_t rgbWidth, uint32_t rgbHeight, float *uv) const;
-
-    /**
-     * @brief Sample the RGB image bilinearly at the positions from mapToRGB().
-     *
-     * @param uv         Positions, 2 floats per output pixel; -1 gives 0.
-     * @param numPoints  Number of output pixels.
-     * @param bgr        RGB image, 3 bytes per pixel in B, G, R order.
-     * @param rgbWidth   Width of the RGB image.
-     * @param rgbHeight  Height of the RGB image.
-     * @param rgbStride  Bytes per row of the RGB image.
-     * @param bgrOut     Output, 3 bytes per pixel in B, G, R order.
-     * @return Status::OK on success; Status::INVALID_ARGUMENT on a null
-     *         pointer, an RGB image smaller than 2x2 or a stride smaller than
-     *         one row.
-     */
-    static Status remapRGB(const float *uv, std::size_t numPoints,
-                           const uint8_t *bgr, uint32_t rgbWidth,
-                           uint32_t rgbHeight, uint32_t rgbStride,
-                           uint8_t *bgrOut);
-
     /** @return true once a calibration has been successfully loaded. */
     bool isCalibrationLoaded() const { return m_calibLoaded; }
 
@@ -264,7 +224,7 @@ class SDK_API RGBDCoregistration {
     void projectToRGB(float x_norm, float y_norm, float &u_px,
                       float &v_px) const;
 
-    // False when the point has no depth or lands outside the RGB image.
+    // False when the point is behind or outside the RGB image; needs Z != 0.
     bool projectPoint(const int16_t *p, float maxU, float maxV, float &u,
                       float &v) const;
 

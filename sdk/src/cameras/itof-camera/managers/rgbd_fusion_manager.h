@@ -40,27 +40,19 @@ class RgbdFusionManager {
 
     const RGBDCoregistration &coregistration() const { return m_coreg; }
 
-    /** @brief When set, fuse() zeroes xyz points outside the RGB view. */
-    void setOverlapOnly(bool enable) { m_overlapOnly = enable; }
-
     /** @brief Set when the RGB image arrives rotated 180° from the calibrated one. */
     void setRgbRotated180(bool rotated);
 
     /**
-     * @brief Sets each depth pixel's ray at a far distance (X Y Z int16 mm
-     *        per pixel), which places the RGB image in the depth view.
-     */
-    void setPixelRays(std::vector<int16_t> rays);
-
-    /**
      * @brief Fills the frame's "rgb" and "xyz_color".
      *
-     * "rgb" is the RGB image in the depth view (depth width x height, B, G,
-     * R), placed without depth; pixels outside the RGB view are 0.
-     * "xyz_color" is the colour of each point of xyz.
+     * Each point of xyz is projected into the RGB image with its own depth.
+     * "xyz_color" is its colour and status; "rgb" is the same colour on the
+     * depth grid (B, G, R), 0 where there is no depth or no RGB view.
+     * With "xyz_color", xyz points outside the RGB view are zeroed.
      * @param frame Frame holding "rgb" and/or "xyz_color"
      * @param xyz Points of this frame, X Y Z int16 mm per depth pixel;
-     *            nullptr when the frame has no xyz
+     *            nullptr when the frame has no xyz (outputs are zeroed)
      * @param bgr Paired RGB image (B, G, R), nullptr when none was paired
      * @param bgrWidth Width of the RGB image
      * @param bgrHeight Height of the RGB image
@@ -71,15 +63,45 @@ class RgbdFusionManager {
     Status fuse(Frame *frame, int16_t *xyz, const uint8_t *bgr,
                 uint32_t bgrWidth, uint32_t bgrHeight, uint32_t bgrStride);
 
+    /**
+     * @brief Fills "rgb" and "xyz_color" from a recorded "rgb" image.
+     *
+     * A point with a recorded colour is Valid; the status of the others is
+     * found again from the calibration.
+     * @param frame Frame holding "rgb" and/or "xyz_color"
+     * @param xyz Points of this frame, may be nullptr
+     * @param bgr Recorded "rgb" image, B, G, R per depth pixel
+     * @param numPoints Number of pixels in bgr
+     * @param rgbWidth Width of the RGB camera image it was taken from
+     * @param rgbHeight Height of the RGB camera image it was taken from
+     * @return Status::OK on success; Status::INVALID_ARGUMENT when numPoints
+     *         does not match the frame (outputs are zeroed);
+     *         Status::UNAVAILABLE without calibration or xyz (only "rgb" is
+     *         filled)
+     */
+    Status applyRecordedRgb(Frame *frame, int16_t *xyz, const uint8_t *bgr,
+                            std::size_t numPoints, uint32_t rgbWidth,
+                            uint32_t rgbHeight);
+
   private:
+    struct Outputs {
+        uint8_t *rgb = nullptr;
+        uint8_t *color = nullptr;
+        std::size_t rgbBytes = 0;
+        std::size_t colorBytes = 0;
+        std::size_t numPoints = 0;
+    };
+    static Outputs getOutputs(Frame *frame);
+    static void clearOutputs(const Outputs &out);
+    // Points' colours: the frame's "xyz_color", else m_colorScratch.
+    uint8_t *colorBuffer(const Outputs &out);
+    void writeOutputs(const Outputs &out, int16_t *xyz,
+                      const uint8_t *rgba) const;
     RGBDCoregistration m_coreg;
-    bool m_overlapOnly = true;
     bool m_rgbRotated180 = false;
     bool m_warnedUnavailable = false;
-    std::vector<int16_t> m_rays;
-    std::vector<float> m_rgbMap; ///< RGB position per depth pixel, from m_rays
-    uint32_t m_rgbMapWidth = 0;
-    uint32_t m_rgbMapHeight = 0;
+    std::vector<uint8_t>
+        m_colorScratch; ///< point colours when the frame has no xyz_color
 };
 
 } // namespace aditof

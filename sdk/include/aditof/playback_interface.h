@@ -27,6 +27,7 @@
 #include <aditof/status_definitions.h>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace aditof {
 
@@ -73,6 +74,29 @@ class PlaybackInterface {
      * @return Status
      */
     virtual aditof::Status getFrameCount(uint32_t &frameCount) = 0;
+
+    /**
+     * @brief Reads the "rgb" image recorded for a depth frame
+     * @param[in] frameNumber - Depth frame number
+     * @param[out] payload - Record payload (see RGB_RECORD_MARKER)
+     * @return Status::UNAVAILABLE when the recording has none for this frame
+     */
+    virtual aditof::Status readRgbRecord(uint32_t frameNumber,
+                                         std::vector<uint8_t> &payload) {
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    /**
+     * @brief Removes depth frames that have no "rgb" record from playback
+     *
+     * Does nothing when the recording has no "rgb" records.
+     * @param[in] frameNumberOffset - Byte offset of the depth frame number
+     *            inside a recorded depth frame
+     * @return Status
+     */
+    virtual aditof::Status keepOnlyFramesWithRgb(uint32_t frameNumberOffset) {
+        return aditof::Status::OK;
+    }
 };
 
 } // namespace aditof
