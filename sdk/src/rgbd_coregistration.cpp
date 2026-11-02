@@ -29,9 +29,68 @@
 #include <cmath>
 #include <cstring>
 
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#define RGBD_NEON 1
+#elif defined(__SSE2__) || defined(_M_X64)
+#include <emmintrin.h>
+#define RGBD_SSE2 1
+#endif
+
 static constexpr float METRES_TO_MM = 1000.0f;
 
 namespace aditof {
+
+#if defined(RGBD_NEON)
+using F4 = float32x4_t;
+using M4 = uint32x4_t;
+static inline F4 f4(float a) { return vdupq_n_f32(a); }
+static inline F4 add(F4 a, F4 b) { return vaddq_f32(a, b); }
+static inline F4 sub(F4 a, F4 b) { return vsubq_f32(a, b); }
+static inline F4 mul(F4 a, F4 b) { return vmulq_f32(a, b); }
+static inline F4 div(F4 a, F4 b) { return vdivq_f32(a, b); }
+static inline F4 absF(F4 a) { return vabsq_f32(a); }
+static inline M4 gt(F4 a, F4 b) { return vcgtq_f32(a, b); }
+static inline M4 ge(F4 a, F4 b) { return vcgeq_f32(a, b); }
+static inline M4 le(F4 a, F4 b) { return vcleq_f32(a, b); }
+static inline M4 andM(M4 a, M4 b) { return vandq_u32(a, b); }
+static inline F4 select(M4 m, F4 a, F4 b) { return vbslq_f32(m, a, b); }
+static inline void store(float *p, F4 a) { vst1q_f32(p, a); }
+static inline int maskBits(M4 m) {
+    uint32_t lanes[4];
+    vst1q_u32(lanes, m);
+    return (lanes[0] & 1) | (lanes[1] & 2) | (lanes[2] & 4) | (lanes[3] & 8);
+}
+static inline void loadXyz4(const int16_t *p, F4 &x, F4 &y, F4 &z) {
+    const int16x4x3_t v = vld3_s16(p);
+    x = vcvtq_f32_s32(vmovl_s16(v.val[0]));
+    y = vcvtq_f32_s32(vmovl_s16(v.val[1]));
+    z = vcvtq_f32_s32(vmovl_s16(v.val[2]));
+}
+#elif defined(RGBD_SSE2)
+using F4 = __m128;
+using M4 = __m128;
+static inline F4 f4(float a) { return _mm_set1_ps(a); }
+static inline F4 add(F4 a, F4 b) { return _mm_add_ps(a, b); }
+static inline F4 sub(F4 a, F4 b) { return _mm_sub_ps(a, b); }
+static inline F4 mul(F4 a, F4 b) { return _mm_mul_ps(a, b); }
+static inline F4 div(F4 a, F4 b) { return _mm_div_ps(a, b); }
+static inline F4 absF(F4 a) { return _mm_andnot_ps(_mm_set1_ps(-0.0f), a); }
+static inline M4 gt(F4 a, F4 b) { return _mm_cmpgt_ps(a, b); }
+static inline M4 ge(F4 a, F4 b) { return _mm_cmpge_ps(a, b); }
+static inline M4 le(F4 a, F4 b) { return _mm_cmple_ps(a, b); }
+static inline M4 andM(M4 a, M4 b) { return _mm_and_ps(a, b); }
+static inline F4 select(M4 m, F4 a, F4 b) {
+    return _mm_or_ps(_mm_and_ps(m, a), _mm_andnot_ps(m, b));
+}
+static inline void store(float *p, F4 a) { _mm_storeu_ps(p, a); }
+static inline int maskBits(M4 m) { return _mm_movemask_ps(m); }
+static inline void loadXyz4(const int16_t *p, F4 &x, F4 &y, F4 &z) {
+    x = _mm_setr_ps(p[0], p[3], p[6], p[9]);
+    y = _mm_setr_ps(p[1], p[4], p[7], p[10]);
+    z = _mm_setr_ps(p[2], p[5], p[8], p[11]);
+}
+#endif
 
 // ---------------------------------------------------------------------------
 // Invert rgb2tof extrinsics to tof2rgb.
@@ -189,6 +248,88 @@ bool RGBDCoregistration::projectPoint(const int16_t *p, float maxU, float maxV,
     return true;
 }
 
+void RGBDCoregistration::projectPoints(const int16_t *xyz, std::size_t count,
+                                       float maxU, float maxV, float *u,
+                                       float *v, uint8_t *status) const {
+    const uint8_t noDepth = static_cast<uint8_t>(XYZColorStatus::NoDepth);
+    const uint8_t outOfView = static_cast<uint8_t>(XYZColorStatus::OutOfView);
+    const uint8_t inView = static_cast<uint8_t>(XYZColorStatus::Valid);
+    std::size_t i = 0;
+
+#if defined(RGBD_NEON) || defined(RGBD_SSE2)
+    const float *R = m_calib.extrinsics.R;
+    const float *t = m_calib.extrinsics.t;
+    const auto &K = m_calib.rgb;
+    const F4 r0 = f4(R[0]), r1 = f4(R[1]), r2 = f4(R[2]);
+    const F4 r3 = f4(R[3]), r4 = f4(R[4]), r5 = f4(R[5]);
+    const F4 r6 = f4(R[6]), r7 = f4(R[7]), r8 = f4(R[8]);
+    const F4 t0 = f4(t[0]), t1 = f4(t[1]), t2 = f4(t[2]);
+    const F4 codx = f4(K.codx), cody = f4(K.cody);
+    const F4 k1 = f4(K.k1), k2 = f4(K.k2), k3 = f4(K.k3);
+    const F4 k4 = f4(K.k4), k5 = f4(K.k5), k6 = f4(K.k6);
+    const F4 p1 = f4(K.p1), p2 = f4(K.p2);
+    const F4 twoP1 = f4(2.0f * K.p1), twoP2 = f4(2.0f * K.p2);
+    const F4 fx = f4(K.fx), fy = f4(K.fy), cx = f4(K.cx), cy = f4(K.cy);
+    const F4 zero = f4(0.0f), one = f4(1.0f), two = f4(2.0f);
+    const F4 eps = f4(1e-6f), vMaxU = f4(maxU), vMaxV = f4(maxV);
+
+    for (; i + 4 <= count; i += 4) {
+        const int16_t *p = xyz + 3 * i;
+        F4 X, Y, Z;
+        loadXyz4(p, X, Y, Z);
+        const F4 Xr = add(add(add(mul(r0, X), mul(r1, Y)), mul(r2, Z)), t0);
+        const F4 Yr = add(add(add(mul(r3, X), mul(r4, Y)), mul(r5, Z)), t1);
+        const F4 Zr = add(add(add(mul(r6, X), mul(r7, Y)), mul(r8, Z)), t2);
+        // Lanes with Zr <= 0 give inf/NaN here and are masked out below.
+        const F4 invZ = div(one, Zr);
+        const F4 xp = sub(mul(Xr, invZ), codx);
+        const F4 yp = sub(mul(Yr, invZ), cody);
+        const F4 rr2 = add(mul(xp, xp), mul(yp, yp));
+        const F4 rr4 = mul(rr2, rr2);
+        const F4 rr6 = mul(rr4, rr2);
+        const F4 numer =
+            add(add(add(one, mul(k1, rr2)), mul(k2, rr4)), mul(k3, rr6));
+        const F4 denom =
+            add(add(add(one, mul(k4, rr2)), mul(k5, rr4)), mul(k6, rr6));
+        const F4 radial =
+            select(gt(absF(denom), eps), div(numer, denom), numer);
+        const F4 xpyp = mul(xp, yp);
+        const F4 xd = add(add(add(mul(xp, radial), codx), mul(twoP1, xpyp)),
+                          mul(p2, add(rr2, mul(two, mul(xp, xp)))));
+        const F4 yd = add(add(add(mul(yp, radial), cody),
+                              mul(p1, add(rr2, mul(two, mul(yp, yp))))),
+                          mul(twoP2, xpyp));
+        F4 uu = add(mul(fx, xd), cx);
+        F4 vv = add(mul(fy, yd), cy);
+        const M4 ok =
+            andM(andM(gt(Zr, zero), andM(ge(uu, zero), le(uu, vMaxU))),
+                 andM(ge(vv, zero), le(vv, vMaxV)));
+        if (m_rotated180) {
+            uu = sub(vMaxU, uu);
+            vv = sub(vMaxV, vv);
+        }
+        store(u + i, uu);
+        store(v + i, vv);
+        const int bits = maskBits(ok);
+        for (int k = 0; k < 4; ++k) {
+            status[i + k] = p[3 * k + 2] == 0
+                                ? noDepth
+                                : ((bits >> k) & 1 ? inView : outOfView);
+        }
+    }
+#endif
+
+    for (; i < count; ++i) {
+        const int16_t *p = xyz + 3 * i;
+        if (p[2] == 0) {
+            status[i] = noDepth;
+        } else {
+            status[i] =
+                projectPoint(p, maxU, maxV, u[i], v[i]) ? inView : outOfView;
+        }
+    }
+}
+
 // Bilinear sample of a B, G, R image at (u, v) inside the image.
 static void sampleBilinear(const uint8_t *bgr, uint32_t width, uint32_t height,
                            uint32_t stride, float u, float v, uint8_t out[3]) {
@@ -211,6 +352,83 @@ static void sampleBilinear(const uint8_t *bgr, uint32_t width, uint32_t height,
     }
 }
 
+// Mean of the n x n pixels centred on (u, v); needs width, height >= n.
+static void sampleBox(const uint8_t *bgr, uint32_t width, uint32_t height,
+                      uint32_t stride, float u, float v, int n,
+                      uint8_t out[3]) {
+    const float half = 0.5f * static_cast<float>(n - 1);
+    const int x0 =
+        std::min(std::max(static_cast<int>(std::lround(u - half)), 0),
+                 static_cast<int>(width) - n);
+    const int y0 =
+        std::min(std::max(static_cast<int>(std::lround(v - half)), 0),
+                 static_cast<int>(height) - n);
+    uint32_t sum[3] = {0, 0, 0};
+
+#if defined(RGBD_NEON) || defined(RGBD_SSE2)
+    // 16-byte row loads: n <= 5 pixels per row, and the last image row only
+    // when the load stays inside it.
+    if (n * 3 <= 16 && (static_cast<uint32_t>(y0 + n) < height ||
+                        static_cast<uint32_t>(x0) * 3u + 16u <= width * 3u)) {
+        uint16_t cols[16];
+        const uint8_t *p = bgr + static_cast<std::size_t>(y0) * stride + x0 * 3;
+#if defined(RGBD_NEON)
+        uint16x8_t lo = vdupq_n_u16(0), hi = vdupq_n_u16(0);
+        for (int y = 0; y < n; ++y, p += stride) {
+            const uint8x16_t row = vld1q_u8(p);
+            lo = vaddw_u8(lo, vget_low_u8(row));
+            hi = vaddw_high_u8(hi, row);
+        }
+        vst1q_u16(cols, lo);
+        vst1q_u16(cols + 8, hi);
+#else
+        const __m128i zero = _mm_setzero_si128();
+        __m128i lo = zero, hi = zero;
+        for (int y = 0; y < n; ++y, p += stride) {
+            const __m128i row =
+                _mm_loadu_si128(reinterpret_cast<const __m128i *>(p));
+            lo = _mm_add_epi16(lo, _mm_unpacklo_epi8(row, zero));
+            hi = _mm_add_epi16(hi, _mm_unpackhi_epi8(row, zero));
+        }
+        _mm_storeu_si128(reinterpret_cast<__m128i *>(cols), lo);
+        _mm_storeu_si128(reinterpret_cast<__m128i *>(cols + 8), hi);
+#endif
+        for (int x = 0; x < n; ++x) {
+            sum[0] += cols[3 * x];
+            sum[1] += cols[3 * x + 1];
+            sum[2] += cols[3 * x + 2];
+        }
+    } else
+#endif
+    {
+        for (int y = y0; y < y0 + n; ++y) {
+            const uint8_t *p =
+                bgr + static_cast<std::size_t>(y) * stride + x0 * 3;
+            for (int x = 0; x < n; ++x, p += 3) {
+                sum[0] += p[0];
+                sum[1] += p[1];
+                sum[2] += p[2];
+            }
+        }
+    }
+    const uint32_t count = static_cast<uint32_t>(n * n);
+    for (int c = 0; c < 3; ++c) {
+        out[c] = static_cast<uint8_t>((sum[c] + count / 2) / count);
+    }
+}
+
+int RGBDCoregistration::rgbPixelsPerToFPixel() const {
+    static constexpr int MAX_BOX = 8;
+    const auto &tof = m_calib.tof;
+    const auto &rgb = m_calib.rgb;
+    if (tof.fx <= 0.0f || tof.fy <= 0.0f || rgb.fx <= 0.0f || rgb.fy <= 0.0f) {
+        return 1;
+    }
+    // Geometric mean: with ToF rotation the ToF axes are swapped against RGB.
+    const float ratio = std::sqrt((rgb.fx * rgb.fy) / (tof.fx * tof.fy));
+    return std::min(std::max(static_cast<int>(std::lround(ratio)), 1), MAX_BOX);
+}
+
 Status RGBDCoregistration::colorizePointCloud(
     const int16_t *xyz, std::size_t numPoints, const uint8_t *bgr,
     uint32_t rgbWidth, uint32_t rgbHeight, uint32_t rgbStride,
@@ -227,25 +445,42 @@ Status RGBDCoregistration::colorizePointCloud(
 
     const float maxU = static_cast<float>(rgbWidth - 1);
     const float maxV = static_cast<float>(rgbHeight - 1);
+    // Bilinear sampling already reads up to 2 x 2 RGB pixels per ToF pixel.
+    int box = rgbPixelsPerToFPixel();
+    if (box < 3 || static_cast<uint32_t>(box) > rgbWidth ||
+        static_cast<uint32_t>(box) > rgbHeight) {
+        box = 0;
+    }
 
-    for (std::size_t i = 0; i < numPoints; ++i) {
-        const int16_t *p = xyz + 3 * i;
-        uint8_t *out = rgba + 4 * i;
-        out[0] = out[1] = out[2] = 0;
-        float u, v;
-        if (p[2] == 0) {
-            out[3] = static_cast<uint8_t>(XYZColorStatus::NoDepth);
-        } else if (!projectPoint(p, maxU, maxV, u, v)) {
-            out[3] = static_cast<uint8_t>(XYZColorStatus::OutOfView);
-        } else if (!bgr) {
-            out[3] = static_cast<uint8_t>(XYZColorStatus::NoColor);
-        } else {
-            uint8_t px[3];
-            sampleBilinear(bgr, rgbWidth, rgbHeight, rgbStride, u, v, px);
-            out[0] = px[2];
-            out[1] = px[1];
-            out[2] = px[0];
-            out[3] = static_cast<uint8_t>(XYZColorStatus::Valid);
+    static constexpr std::size_t CHUNK = 256;
+    float u[CHUNK], v[CHUNK];
+    uint8_t status[CHUNK];
+    const uint8_t inView = static_cast<uint8_t>(XYZColorStatus::Valid);
+
+    for (std::size_t base = 0; base < numPoints; base += CHUNK) {
+        const std::size_t count = std::min(CHUNK, numPoints - base);
+        projectPoints(xyz + 3 * base, count, maxU, maxV, u, v, status);
+        for (std::size_t k = 0; k < count; ++k) {
+            uint8_t *out = rgba + 4 * (base + k);
+            out[0] = out[1] = out[2] = 0;
+            if (status[k] != inView) {
+                out[3] = status[k];
+            } else if (!bgr) {
+                out[3] = static_cast<uint8_t>(XYZColorStatus::NoColor);
+            } else {
+                uint8_t px[3];
+                if (box) {
+                    sampleBox(bgr, rgbWidth, rgbHeight, rgbStride, u[k], v[k],
+                              box, px);
+                } else {
+                    sampleBilinear(bgr, rgbWidth, rgbHeight, rgbStride, u[k],
+                                   v[k], px);
+                }
+                out[0] = px[2];
+                out[1] = px[1];
+                out[2] = px[0];
+                out[3] = inView;
+            }
         }
     }
 
