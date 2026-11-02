@@ -366,6 +366,7 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
 
     static bool parseIniBoolFlag(uint8_t *iniFile, uint16_t iniFileLength,
                                 const char *key, bool defaultValue);
+    void recyclePendingFusionFrames();
 
   public:
     // Stream record and playback support

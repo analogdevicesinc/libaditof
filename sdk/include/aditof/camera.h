@@ -515,24 +515,45 @@ class SDK_API Camera {
         const std::vector<std::pair<uint8_t, uint8_t>> &sequence) = 0;
 
     /**
-     * @brief Request SR/LR mode fusion for a Dynamic Mode Switching sequence.
+     * @brief Starts SR/LR mode fusion; call it instead of setMode().
      *
-     * Fusion is OFF at the SDK level by default: a plain DMS sequence delivers
-     * each mode's frames separately (see the dynamic_mode_switching example).
-     * When fusion is enabled, the two alternating modes (one short-range, one
-     * long-range) are concatenated and handed to the depth-compute library as a
-     * single frame so it emits one fused depth output. Call this with true
-     * BEFORE @ref adsds3500setDynamicModeSwitchingSequence to opt in; the SDK
-     * then builds the compute contexts with modeFusionEnabled=1 and the frame
-     * pipeline pairs the alternating raw frames.
+     * One short-range and one long-range frame are fused by the depth-compute
+     * library into one depth frame, i.e. output arrives at half the sensor
+     * frame rate. Dynamic Mode Switching is required and is configured
+     * internally, together with the mode order (IsSRFrameFirst), metadata in
+     * AB and the fusion compute contexts; no JSON config is needed.
+     * firstMode leads the sequence, so IsSRFrameFirst is 1 when firstMode is
+     * the SR mode and 0 when it is the LR mode.
+     * adsd3500SetFrameRate() may be called afterwards to set the sensor rate.
+     * Fusion ends with the next setMode() call. After stop(), call
+     * setModeFusion() again before start().
      *
-     * @param[in] enable - true to fuse the alternating modes, false for plain
-     *                     mode switching (default).
+     * @param[in] firstMode - first mode of the pair (SR 0, 1, 3, 6 or LR 7, 8)
+     * @param[in] secondMode - second mode; must be of the other range
+     * @return Status::UNAVAILABLE in playback or on non-ADTF3066 imagers,
+     *         Status::INVALID_ARGUMENT for an invalid pair
+     */
+    virtual aditof::Status setModeFusion(uint8_t firstMode,
+                                         uint8_t secondMode) {
+        (void)firstMode;
+        (void)secondMode;
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    /**
+     * @brief Reports whether SR/LR mode fusion is active. In playback, reports
+     * whether the recording was made with fusion.
+     * @param[out] enabled - true if fusion is active
+     * @param[out] srMode - short-range mode of the pair (valid if enabled)
+     * @param[out] lrMode - long-range mode of the pair (valid if enabled)
      * @return Status
      */
-    virtual aditof::Status setModeFusionEnabled(bool enable) {
-        (void)enable;
-        return aditof::Status::OK;
+    virtual aditof::Status getModeFusion(bool &enabled, uint8_t &srMode,
+                                         uint8_t &lrMode) const {
+        enabled = false;
+        srMode = 0xFF;
+        lrMode = 0xFF;
+        return aditof::Status::UNAVAILABLE;
     }
 
     /**

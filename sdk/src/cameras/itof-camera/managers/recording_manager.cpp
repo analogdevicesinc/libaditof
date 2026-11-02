@@ -37,7 +37,8 @@ Status RecordingManager::startRecording(
     const DepthSensorModeDetails &modeDetailsCache,
     const std::vector<DepthSensorModeDetails> &availableModes,
     bool depthEnabled, bool abEnabled, bool confEnabled, bool xyzEnabled,
-    bool rotationEnabled) {
+    bool rotationEnabled, bool modeFusionEnabled, uint8_t fusionSrMode,
+    uint8_t fusionLrMode) {
 
     // Reset frame counter
     m_offline_parameters.numberOfFrames = 0;
@@ -47,8 +48,12 @@ Status RecordingManager::startRecording(
     m_calibrationMgr->getXYZDealiasData(details.mode, dealias);
     memcpy(&m_offline_parameters.dealias, &dealias, sizeof(dealias));
 
-    // Store frame rate
-    m_offline_parameters.frameRate = cameraFps;
+    // Fusion delivers one output frame per SR/LR pair
+    m_offline_parameters.frameRate =
+        modeFusionEnabled ? static_cast<uint16_t>(cameraFps / 2) : cameraFps;
+    m_offline_parameters.modeFusionEnabled = modeFusionEnabled ? 1 : 0;
+    m_offline_parameters.fusionSrMode = modeFusionEnabled ? fusionSrMode : 0;
+    m_offline_parameters.fusionLrMode = modeFusionEnabled ? fusionLrMode : 0;
 
     // Store metadata embedding flag
     m_offline_parameters.enableMetaDatainAB = m_config->getMetadataInAB();
@@ -242,6 +247,11 @@ RecordingManager::loadPlaybackHeader(DepthSensorModeDetails &modeDetailsCache,
 
     LOG(INFO) << "Number of Frames: " << m_offline_parameters.numberOfFrames;
     LOG(INFO) << "Frame Rate: " << m_offline_parameters.frameRate;
+    if (m_offline_parameters.modeFusionEnabled != 0) {
+        LOG(INFO) << "[PLAYBACK] Mode fusion recording: SR mode "
+                  << m_offline_parameters.fusionSrMode << ", LR mode "
+                  << m_offline_parameters.fusionLrMode;
+    }
 
     // Copy mode details from file header
     modeDetailsCache.modeNumber =
