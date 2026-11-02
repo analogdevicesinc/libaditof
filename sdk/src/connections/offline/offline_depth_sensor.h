@@ -77,6 +77,9 @@ class OfflineDepthSensor : public aditof::DepthSensorInterface,
     aditof::Status stopPlayback() override;
     aditof::Status getHeader(uint8_t *buffer, uint32_t bufferSize) override;
     aditof::Status getFrameCount(uint32_t &frameCount) override;
+    aditof::Status readRgbRecord(uint32_t frameNumber,
+                                 std::vector<uint8_t> &payload) override;
+    aditof::Status keepOnlyFramesWithRgb(uint32_t frameNumberOffset) override;
 
   private: // Internal implementation (no recording support)
     struct ImplData;
@@ -91,6 +94,8 @@ class OfflineDepthSensor : public aditof::DepthSensorInterface,
     std::string m_stream_file_name;
     uint32_t m_frame_count;
     std::vector<std::streampos> m_frameIndex;
+    std::unordered_map<uint32_t, std::streampos>
+        m_rgbIndex; ///< by frame number
 };
 
 #endif // OFFLINE_DEPTH_SENSOR_H
