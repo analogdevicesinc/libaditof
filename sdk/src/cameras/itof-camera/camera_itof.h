@@ -142,7 +142,10 @@ class CameraItof : public aditof::Camera {
     aditof::Status adsd3500setEnableDynamicModeSwitching(bool en) override;
     aditof::Status adsds3500setDynamicModeSwitchingSequence(
         const std::vector<std::pair<uint8_t, uint8_t>> &sequence) override;
-    aditof::Status setModeFusionEnabled(bool enable) override;
+    aditof::Status setModeFusion(uint8_t firstMode,
+                                 uint8_t secondMode) override;
+    aditof::Status getModeFusion(bool &enabled, uint8_t &srMode,
+                                 uint8_t &lrMode) const override;
     aditof::Status readSerialNumber(std::string &serialNumber,
                                     bool useCacheValue = false) override;
     aditof::Status getImagerType(aditof::ImagerType &imagerType) const override;
@@ -194,6 +197,18 @@ class CameraItof : public aditof::Camera {
     aditof::Status
     setDepthIniParams(const std::map<std::string, std::string> &iniKeyValPairs,
                       bool updateDepthMap = true);
+
+    /**
+     * Builds the active mode's depth-compute context from the given ini params.
+     */
+    aditof::Status
+    initPrimaryDepthCompute(const std::map<std::string, std::string> &params);
+
+    /**
+     * Validates an SR/LR pair and builds both fusion compute contexts.
+     */
+    aditof::Status configureModeFusion(
+        const std::vector<std::pair<uint8_t, uint8_t>> &sequence);
 
     aditof::Status startRecording(std::string &filePath) override;
     aditof::Status stopRecording() override;
@@ -274,10 +289,14 @@ class CameraItof : public aditof::Camera {
     bool m_dropFrameOnce; // Per-frame state; m_dropFirstFrame moved to m_config
     bool m_rotationEnabled =
         false; // True if XYZ tables and frames are rotated 90° CW
-    bool m_modeFusionRequested =
-        false; // App opted into SR/LR fusion for the DMS sequence
     uint8_t m_dmsAlternateMode =
         0xFF; // Second mode of the active DMS pair, 0xFF = none configured
+    bool m_fusionRequested = false; // Set only while setModeFusion() runs
+    bool m_fusionActive = false; // Fusion contexts built (or recorded, offline)
+    uint8_t m_fusionSrMode = 0xFF;
+    uint8_t m_fusionLrMode = 0xFF;
+    std::vector<std::pair<uint8_t, uint8_t>> m_fusionSequence;
+    uint16_t m_fusionFps = 0; // Sensor fps requested while fused, 0 = ini fps
 };
 
 #endif // CAMERA_ITOF_H

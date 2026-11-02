@@ -67,10 +67,12 @@ aditof::Status DeviceParameters::createIniParams(
             iniF.iniKeyValPairs = adtf3080_fullDepth;
         } else if (imagerType == "adtf3066") {
             iniF.iniKeyValPairs = adtf3066_fullDepth;
-            // numMetaDataBytes is resolution-dependent: VGA (640x512) frames
-            // carry 2560 metadata bytes, QVGA (320x256) frames carry 1280.
+            // numMetaDataBytes is resolution-dependent: VGA frames carry 2560
+            // metadata bytes, QVGA frames 1280. Mode tables list VGA as 512x640.
             bool isVGA = (mode.baseResolutionWidth == 640 &&
-                          mode.baseResolutionHeight == 512);
+                          mode.baseResolutionHeight == 512) ||
+                         (mode.baseResolutionWidth == 512 &&
+                          mode.baseResolutionHeight == 640);
             iniF.iniKeyValPairs["numMetaDataBytes"] =
                 isVGA ? "2560" : "1280";
         }
