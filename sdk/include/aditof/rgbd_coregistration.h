@@ -38,9 +38,10 @@
  * For each ToF point P_tof (the "xyz" frame, mm, already undistorted):
  *  1. Transform:  P_rgb = R * P_tof + t   (tof2rgb extrinsics, t in mm)
  *  2. Project onto the RGB image with the RGB lens distortion
- *  3. Sample the RGB image bilinearly at the projected position; points with
- *     no depth, behind the RGB camera or outside the RGB image get a status
- *     instead.
+ *  3. Sample the RGB image at the projected position: bilinearly, or as the
+ *     mean of the n x n RGB pixels under the ToF pixel when one ToF pixel
+ *     covers 3 or more RGB pixels across; points with no depth, behind the
+ *     RGB camera or outside the RGB image get a status instead.
  *
  * Calibration source
  * ==================
@@ -179,7 +180,8 @@ class SDK_API RGBDCoregistration {
      * @brief Colour each ToF point from the RGB image.
      *
      * Each point is moved into the RGB camera (tof2rgb), projected through
-     * the RGB lens model and sampled bilinearly.
+     * the RGB lens model and sampled bilinearly, or averaged over the RGB
+     * pixels its ToF pixel covers when that is 3 x 3 or more.
      *
      * @param xyz        Points, int16 mm, X Y Z per point (the "xyz" frame).
      * @param numPoints  Number of points.
@@ -227,6 +229,14 @@ class SDK_API RGBDCoregistration {
     // False when the point is behind or outside the RGB image; needs Z != 0.
     bool projectPoint(const int16_t *p, float maxU, float maxV, float &u,
                       float &v) const;
+
+    // RGB pixels across one ToF pixel, rounded; 1 without a usable ratio.
+    int rgbPixelsPerToFPixel() const;
+
+    // Projects count points (NEON/SSE2, 4 at a time); status is NoDepth,
+    // OutOfView or Valid (in view).
+    void projectPoints(const int16_t *xyz, std::size_t count, float maxU,
+                       float maxV, float *u, float *v, uint8_t *status) const;
 
     RGBDCalibration m_calib;
     bool m_calibLoaded = false;
