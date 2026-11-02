@@ -2142,6 +2142,19 @@ aditof::Status Adsd3500Sensor::stopRecording() {
     return processor->stopRecording();
 }
 
+aditof::Status Adsd3500Sensor::writeRgbRecord(uint32_t frameNumber,
+                                              const uint8_t *bgr,
+                                              uint32_t width, uint32_t height,
+                                              uint32_t rgbWidth,
+                                              uint32_t rgbHeight) {
+    auto *processor = dynamic_cast<BufferProcessor *>(m_bufferProcessor);
+    if (!processor) {
+        return aditof::Status::UNAVAILABLE;
+    }
+    return processor->writeRgbRecord(frameNumber, bgr, width, height, rgbWidth,
+                                     rgbHeight);
+}
+
 uint32_t Adsd3500Sensor::getRecordedFrameCount() const {
     if (m_bufferProcessor) {
         return m_bufferProcessor->getRecordedFrameCount();

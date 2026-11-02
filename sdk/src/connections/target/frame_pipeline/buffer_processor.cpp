@@ -1592,6 +1592,7 @@ aditof::Status BufferProcessor::startRecording(std::string &filePath,
                                                uint32_t paramSize) {
 
     using namespace aditof;
+    std::lock_guard<std::mutex> lock(m_recordMutex);
 
     m_state = ST_STOP;
 
@@ -1611,7 +1612,7 @@ aditof::Status BufferProcessor::startRecording(std::string &filePath,
 
     m_state = ST_RECORD;
 
-    writeFrame(parameters, paramSize);
+    writeFrameLocked(parameters, paramSize, true);
 
     return aditof::Status::OK;
 }
@@ -1628,6 +1629,7 @@ aditof::Status BufferProcessor::startRecording(std::string &filePath,
 aditof::Status BufferProcessor::stopRecording() {
 
     using namespace aditof;
+    std::lock_guard<std::mutex> lock(m_recordMutex);
 
     Status status = Status::GENERIC_ERROR;
 
@@ -1666,6 +1668,13 @@ aditof::Status BufferProcessor::stopRecording() {
  */
 aditof::Status BufferProcessor::writeFrame(uint8_t *buffer, uint32_t bufferSize,
                                            bool incrementCount) {
+    std::lock_guard<std::mutex> lock(m_recordMutex);
+    return writeFrameLocked(buffer, bufferSize, incrementCount);
+}
+
+aditof::Status BufferProcessor::writeFrameLocked(uint8_t *buffer,
+                                                 uint32_t bufferSize,
+                                                 bool incrementCount) {
     if (m_state != ST_RECORD) {
         return aditof::Status::GENERIC_ERROR;
     }
@@ -1687,6 +1696,56 @@ aditof::Status BufferProcessor::writeFrame(uint8_t *buffer, uint32_t bufferSize,
 
             return aditof::Status::OK;
         }
+    } catch (const std::ofstream::failure &e) {
+        LOG(ERROR) << "File I/O exception caught: " << e.what();
+        m_stream_file_out.close();
+        m_state = ST_STOP;
+    }
+    return aditof::Status::GENERIC_ERROR;
+}
+
+/**
+ * @brief Adds the "rgb" image of one depth frame to the recording.
+ *
+ * Not counted as a frame; playback finds it by the depth frame number.
+ *
+ * @param[in] frameNumber Depth frame number the image belongs to
+ * @param[in] bgr B, G, R per depth pixel
+ * @param[in] width Depth frame width
+ * @param[in] height Depth frame height
+ * @param[in] rgbWidth Width of the RGB camera image
+ * @param[in] rgbHeight Height of the RGB camera image
+ *
+ * @return Status::OK on success, Status::UNAVAILABLE when not recording,
+ *         Status::GENERIC_ERROR on I/O error
+ */
+aditof::Status BufferProcessor::writeRgbRecord(uint32_t frameNumber,
+                                               const uint8_t *bgr,
+                                               uint32_t width, uint32_t height,
+                                               uint32_t rgbWidth,
+                                               uint32_t rgbHeight) {
+    std::lock_guard<std::mutex> lock(m_recordMutex);
+    if (m_state != ST_RECORD || !m_stream_file_out.is_open()) {
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    const uint32_t imageBytes = width * height * 3;
+    const uint32_t header[2 + aditof::RGB_RECORD_HEADER_WORDS] = {
+        aditof::RGB_RECORD_MARKER,
+        static_cast<uint32_t>(aditof::RGB_RECORD_HEADER_WORDS *
+                              sizeof(uint32_t)) +
+            imageBytes,
+        frameNumber,
+        width,
+        height,
+        rgbWidth,
+        rgbHeight};
+    try {
+        m_stream_file_out.write(reinterpret_cast<const char *>(header),
+                                sizeof(header));
+        m_stream_file_out.write(reinterpret_cast<const char *>(bgr),
+                                imageBytes);
+        return aditof::Status::OK;
     } catch (const std::ofstream::failure &e) {
         LOG(ERROR) << "File I/O exception caught: " << e.what();
         m_stream_file_out.close();

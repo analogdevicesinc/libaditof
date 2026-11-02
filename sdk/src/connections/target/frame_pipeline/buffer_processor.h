@@ -335,12 +335,19 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
                                   uint32_t paramSize);
     aditof::Status stopRecording();
+    aditof::Status writeRgbRecord(uint32_t frameNumber, const uint8_t *bgr,
+                                  uint32_t width, uint32_t height,
+                                  uint32_t rgbWidth, uint32_t rgbHeight);
 
   private:
     aditof::Status automaticStop();
     aditof::Status writeFrame(uint8_t *buffer, uint32_t bufferSize,
                               bool incrementCount = true);
+    aditof::Status writeFrameLocked(uint8_t *buffer, uint32_t bufferSize,
+                                    bool incrementCount);
     std::atomic<uint32_t> m_frames_written{0};
+    // Depth records come from processThread(), RGB records from the caller
+    std::mutex m_recordMutex;
 
   public:
     uint32_t getRecordedFrameCount() const override {

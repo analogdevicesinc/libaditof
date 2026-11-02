@@ -96,6 +96,14 @@ class RecordingManager {
     bool getRGBDCalibration(uint8_t data[RGBD_CALIBRATION_SIZE]) const;
 
     /**
+     * @brief Tells whether the playback file's AB frames carry the metadata.
+     * @return true if each recorded frame holds its frame number
+     */
+    bool hasMetadataInAB() const {
+        return m_offline_parameters.enableMetaDatainAB != 0;
+    }
+
+    /**
      * @brief Gets the number of frames in the playback file.
      * @return Frame count
      */

@@ -47,6 +47,8 @@
 #ifdef HAS_RGB_CAMERA
 #include <aditof/ar0234_sensor.h>
 #include <memory>
+
+class BufferProcessor;
 #endif
 
 #define NR_READADSD3500CCB 3
@@ -261,8 +263,6 @@ class CameraItof : public aditof::Camera {
     bool m_isOffline;
     std::string m_netLinkTest;
 
-    /// Raw 0x30 response (full-sensor ToF intrinsics), read once per session.
-    /// Empty if the chip is not provisioned.
     std::vector<uint8_t> m_rgbdCalibBuf;
 
     uint8_t m_depthBitsPerPixel;
@@ -273,6 +273,8 @@ class CameraItof : public aditof::Camera {
     bool m_confEnabled;
     bool m_xyzEnabled;
     bool m_rgbEnabled;
+    // RGB camera used in this mode: rgbCameraEnable and not PCM.
+    bool m_rgbOutputs = false;
     bool m_xyzSetViaApi;
     bool m_pcmFrame;
     std::vector<aditof::DepthSensorModeDetails> m_availableSensorModeDetails;
@@ -303,7 +305,8 @@ class CameraItof : public aditof::Camera {
     struct RgbSyncStats {
         bool sizeMismatchLogged = false;
         uint64_t depthFrames = 0;
-        uint64_t missing = 0;
+        uint64_t dropped = 0; // depth frames without an RGB pair
+        uint32_t consecutiveDrops = 0;
         uint64_t skipped = 0; // RGB frames whose depth frame was lost
         double waitSumMs = 0.0;
         double waitMaxMs = 0.0;
@@ -317,14 +320,31 @@ class CameraItof : public aditof::Camera {
         aditof::RGBFrame held;
         std::chrono::steady_clock::time_point lastSummary;
     } m_rgbSync;
+    // One more depth frame in a row without RGB stops the camera.
+    static constexpr uint32_t MAX_CONSECUTIVE_RGB_DROPS = 2;
+    // Finds the RGB frame of the frame's depth frame; false when it has none.
+    bool pairRgbFrame(aditof::Frame *frame, BufferProcessor &bufProc,
+                      aditof::RGBFrame &rgbFrame);
     // Fills "rgb" and "xyz_color" of a frame from the paired RGB image
     // (nullptr when none was paired).
-    void fillRgbOutputs(aditof::Frame *frame, const aditof::RGBFrame *rgbFrame);
+    aditof::Status fillRgbOutputs(aditof::Frame *frame,
+                                  const aditof::RGBFrame *rgbFrame);
+    // Points of the frame, nullptr when it has no xyz.
+    static int16_t *frameXyz(aditof::Frame *frame);
+    // Points computed from depth for "rgb" when the frame has no xyz.
+    int16_t *depthToXyz(aditof::Frame *frame);
+    std::vector<int16_t> m_xyzScratch;
+    // Adds the frame's "rgb" image to an active recording.
+    void recordRgb(aditof::Frame *frame, const aditof::RGBFrame &rgbFrame);
+    // Playback: fills "rgb" and "xyz_color" from the recorded "rgb" image.
+    void applyRecordedRgb(aditof::Frame *frame);
+    std::vector<uint8_t> m_playbackRgb;
     std::unique_ptr<aditof::RGBSensor> m_rgbSensor;
     struct {
         bool detected;    // Hardware detection result from enumeration
         bool enabled;     // Runtime operational state after successful open()
         std::string path; // Device path (e.g., "/dev/video0")
+        aditof::Status openStatus; // Result of RGBSensor::open()
     } m_rgbStatus;
 #endif
 };

@@ -24,6 +24,7 @@
 #include "offline_depth_sensor.h"
 
 #include <aditof/log.h>
+#include <aditof/recordable_interface.h>
 #include <chrono>
 #include <unordered_map>
 
@@ -408,6 +409,7 @@ aditof::Status OfflineDepthSensor::setPlaybackFile(const std::string filePath) {
     }
 
     m_frameIndex.clear();
+    m_rgbIndex.clear();
     m_stream_file_in = std::ifstream(filePath, std::ios::binary);
 
     if (!m_stream_file_in.is_open() || !m_stream_file_in.good()) {
@@ -432,6 +434,7 @@ aditof::Status OfflineDepthSensor::setPlaybackFile(const std::string filePath) {
 aditof::Status OfflineDepthSensor::stopPlayback() {
     m_state = ST_STOP;
     m_frameIndex.clear();
+    m_rgbIndex.clear();
 
     if (m_stream_file_in.is_open()) {
         m_stream_file_in.close();
@@ -529,6 +532,7 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t *buffer,
             }
 
             m_frameIndex.clear();
+            m_rgbIndex.clear();
 
             std::streampos pos = m_stream_file_in.tellg();
 
@@ -551,6 +555,22 @@ aditof::Status OfflineDepthSensor::getHeader(uint8_t *buffer,
 
                 if (m_stream_file_in.eof()) {
                     break;
+                }
+
+                if (x == aditof::RGB_RECORD_MARKER) {
+                    uint32_t frameNumber = 0;
+                    m_stream_file_in.read(
+                        reinterpret_cast<char *>(&frameNumber),
+                        sizeof(frameNumber));
+                    if (m_stream_file_in.eof()) {
+                        break;
+                    }
+                    m_rgbIndex[frameNumber] = pos;
+                    m_stream_file_in.seekg(
+                        static_cast<std::streamoff>(_bufferSize) -
+                            static_cast<std::streamoff>(sizeof(frameNumber)),
+                        std::ios::cur);
+                    continue;
                 }
 
                 m_frameIndex.emplace_back(pos);
@@ -663,6 +683,139 @@ aditof::Status OfflineDepthSensor::readFrame(uint8_t *buffer,
         m_state = ST_STOP;
     }
     return aditof::Status::GENERIC_ERROR;
+}
+
+/**
+ * @brief Reads the "rgb" record of a depth frame.
+ *
+ * @param[in] frameNumber Depth frame number
+ * @param[out] payload [frameNumber][width][height][rgbWidth][rgbHeight]
+ *                     [B, G, R width*height*3]
+ *
+ * @return Status::OK on success, Status::UNAVAILABLE if the recording has no
+ *         image for this frame, Status::GENERIC_ERROR on I/O errors
+ */
+aditof::Status
+OfflineDepthSensor::readRgbRecord(uint32_t frameNumber,
+                                  std::vector<uint8_t> &payload) {
+    if (m_state != ST_PLAYBACK || !m_stream_file_in.is_open()) {
+        return aditof::Status::GENERIC_ERROR;
+    }
+
+    auto it = m_rgbIndex.find(frameNumber);
+    if (it == m_rgbIndex.end()) {
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    const uint32_t headerBytes =
+        aditof::RGB_RECORD_HEADER_WORDS * sizeof(uint32_t);
+    try {
+        m_stream_file_in.clear();
+        m_stream_file_in.seekg(it->second, std::ios::beg);
+
+        uint32_t header[2] = {0, 0};
+        m_stream_file_in.read(reinterpret_cast<char *>(header), sizeof(header));
+        if (m_stream_file_in.fail() || header[0] != aditof::RGB_RECORD_MARKER ||
+            header[1] < headerBytes) {
+            LOG(ERROR) << "Invalid RGB record for frame " << frameNumber;
+            return aditof::Status::GENERIC_ERROR;
+        }
+
+        payload.resize(header[1]);
+        m_stream_file_in.read(reinterpret_cast<char *>(payload.data()),
+                              header[1]);
+        if (m_stream_file_in.fail()) {
+            LOG(ERROR) << "Truncated RGB record for frame " << frameNumber;
+            return aditof::Status::GENERIC_ERROR;
+        }
+
+        const uint32_t *dims =
+            reinterpret_cast<const uint32_t *>(payload.data());
+        if (static_cast<uint64_t>(dims[1]) * dims[2] * 3 + headerBytes !=
+            header[1]) {
+            LOG(ERROR) << "RGB record size mismatch for frame " << frameNumber;
+            return aditof::Status::GENERIC_ERROR;
+        }
+        return aditof::Status::OK;
+    } catch (const std::ios_base::failure &e) {
+        LOG(ERROR) << "File I/O exception caught: " << e.what();
+    }
+    return aditof::Status::GENERIC_ERROR;
+}
+
+/**
+ * @brief Removes depth frames that have no "rgb" record from the frame index.
+ *
+ * Live capture drops depth frames without an RGB pair after they were
+ * written, so playback skips them too.
+ *
+ * @param[in] frameNumberOffset Byte offset of the depth frame number inside a
+ *            recorded depth frame
+ *
+ * @return Status::OK on success, Status::GENERIC_ERROR on I/O errors or if
+ *         not in playback mode
+ */
+aditof::Status
+OfflineDepthSensor::keepOnlyFramesWithRgb(uint32_t frameNumberOffset) {
+    if (m_state != ST_PLAYBACK || !m_stream_file_in.is_open()) {
+        return aditof::Status::GENERIC_ERROR;
+    }
+    if (m_rgbIndex.empty()) {
+        return aditof::Status::OK;
+    }
+
+    std::vector<std::streampos> kept;
+    kept.reserve(m_frameIndex.size());
+    try {
+        for (const auto &pos : m_frameIndex) {
+            m_stream_file_in.clear();
+            m_stream_file_in.seekg(pos, std::ios::beg);
+
+            uint32_t header[2] = {0, 0}; // marker, payload size
+            m_stream_file_in.read(reinterpret_cast<char *>(header),
+                                  sizeof(header));
+            if (m_stream_file_in.fail() ||
+                static_cast<uint64_t>(frameNumberOffset) + sizeof(uint32_t) >
+                    header[1]) {
+                LOG(ERROR) << "Invalid depth record at file offset "
+                           << static_cast<std::streamoff>(pos);
+                m_stream_file_in.clear();
+                return aditof::Status::GENERIC_ERROR;
+            }
+
+            uint32_t frameNumber = 0;
+            m_stream_file_in.seekg(frameNumberOffset, std::ios::cur);
+            m_stream_file_in.read(reinterpret_cast<char *>(&frameNumber),
+                                  sizeof(frameNumber));
+            if (m_stream_file_in.fail()) {
+                LOG(ERROR) << "Truncated depth record at file offset "
+                           << static_cast<std::streamoff>(pos);
+                m_stream_file_in.clear();
+                return aditof::Status::GENERIC_ERROR;
+            }
+            if (m_rgbIndex.count(frameNumber)) {
+                kept.push_back(pos);
+            }
+        }
+    } catch (const std::ios_base::failure &e) {
+        LOG(ERROR) << "File I/O exception caught: " << e.what();
+        m_stream_file_in.clear();
+        return aditof::Status::GENERIC_ERROR;
+    }
+    m_stream_file_in.clear();
+
+    if (kept.empty()) {
+        LOG(WARNING) << "Playback: no depth frame matches an RGB record; "
+                        "playing all depth frames";
+        return aditof::Status::OK;
+    }
+    if (kept.size() != m_frameIndex.size()) {
+        LOG(INFO) << "Playback: skipping " << m_frameIndex.size() - kept.size()
+                  << " of " << m_frameIndex.size()
+                  << " depth frames recorded without RGB";
+    }
+    m_frameIndex.swap(kept);
+    return aditof::Status::OK;
 }
 
 /**

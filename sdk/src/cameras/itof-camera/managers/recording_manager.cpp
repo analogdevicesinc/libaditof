@@ -187,6 +187,9 @@ Status RecordingManager::startRecording(
         } else if (item == "conf") {
             m_offline_parameters.fDataDetails[idx].subelementSize =
                 sizeof(float);
+        } else if (item == "rgb") {
+            m_offline_parameters.fDataDetails[idx].subelementSize = 1;
+            m_offline_parameters.fDataDetails[idx].subelementsPerElement = 3;
         }
         m_offline_parameters.fDataDetails[idx].bytesCount =
             m_offline_parameters.fDataDetails[idx].width *

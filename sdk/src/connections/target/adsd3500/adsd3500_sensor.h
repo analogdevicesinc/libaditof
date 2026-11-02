@@ -182,6 +182,10 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     aditof::Status startRecording(std::string &fileName, uint8_t *parameters,
                                   uint32_t paramSize) override;
     aditof::Status stopRecording() override;
+    aditof::Status writeRgbRecord(uint32_t frameNumber, const uint8_t *bgr,
+                                  uint32_t width, uint32_t height,
+                                  uint32_t rgbWidth,
+                                  uint32_t rgbHeight) override;
     uint32_t getRecordedFrameCount() const;
 
   public: // V4lBufferAccessInterface implementation

@@ -30,6 +30,14 @@
 
 namespace aditof {
 
+/// Marker of an RGB record in a recording; depth records use 0xFFFFFFFF.
+/// Payload: depth frame number, width, height, RGB image width, RGB image
+/// height (uint32 each), then the "rgb" image: B, G, R per depth pixel.
+constexpr uint32_t RGB_RECORD_MARKER = 0x20424752;
+
+/// Number of uint32 fields before the image in an RGB record payload.
+constexpr uint32_t RGB_RECORD_HEADER_WORDS = 5;
+
 /**
  * @class RecordableInterface
  * @brief Interface for sensors that support frame recording (ISP segregation).
@@ -62,6 +70,23 @@ class RecordableInterface {
      * @return Status
      */
     virtual aditof::Status stopRecording() = 0;
+
+    /**
+     * @brief Adds the "rgb" image of one depth frame to the current recording
+     * @param[in] frameNumber - Depth frame number the image belongs to
+     * @param[in] bgr - B, G, R per depth pixel
+     * @param[in] width - Depth frame width
+     * @param[in] height - Depth frame height
+     * @param[in] rgbWidth - Width of the RGB camera image it was taken from
+     * @param[in] rgbHeight - Height of the RGB camera image it was taken from
+     * @return Status::UNAVAILABLE when not recording or not supported
+     */
+    virtual aditof::Status writeRgbRecord(uint32_t frameNumber,
+                                          const uint8_t *bgr, uint32_t width,
+                                          uint32_t height, uint32_t rgbWidth,
+                                          uint32_t rgbHeight) {
+        return aditof::Status::UNAVAILABLE;
+    }
 };
 
 } // namespace aditof
