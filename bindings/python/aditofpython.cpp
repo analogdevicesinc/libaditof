@@ -176,6 +176,15 @@ PYBIND11_MODULE(aditofpython, m) {
         .value("ADSD3030", aditof::ImagerType::ADSD3030)
         .value("ADTF3080", aditof::ImagerType::ADTF3080);
 
+    // xyz_color status (A byte)
+
+    py::enum_<aditof::XYZColorStatus>(m, "XYZColorStatus")
+        .value("NoDepth", aditof::XYZColorStatus::NoDepth)
+        .value("OutOfView", aditof::XYZColorStatus::OutOfView)
+        .value("Occluded", aditof::XYZColorStatus::Occluded)
+        .value("NoColor", aditof::XYZColorStatus::NoColor)
+        .value("Valid", aditof::XYZColorStatus::Valid);
+
     py::class_<aditof::IntrinsicParameters>(m, "IntrinsicParameters")
         .def(py::init<>())
         .def_readwrite("fx", &aditof::IntrinsicParameters::fx)
@@ -634,6 +643,39 @@ PYBIND11_MODULE(aditofpython, m) {
             },
             "Read the 160-byte RGBD calibration (command 0x30). Call after "
             "setMode() and before start(). Returns (status, bytes).")
+        .def(
+            "getRGBDCalibration",
+            [](aditof::Camera &camera) {
+                aditof::RGBDCalibration calib;
+                aditof::Status status = camera.getRGBDCalibration(calib);
+                const aditof::CameraIntrinsicsCalib &k = calib.rgb;
+                aditof::IntrinsicParameters rgb;
+                rgb.fx = k.fx;
+                rgb.fy = k.fy;
+                rgb.cx = k.cx;
+                rgb.cy = k.cy;
+                rgb.codx = k.codx;
+                rgb.cody = k.cody;
+                rgb.k1 = k.k1;
+                rgb.k2 = k.k2;
+                rgb.k3 = k.k3;
+                rgb.k4 = k.k4;
+                rgb.k5 = k.k5;
+                rgb.k6 = k.k6;
+                rgb.p2 = k.p2;
+                rgb.p1 = k.p1;
+                py::array_t<float> rotation({3, 3});
+                std::copy(calib.extrinsics.R, calib.extrinsics.R + 9,
+                          rotation.mutable_data());
+                py::array_t<float> translation(3);
+                std::copy(calib.extrinsics.t, calib.extrinsics.t + 3,
+                          translation.mutable_data());
+                return std::make_tuple(status, rgb, rotation, translation);
+            },
+            "RGB intrinsics and ToF-to-RGB extrinsics (command 0x30). Call "
+            "after setMode() and before start(). Returns (status, "
+            "rgbIntrinsics, R, t): IntrinsicParameters, 3x3 rotation and "
+            "translation in mm, with P_rgb = R @ P_tof + t.")
         .def("adsd3500setEnableDynamicModeSwitching",
              &aditof::Camera::adsd3500setEnableDynamicModeSwitching,
              py::arg("enable"))
