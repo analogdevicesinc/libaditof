@@ -170,8 +170,7 @@ Status CameraFrameAcquisitionManager::computeXYZIfEnabled(
     const FrameDetails &frameType, const DepthSensorModeDetails &modeDetails) {
 
     // XYZ computation requires depth and XYZ both enabled
-    if (!xyzEnabled || !depthEnabled || !frame->haveDataType("xyz") ||
-        m_xyzFromSensor) {
+    if (!xyzEnabled || !depthEnabled || !frame->haveDataType("xyz")) {
         return Status::OK;
     }
 
