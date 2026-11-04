@@ -32,6 +32,13 @@
 #include <cstring>
 #include <math.h>
 
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#elif defined(__SSE2__) || defined(_M_X64)
+#include <emmintrin.h>
+#define ALGORITHMS_SSE2 1
+#endif
+
 /**
  * @brief Generates X, Y, and Z lookup tables for 3D point cloud computation from depth images.
  *
@@ -205,7 +212,96 @@ uint32_t Algorithms::ComputeXYZ(const uint16_t *p_depth, XYZTable *p_xyz_data,
                                 int16_t *p_xyz_image, uint32_t n_rows,
                                 uint32_t n_cols) {
 
-    for (uint32_t pixel_id = 0; pixel_id < n_rows * n_cols; pixel_id++) {
+    const uint32_t n_pixels = n_rows * n_cols;
+    uint32_t pixel_id = 0;
+
+#if defined(__aarch64__)
+    // 8 pixels per step; X, Y round with floor(v + 0.5), Z truncates, as below.
+    const float *p_x = p_xyz_data->p_x_table;
+    const float *p_y = p_xyz_data->p_y_table;
+    const float *p_z = p_xyz_data->p_z_table;
+    const float32x4_t half = vdupq_n_f32(0.5f);
+    for (; pixel_id + 8 <= n_pixels; pixel_id += 8) {
+        const uint16x8_t d16 = vld1q_u16(p_depth + pixel_id);
+        const float32x4_t d_lo = vcvtq_f32_u32(vmovl_u16(vget_low_u16(d16)));
+        const float32x4_t d_hi = vcvtq_f32_u32(vmovl_high_u16(d16));
+
+        const float32x4_t x_lo =
+            vaddq_f32(vmulq_f32(vld1q_f32(p_x + pixel_id), d_lo), half);
+        const float32x4_t x_hi =
+            vaddq_f32(vmulq_f32(vld1q_f32(p_x + pixel_id + 4), d_hi), half);
+        const float32x4_t y_lo =
+            vaddq_f32(vmulq_f32(vld1q_f32(p_y + pixel_id), d_lo), half);
+        const float32x4_t y_hi =
+            vaddq_f32(vmulq_f32(vld1q_f32(p_y + pixel_id + 4), d_hi), half);
+        const float32x4_t z_lo =
+            vaddq_f32(vmulq_f32(vld1q_f32(p_z + pixel_id), d_lo), half);
+        const float32x4_t z_hi =
+            vaddq_f32(vmulq_f32(vld1q_f32(p_z + pixel_id + 4), d_hi), half);
+
+        int16x8x3_t out;
+        out.val[0] = vcombine_s16(vmovn_s32(vcvtmq_s32_f32(x_lo)),
+                                  vmovn_s32(vcvtmq_s32_f32(x_hi)));
+        out.val[1] = vcombine_s16(vmovn_s32(vcvtmq_s32_f32(y_lo)),
+                                  vmovn_s32(vcvtmq_s32_f32(y_hi)));
+        out.val[2] = vcombine_s16(vmovn_s32(vcvtq_s32_f32(z_lo)),
+                                  vmovn_s32(vcvtq_s32_f32(z_hi)));
+        vst3q_s16(p_xyz_image + 3 * pixel_id, out);
+    }
+#elif defined(ALGORITHMS_SSE2)
+    const float *p_x = p_xyz_data->p_x_table;
+    const float *p_y = p_xyz_data->p_y_table;
+    const float *p_z = p_xyz_data->p_z_table;
+    const __m128 half = _mm_set1_ps(0.5f);
+    const __m128i zero = _mm_setzero_si128();
+    // SSE2 has no floor: truncate, then step down where that rounded up.
+    auto floorToInt = [](__m128 v) {
+        const __m128i t = _mm_cvttps_epi32(v);
+        return _mm_add_epi32(
+            t, _mm_castps_si128(_mm_cmpgt_ps(_mm_cvtepi32_ps(t), v)));
+    };
+    // Keep the low 16 bits like the scalar cast; packs alone would saturate.
+    auto toInt16 = [](__m128i lo, __m128i hi) {
+        return _mm_packs_epi32(_mm_srai_epi32(_mm_slli_epi32(lo, 16), 16),
+                               _mm_srai_epi32(_mm_slli_epi32(hi, 16), 16));
+    };
+    alignas(16) int16_t xs[8], ys[8], zs[8];
+    for (; pixel_id + 8 <= n_pixels; pixel_id += 8) {
+        const __m128i d16 = _mm_loadu_si128(
+            reinterpret_cast<const __m128i *>(p_depth + pixel_id));
+        const __m128 d_lo = _mm_cvtepi32_ps(_mm_unpacklo_epi16(d16, zero));
+        const __m128 d_hi = _mm_cvtepi32_ps(_mm_unpackhi_epi16(d16, zero));
+
+        const __m128 x_lo =
+            _mm_add_ps(_mm_mul_ps(_mm_loadu_ps(p_x + pixel_id), d_lo), half);
+        const __m128 x_hi = _mm_add_ps(
+            _mm_mul_ps(_mm_loadu_ps(p_x + pixel_id + 4), d_hi), half);
+        const __m128 y_lo =
+            _mm_add_ps(_mm_mul_ps(_mm_loadu_ps(p_y + pixel_id), d_lo), half);
+        const __m128 y_hi = _mm_add_ps(
+            _mm_mul_ps(_mm_loadu_ps(p_y + pixel_id + 4), d_hi), half);
+        const __m128 z_lo =
+            _mm_add_ps(_mm_mul_ps(_mm_loadu_ps(p_z + pixel_id), d_lo), half);
+        const __m128 z_hi = _mm_add_ps(
+            _mm_mul_ps(_mm_loadu_ps(p_z + pixel_id + 4), d_hi), half);
+
+        _mm_store_si128(reinterpret_cast<__m128i *>(xs),
+                        toInt16(floorToInt(x_lo), floorToInt(x_hi)));
+        _mm_store_si128(reinterpret_cast<__m128i *>(ys),
+                        toInt16(floorToInt(y_lo), floorToInt(y_hi)));
+        _mm_store_si128(
+            reinterpret_cast<__m128i *>(zs),
+            toInt16(_mm_cvttps_epi32(z_lo), _mm_cvttps_epi32(z_hi)));
+        int16_t *dst = p_xyz_image + 3 * pixel_id;
+        for (int k = 0; k < 8; ++k) {
+            dst[3 * k] = xs[k];
+            dst[3 * k + 1] = ys[k];
+            dst[3 * k + 2] = zs[k];
+        }
+    }
+#endif
+
+    for (; pixel_id < n_pixels; pixel_id++) {
         p_xyz_image[3 * pixel_id + 0] = (int16_t)(floorf(
             p_xyz_data->p_x_table[pixel_id] * (float)p_depth[pixel_id] + 0.5f));
 
