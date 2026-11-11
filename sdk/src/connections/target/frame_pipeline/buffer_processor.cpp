@@ -1217,9 +1217,6 @@ void BufferProcessor::processThread() {
         const bool fusionActive =
             m_dmsActive.load(std::memory_order_acquire) && m_altConfigValid &&
             m_modeFusionEnabled;
-        // LR frame's ISP metadata header, re-applied to the fused output.
-        uint8_t fusedMetadata[METADATA_SIZE];
-        bool restoreFusedMetadata = false;
         if (fusionActive) {
             // Sort this frame into the primary/alternate pending slot by its
             // ISP-embedded imagerMode rather than the DMS counter tag, so a
@@ -1300,16 +1297,6 @@ void BufferProcessor::processThread() {
                 primaryIsLR ? m_pendingAltRaw.get() : m_pendingPrimaryRaw.get();
             const size_t srSize =
                 primaryIsLR ? m_pendingAltSize : m_pendingPrimarySize;
-
-            // The library only carries through the header of the frame at the
-            // start of the fused buffer, which is the SR one when SR is first.
-            const size_t lrMetadataOffset =
-                static_cast<size_t>(m_outputFrameWidth) * m_outputFrameHeight *
-                ((m_bitsInDepth + m_bitsInConf) / 8);
-            if (lrMetadataOffset + METADATA_SIZE <= lrSize) {
-                memcpy(fusedMetadata, lrRaw + lrMetadataOffset, METADATA_SIZE);
-                restoreFusedMetadata = true;
-            }
 
             std::vector<uint8_t> fused(lrSize + srSize);
             // Read IsSRFrameFirst from whichever context is actually SR, not
@@ -1569,15 +1556,6 @@ void BufferProcessor::processThread() {
             computeCtx->p_depth_frame = tempDepthFrame;
             computeCtx->p_ab_frame = tempAbFrame;
             computeCtx->p_conf_frame = tempConfFrame;
-
-            if (restoreFusedMetadata &&
-                static_cast<size_t>(tofiBufSize) * sizeof(uint16_t) >=
-                    static_cast<size_t>(numPixels) * sizeof(uint16_t) +
-                        METADATA_SIZE) {
-                memcpy(reinterpret_cast<uint8_t *>(tofi_compute_io_buff.get()) +
-                           static_cast<size_t>(numPixels) * sizeof(uint16_t),
-                       fusedMetadata, METADATA_SIZE);
-            }
 
         } // end if (tofi_compute_io_buff)
 
