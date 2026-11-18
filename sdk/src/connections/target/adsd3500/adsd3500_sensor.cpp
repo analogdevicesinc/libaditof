@@ -969,10 +969,16 @@ Adsd3500Sensor::setMode(const aditof::DepthSensorModeDetails &type) {
         // Lens scatter = ToFi processing required (computed from raw input)
         // m_lensScatterEnabled is set via setControl("lensScatterCompensationEnabled") from camera layer
         bool skipToFiProcessing = type.isRawBypass && !m_lensScatterEnabled;
+        const bool lensScatter = type.isRawBypass && m_lensScatterEnabled;
+        m_bufferProcessor->setLensScatterCompensationEnabled(lensScatter);
 
-        uint8_t bitsInAB = skipToFiProcessing ? 0 : m_bitsInAB[type.modeNumber];
-        uint8_t bitsInConf =
-            skipToFiProcessing ? 0 : m_bitsInConf[type.modeNumber];
+        // The ISP bits are 0 in raw bypass; ToFi still outputs 16-bit AB.
+        uint8_t bitsInAB = skipToFiProcessing ? 0
+                           : lensScatter      ? 16
+                                              : m_bitsInAB[type.modeNumber];
+        uint8_t bitsInConf = (skipToFiProcessing || lensScatter)
+                                 ? 0
+                                 : m_bitsInConf[type.modeNumber];
         uint8_t bitsInDepth = (m_bitsInDepth.size() > type.modeNumber)
                                   ? m_bitsInDepth[type.modeNumber]
                                   : 16u;

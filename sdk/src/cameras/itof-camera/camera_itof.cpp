@@ -853,6 +853,13 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 confBitsIt->second != "0") {
                 m_modeDetailsCache.frameContent.push_back("conf");
             }
+
+            auto xyzIt = iniKeyValPairs.find("xyzEnable");
+            if (xyzIt != iniKeyValPairs.end() && xyzIt->second != "0") {
+                m_modeDetailsCache.frameContent.push_back("xyz");
+            }
+
+            m_modeDetailsCache.frameContent.push_back("metadata");
         }
 
         m_pcmFrame = m_modeDetailsCache.isPCM;

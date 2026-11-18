@@ -376,6 +376,26 @@ void BufferProcessor::calculateFrameSize(uint8_t &bitsInAB,
     }
 }
 
+/**
+ * @brief Converts raw bypass samples to the int16 "raw16" ToFi input, in place.
+ *
+ * The ADSD3500 sends 12-bit sign-magnitude samples (bit 11 sign, bits 10..0
+ * magnitude); the Jetson VI stores them as RG12, shifted left by 4. The CUDA
+ * lens scatter library only accepts plain int16 (inputFormat=raw16).
+ *
+ * @param[in,out] raw Raw frame, converted in place
+ * @param[in] sizeBytes Number of bytes to convert
+ */
+void BufferProcessor::convertRawToInt16(uint8_t *raw, size_t sizeBytes) {
+    uint16_t *w = reinterpret_cast<uint16_t *>(raw);
+    const size_t n = sizeBytes / sizeof(uint16_t);
+    for (size_t i = 0; i < n; ++i) {
+        const uint16_t v = w[i] >> 4;
+        const int16_t magnitude = static_cast<int16_t>(v & 0x7FF);
+        w[i] = static_cast<uint16_t>((v & 0x800) ? -magnitude : magnitude);
+    }
+}
+
 void BufferProcessor::rotateEntireToFiBuffer(const uint16_t *src, uint16_t *dst,
                                              uint32_t width, uint32_t height,
                                              uint32_t bufferSize) {
@@ -1593,6 +1613,10 @@ void BufferProcessor::processThread() {
                     tofiInput = destridedRaw.data();
                     process_frame.size = destridedRaw.size();
                 }
+            }
+
+            if (m_lensScatterCompensationEnabled) {
+                convertRawToInt16(tofiInput, process_frame.size);
             }
 
             // A fused SR+LR buffer is intentionally larger than a single
