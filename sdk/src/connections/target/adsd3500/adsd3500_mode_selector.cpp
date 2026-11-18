@@ -186,28 +186,34 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
     // Check if raw bypass mode is enabled
     if (m_controls["lensScatterCompensationEnabled"] == "1") {
         const uint8_t modeIdx = configurationTable.modeNumber;
-        auto it = m_adsd3500rawBypass.find(modeIdx);
-        if (it == m_adsd3500rawBypass.end()) {
+        const int captures = configurationTable.numberOfPhases *
+                             configurationTable.numberOfFrequencies;
+        const int width = configurationTable.baseResolutionWidth;
+        const int height = configurationTable.baseResolutionHeight;
+        if (configurationTable.isPCM || captures == 0 ||
+            (height * captures) % 2 != 0) {
             LOG(ERROR) << "No raw bypass configuration for mode "
                        << (int)modeIdx;
             return aditof::Status::INVALID_ARGUMENT;
         }
 
-        const auto &driverConf = it->second;
-
-        // Convert pixel dimensions to bytes: RG12 uses 2 bytes/pixel
-        int bytesPerPixel = (driverConf.pixelFormatIndex == 1) ? 2 : 1;
-        configurationTable.frameWidthInBytes =
-            driverConf.driverWidth * bytesPerPixel;
-        configurationTable.frameHeightInBytes = driverConf.driverHeigth;
-        configurationTable.pixelFormatIndex = driverConf.pixelFormatIndex;
+        // Every capture at output resolution, RG12, two image rows per line.
+        // Matches the ADSD3100 sizes verified on hardware (e.g. mode 0:
+        // 1024x1024 x 6 captures -> 2048x3072).
+        const int rawWidth = width * 2;
+        const int rawHeight = height * captures / 2;
+        const int bytesPerPixel = 2;
+        configurationTable.frameWidthInBytes = rawWidth * bytesPerPixel;
+        configurationTable.frameHeightInBytes = rawHeight;
+        configurationTable.pixelFormatIndex = 1;
         configurationTable.isRawBypass = 1;
         configurationTable.numberOfPhases = 1; // Raw bypass always single frame
         configurationTable.frameContent = {"raw"};
 
         LOG(INFO) << "Raw bypass mode " << (int)modeIdx
-                  << " configuration: " << driverConf.driverWidth << "x"
-                  << driverConf.driverHeigth;
+                  << " configuration: " << rawWidth << "x" << rawHeight << " ("
+                  << captures << " captures of " << width << "x" << height
+                  << ")";
 
         return aditof::Status::OK;
     }
