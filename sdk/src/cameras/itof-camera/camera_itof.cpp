@@ -387,6 +387,7 @@ aditof::Status CameraItof::start() {
 
 #ifdef HAS_RGB_CAMERA
     m_rgbSync = RgbSyncStats();
+    m_rgbSync.started = std::chrono::steady_clock::now();
 
     // The RGB sensor is triggered by the depth stream, so it has to be armed
     // first; its start() returns once it waits for triggers.
@@ -1493,16 +1494,24 @@ aditof::Status CameraItof::requestFrame(aditof::Frame *frame, uint32_t index) {
         if (rgbBufProc && frame->haveDataType("rgb")) {
             gotRgb = pairRgbFrame(frame, *rgbBufProc, rgbFrame);
             if (!gotRgb) {
-                if (++m_rgbSync.consecutiveDrops > MAX_CONSECUTIVE_RGB_DROPS) {
+                // Until the first pair, drops fail only after this long.
+                constexpr auto rgbStartGrace = std::chrono::seconds(2);
+                const bool inStartGrace =
+                    !m_rgbSync.paired &&
+                    std::chrono::steady_clock::now() - m_rgbSync.started <
+                        rgbStartGrace;
+                if (++m_rgbSync.consecutiveDrops > MAX_CONSECUTIVE_RGB_DROPS &&
+                    !inStartGrace) {
+                    // The caller decides whether to stop the camera.
                     LOG(ERROR)
                         << "No RGB frame for " << m_rgbSync.consecutiveDrops
-                        << " depth frames in a row; stopping the camera";
-                    stop();
+                        << " depth frames in a row";
                     return Status::UNAVAILABLE;
                 }
                 continue;
             }
             m_rgbSync.consecutiveDrops = 0;
+            m_rgbSync.paired = true;
         }
         if (frame->haveDataType("rgb") || frame->haveDataType("xyz_color")) {
             if (m_isOffline) {
@@ -1569,7 +1578,13 @@ bool CameraItof::pairRgbFrame(aditof::Frame *frame, BufferProcessor &bufProc,
         const int32_t diff = static_cast<int32_t>(
             rgbNumber - (depthMeta.frameNumber + sync.offset));
         if (diff < 0) {
-            ++skippedNow; // its depth frame was lost
+            // A fused frame stands for two depth frames; the RGB frame just
+            // before it belongs to the other half.
+            if (m_fusionActive && diff == -1) {
+                ++sync.fusionPartner;
+            } else {
+                ++skippedNow; // its depth frame was lost
+            }
             continue;
         }
         if (diff > 0) {
@@ -1626,8 +1641,8 @@ bool CameraItof::pairRgbFrame(aditof::Frame *frame, BufferProcessor &bufProc,
                       << " depth frames, RGB wait after depth avg "
                       << sync.waitSumMs / sync.depthFrames << " ms max "
                       << sync.waitMaxMs << " ms, dropped " << sync.dropped
-                      << ", skipped " << sync.skipped
-                      << ", depth queued ahead avg "
+                      << ", skipped " << sync.skipped << ", fusion partner "
+                      << sync.fusionPartner << ", depth queued ahead avg "
                       << double(sync.depthAheadSum) / sync.depthFrames
                       << " max " << sync.depthAheadMax;
         }
