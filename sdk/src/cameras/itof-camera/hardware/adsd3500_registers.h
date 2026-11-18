@@ -132,7 +132,7 @@
 #define ADSD3500_REG_MIPI_OUTPUT_SPEED_GET 0x0034
 
 /** Raw bypass mode - bypasses depth computation when enabled */
-#define ADSD3500_REG_RAW_BYPASS_MODE 0x00AC
+#define ADSD3500_REG_RAW_BYPASS_MODE 0x0033
 
 /** Enable deskew at stream on */
 #define ADSD3500_REG_ENABLE_DESKEW 0x00AB
