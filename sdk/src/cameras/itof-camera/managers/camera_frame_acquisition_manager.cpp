@@ -78,8 +78,9 @@ Status CameraFrameAcquisitionManager::requestFrame(
         return status;
     }
 
-    // Step 5: For raw bypass mode, skip all post-processing
-    if (modeDetails.isRawBypass) {
+    // Step 5: Pure raw bypass has nothing to post-process; lens scatter
+    // (raw bypass computed on the host) has depth and continues.
+    if (modeDetails.isRawBypass && !frame->haveDataType("depth")) {
         return Status::OK;
     }
 
