@@ -271,6 +271,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     // 0xFFFFFFFF if unreadable.
     uint32_t readRawFrameNumber(const uint8_t *raw, size_t size) const;
     void calculateFrameSize(uint8_t &bitsInAB, uint8_t &bitsInConf);
+    // Raw bypass words (12-bit sign-magnitude << 4) to int16, in place.
+    static void convertRawToInt16(uint8_t *raw, size_t sizeBytes);
 #ifdef HAS_RGB_CAMERA
     void captureRGBFrameThread();
 #endif
@@ -399,8 +401,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
     bool m_isRawBypassMode;
     bool
         m_ispEnabled; // Whether ISP depth computation is enabled (pre-computed depth)
-    bool
-        m_lensScatterCompensationEnabled; // When true, raw bypass uses TofiCompute
+    bool m_lensScatterCompensationEnabled =
+        false; // When true, raw bypass uses TofiCompute
     bool
         m_needsRotation; // When true, rotate frames 90 degrees clockwise (for ADTF3080)
     bool m_modeFusionEnabled = false; ///< parsed from the primary mode's ini blob
