@@ -135,6 +135,19 @@ class CameraInitializationManager {
      */
     aditof::Status applyHardwareConfiguration();
 
+    /**
+     * @brief Loads CCB data for non-ISP depth computation modes.
+     *
+     * Checks if any mode requires non-ISP processing (depthComputeIspEnable != "1"),
+     * and if so, reads raw CCB data from ADSD3500 sensor memory. Call after the
+     * depth parameters are loaded.
+     *
+     * @param[in] modes List of available modes to check
+     * @return Status::OK if CCB loaded successfully or not needed
+     * @return Status::GENERIC_ERROR on CCB read failure (warning only, continues init)
+     */
+    aditof::Status loadCCBDataIfNeeded(const std::vector<uint8_t> &modes);
+
   private:
     /**
      * @brief Opens the depth sensor hardware interface.
@@ -191,18 +204,6 @@ class CameraInitializationManager {
     aditof::Status readModeCalibrationData(uint8_t modeNumber,
                                            TofiXYZDealiasData &dealiasData,
                                            CameraDetails &cameraDetails);
-
-    /**
-     * @brief Loads CCB data for non-ISP depth computation modes.
-     *
-     * Checks if any mode requires non-ISP processing (depthComputeIspEnable != "1"),
-     * and if so, reads raw CCB data from ADSD3500 sensor memory.
-     *
-     * @param[in] modes List of available modes to check
-     * @return Status::OK if CCB loaded successfully or not needed
-     * @return Status::GENERIC_ERROR on CCB read failure (warning only, continues init)
-     */
-    aditof::Status loadCCBDataIfNeeded(const std::vector<uint8_t> &modes);
 
     /**
      * @brief Reads firmware version from ADSD3500.
