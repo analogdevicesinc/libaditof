@@ -1945,9 +1945,9 @@ void BufferProcessor::startThreads() {
 /**
  * @brief Stops the capture and processing worker threads.
  *
- * Sets stop flag, stops recording if active, waits for queue drainage with 5-second timeout,
- * joins threads, and flushes remaining frames back to buffer pools. Ensures threads fully
- * exit before touching any buffers to prevent race conditions.
+ * Sets stop flag, stops recording if active, joins threads, and flushes
+ * remaining frames back to buffer pools. Ensures threads fully exit before
+ * touching any buffers to prevent race conditions.
  */
 void BufferProcessor::stopThreads() {
     // Signal threads to stop
@@ -1955,18 +1955,6 @@ void BufferProcessor::stopThreads() {
     streamRunning = false;
 
     stopRecording();
-
-    // Wait for queue drainage with timeout to prevent indefinite blocking
-    auto timeout = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-    while (((m_capture_to_process_Q.size() > 0) ||
-            (m_process_done_Q.size() > 0)) &&
-           std::chrono::steady_clock::now() < timeout) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    if (std::chrono::steady_clock::now() >= timeout) {
-        LOG(WARNING) << "stopThreads: Queue drainage timed out. Forcing thread "
-                        "shutdown.";
-    }
 
     // Join threads FIRST - wait for them to fully exit before touching any buffers
     // This prevents race conditions where threads access buffers during cleanup

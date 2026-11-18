@@ -333,6 +333,9 @@ class CameraItof : public aditof::Camera {
         uint64_t dropped = 0; // depth frames without an RGB pair
         uint32_t consecutiveDrops = 0;
         uint64_t skipped = 0; // RGB frames whose depth frame was lost
+        uint64_t fusionPartner = 0; // RGB frames of a fused pair's other half
+        bool paired = false;        // At least one pair since start()
+        std::chrono::steady_clock::time_point started;
         double waitSumMs = 0.0;
         double waitMaxMs = 0.0;
         uint64_t depthAheadSum = 0;
@@ -345,7 +348,7 @@ class CameraItof : public aditof::Camera {
         aditof::RGBFrame held;
         std::chrono::steady_clock::time_point lastSummary;
     } m_rgbSync;
-    // One more depth frame in a row without RGB stops the camera.
+    // One more depth frame in a row without RGB fails requestFrame().
     static constexpr uint32_t MAX_CONSECUTIVE_RGB_DROPS = 2;
     // Finds the RGB frame of the frame's depth frame; false when it has none.
     bool pairRgbFrame(aditof::Frame *frame, BufferProcessor &bufProc,
