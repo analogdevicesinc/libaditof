@@ -261,13 +261,6 @@ Status CameraInitializationManager::initializeOnlineMode(
         LOG(INFO) << "Firmware version check skipped per JSON config override";
     }
 
-    // Load CCB data if any mode needs non-ISP processing
-    status = loadCCBDataIfNeeded(availableModes);
-    if (status != Status::OK) {
-        // Warning only - ISP modes will still work
-        LOG(WARNING) << "CCB loading had issues, continuing initialization";
-    }
-
     // Apply hardware configurations
     status = applyHardwareConfiguration();
     if (status != Status::OK) {

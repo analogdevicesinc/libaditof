@@ -373,6 +373,11 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         return status;
     }
 
+    // Needs the depth parameters to know which modes compute depth without ISP.
+    if (m_initManager->loadCCBDataIfNeeded(m_availableModes) != Status::OK) {
+        LOG(WARNING) << "CCB loading had issues, continuing initialization";
+    }
+
     return Status::OK;
 }
 
