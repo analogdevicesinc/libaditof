@@ -181,24 +181,4 @@ const std::vector<DepthSensorModeDetails> adtf3066_standardModes = {
     {8, {}, 3, 3, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()},
     {9, {}, 3, 2, 0, 0, 0, 256, 320, 128, 0, 0, DriverConfiguration()}};
 
-/**
- * @brief Raw bypass driver configuration table for ADSD3500 with ADTF3175D.
- * 
- * Used when rawBypassMode=1 to capture unprocessed raw Bayer sensor data.
- * All depth/AB/conf bits set to "0", pixel format is "RG12".
- * ISP outputs raw frames with full buffer dimensions as single frame.
- * No phase-based ToF computation - phases set to "1" (single frame capture).
- * 
- * Format: {modeNumber, baseWidth, baseHeight, phases, depthBits, abBits, confBits, pixelFormat, driverWidth, driverHeight, pixelFormatIndex}
- */
-// Keyed by mode number; mode 4 is not supported in raw bypass.
-const std::map<uint8_t, DriverConfiguration> m_adsd3500rawBypass = {
-    {0, {"1024", "1024", "1", "0", "0", "0", "0", "RG12", 2048, 3072, 1}},
-    {1, {"1024", "1024", "1", "0", "0", "0", "0", "RG12", 2048, 4608, 1}},
-    {2, {"512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 1536, 1}},
-    {3, {"512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 2304, 1}},
-    {5, {"512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 2304, 1}},
-    {6, {"512", "512", "1", "0", "0", "0", "0", "RG12", 1024, 1536, 1}},
-};
-
 #endif
