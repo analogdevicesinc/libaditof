@@ -90,6 +90,19 @@ logFusionParams(int firstMode,
     }
 }
 
+static const char *fusionMethodName(aditof::ModeFusionMethod method) {
+    switch (method) {
+    case aditof::ModeFusionMethod::SrLr:
+        return "SR/LR fusion";
+    case aditof::ModeFusionMethod::LrInvalidation:
+        return "LR invalidation fusion";
+    case aditof::ModeFusionMethod::TwoLrFrames:
+        return "two-LR-frames fusion";
+    default:
+        return "none";
+    }
+}
+
 /**
  * @brief Rotates XYZ lookup tables 90° clockwise for portrait VGA orientation.
  *
@@ -612,8 +625,9 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         m_rotationEnabled = playbackRotation;
         LOG(INFO) << "[PLAYBACK] Using rotation state: "
                   << (m_rotationEnabled ? "ENABLED" : "DISABLED");
-        m_recordingMgr->getModeFusion(m_fusionActive, m_fusionSrMode,
-                                      m_fusionLrMode);
+        m_recordingMgr->getModeFusion(m_fusionConfig);
+        m_fusionActive =
+            (m_fusionConfig.method != aditof::ModeFusionMethod::None);
 
         // Set rotation control on sensor for playback
         m_depthSensor->setControl("enableRotation",
@@ -664,24 +678,21 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
 
         // A mode change invalidates any DMS/fusion pipeline built for the
         // previous mode; it is rebuilt by the sequence setup if requested.
-        if (m_dmsAlternateMode != 0xFF || m_fusionActive) {
+        if (m_dmsAlternateMode != 0xFF || !m_fusionSequence.empty()) {
             Status altStatus =
                 m_depthSensor->disableDynamicModeSwitchingSupport();
             if (altStatus != Status::OK && altStatus != Status::UNAVAILABLE) {
                 LOG(WARNING) << "Could not clear DMS alternate-mode pipeline";
             }
         }
-        if (m_fusionActive &&
+        if (!m_fusionSequence.empty() &&
             m_adsd3500Ctrl->setEnableDynamicModeSwitching(false) !=
                 Status::OK) {
             LOG(WARNING) << "Could not disable Dynamic Mode Switching used "
                             "by mode fusion";
         }
         m_dmsAlternateMode = 0xFF;
-        m_fusionActive = false;
-        m_fusionSrMode = 0xFF;
-        m_fusionLrMode = 0xFF;
-        m_fusionSequence.clear();
+        resetFusionState();
 
         auto modeIt = std::find_if(m_availableSensorModeDetails.begin(),
                                    m_availableSensorModeDetails.end(),
@@ -1014,8 +1025,8 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                 return Status::INVALID_ARGUMENT;
             }
 
-            // Single-mode streaming feeds one raw frame at a time, so fusion
-            // is only ever enabled by configureModeFusion().
+            // Fusion is only ever enabled by setModeFusion(), which rebuilds
+            // the context after this mode switch.
             auto fusionIt = currentModeParams.find("modeFusionEnabled");
             if (fusionIt != currentModeParams.end() &&
                 fusionIt->second != "0") {
@@ -1264,11 +1275,14 @@ aditof::Status CameraItof::startRecording(std::string &filePath) {
         composeRGBDCalibration(rgbdCalibration);
     }
 
+    aditof::ModeFusionConfig fusion = m_fusionConfig;
+    if (!m_fusionActive) {
+        fusion.method = aditof::ModeFusionMethod::None;
+    }
     aditof::Status status = m_recordingMgr->startRecording(
         filePath, m_cameraFps, m_details, m_modeDetailsCache,
         m_availableSensorModeDetails, m_depthEnabled, m_abEnabled,
-        m_confEnabled, m_xyzEnabled, m_rotationEnabled, m_fusionActive,
-        m_fusionSrMode, m_fusionLrMode,
+        m_confEnabled, m_xyzEnabled, m_rotationEnabled, fusion,
         haveRgbdCalibration ? rgbdCalibration : nullptr);
 
     // Rotation state is now stored in recording header via RecordingManager
@@ -2832,7 +2846,7 @@ aditof::Status CameraItof::adsd3500GetFrameRate(uint16_t &fps) {
         return aditof::Status::OK;
     }
     // The ADSD3500 rejects control access while DMS runs for fusion.
-    if (m_fusionActive && m_cameraFps > 0) {
+    if (m_fusionActive && !m_fusionSequence.empty() && m_cameraFps > 0) {
         fps = static_cast<uint16_t>(m_cameraFps);
         return aditof::Status::OK;
     }
@@ -2858,10 +2872,8 @@ aditof::Status CameraItof::adsd3500SetFrameRate(uint16_t fps) {
     // The ADSD3500 rejects control writes while DMS runs and won't re-enable
     // DMS after a pause, so rebuild fusion with the rate applied up front.
     if (m_fusionActive && m_fusionSequence.size() == 2) {
-        const uint8_t firstMode = m_fusionSequence[0].first;
-        const uint8_t secondMode = m_fusionSequence[1].first;
         m_fusionFps = fps;
-        return setModeFusion(firstMode, secondMode);
+        return setModeFusion(aditof::ModeFusionConfig(m_fusionConfig));
     }
 
     aditof::Status status = m_adsd3500Ctrl->setFrameRate(fps);
@@ -3295,10 +3307,7 @@ aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
         m_dmsAlternateMode = 0xFF;
 
         if (m_fusionActive) {
-            m_fusionActive = false;
-            m_fusionSrMode = 0xFF;
-            m_fusionLrMode = 0xFF;
-            m_fusionSequence.clear();
+            resetFusionState();
             std::map<std::string, std::string> params;
             if (m_config->getDepthParamsForMode(m_details.mode, params) ==
                 Status::OK) {
@@ -3358,21 +3367,20 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
     Status status = m_adsd3500Ctrl->setDynamicModeSwitchingSequence(sequence);
     if (status != Status::OK && m_fusionActive) {
         m_depthSensor->disableDynamicModeSwitchingSupport();
-        m_fusionActive = false;
-        m_fusionSrMode = 0xFF;
-        m_fusionLrMode = 0xFF;
-        m_fusionSequence.clear();
+        resetFusionState();
     }
     return status;
 }
 
 /**
- * @brief Validates an SR/LR fusion pair and builds both compute contexts.
+ * @brief Validates a two-mode fusion pair and builds both compute contexts.
  *
- * Works without a JSON config: missing modes fall back to the built-in ini
- * defaults, and modeFusionEnabled/IsSRFrameFirst are forced into both
- * contexts only (the stored per-mode params are left untouched).
- * IsSRFrameFirst is 1 when the first sequence entry is the SR mode, else 0.
+ * Used for SrLr and for TwoLrFrames with two different LR modes. Works without
+ * a JSON config: missing modes fall back to the built-in ini defaults, and
+ * the fusion params are forced into both contexts only (the stored per-mode
+ * params are left untouched). For SrLr, IsSRFrameFirst is 1 when the first
+ * sequence entry is the SR mode, else 0; it is not set for TwoLrFrames, where
+ * the first mode is frame A.
  *
  * @param[in] sequence Two-entry DMS sequence; the first entry is the active mode.
  *
@@ -3401,14 +3409,25 @@ aditof::Status CameraItof::configureModeFusion(
 
     const uint8_t primaryMode = sequence[0].first;
     const uint8_t alternateMode = sequence[1].first;
+    const bool twoLr = (m_fusionConfig.method == ModeFusionMethod::TwoLrFrames);
     const bool primaryIsLR = isAdtf3066LongRangeMode(primaryMode);
-    const uint8_t lrMode = primaryIsLR ? primaryMode : alternateMode;
-    const uint8_t srMode = primaryIsLR ? alternateMode : primaryMode;
-    if (!isAdtf3066LongRangeMode(lrMode) || !isAdtf3066ShortRangeMode(srMode)) {
-        LOG(ERROR) << "Mode fusion needs one SR mode (0, 1, 3, 6) and one LR "
-                      "mode (7, 8); got "
-                   << (int)primaryMode << " and " << (int)alternateMode;
-        return Status::INVALID_ARGUMENT;
+    if (twoLr) {
+        if (!primaryIsLR || !isAdtf3066LongRangeMode(alternateMode)) {
+            LOG(ERROR) << "Two-LR-frames fusion needs two LR modes (7, 8); "
+                          "got "
+                       << (int)primaryMode << " and " << (int)alternateMode;
+            return Status::INVALID_ARGUMENT;
+        }
+    } else {
+        const uint8_t lrMode = primaryIsLR ? primaryMode : alternateMode;
+        const uint8_t srMode = primaryIsLR ? alternateMode : primaryMode;
+        if (!isAdtf3066LongRangeMode(lrMode) ||
+            !isAdtf3066ShortRangeMode(srMode)) {
+            LOG(ERROR) << "SR/LR fusion needs one SR mode (0, 1, 3, 6) and "
+                          "one LR mode (7, 8); got "
+                       << (int)primaryMode << " and " << (int)alternateMode;
+            return Status::INVALID_ARGUMENT;
+        }
     }
 
     auto findMode = [this](uint8_t m) {
@@ -3418,16 +3437,16 @@ aditof::Status CameraItof::configureModeFusion(
                                 return d.modeNumber == m;
                             });
     };
-    auto srIt = findMode(srMode);
-    auto lrIt = findMode(lrMode);
-    if (srIt == m_availableSensorModeDetails.end() ||
-        lrIt == m_availableSensorModeDetails.end()) {
-        LOG(ERROR) << "Mode fusion pair " << (int)srMode << "/" << (int)lrMode
-                   << " is not available on this camera";
+    auto primIt = findMode(primaryMode);
+    auto altIt = findMode(alternateMode);
+    if (primIt == m_availableSensorModeDetails.end() ||
+        altIt == m_availableSensorModeDetails.end()) {
+        LOG(ERROR) << "Mode fusion pair " << (int)primaryMode << "/"
+                   << (int)alternateMode << " is not available on this camera";
         return Status::INVALID_ARGUMENT;
     }
-    if (srIt->baseResolutionWidth != lrIt->baseResolutionWidth ||
-        srIt->baseResolutionHeight != lrIt->baseResolutionHeight) {
+    if (primIt->baseResolutionWidth != altIt->baseResolutionWidth ||
+        primIt->baseResolutionHeight != altIt->baseResolutionHeight) {
         LOG(ERROR) << "Mode fusion needs modes of equal resolution";
         return Status::INVALID_ARGUMENT;
     }
@@ -3461,14 +3480,16 @@ aditof::Status CameraItof::configureModeFusion(
     // but is concatenated using the SR context's flag.
     const std::string srFirst = primaryIsLR ? "0" : "1";
     for (auto *params : {&primParams, &altParams}) {
-        (*params)["modeFusionEnabled"] = "1";
-        (*params)["IsSRFrameFirst"] = srFirst;
+        applyFusionParams(*params);
+        if (!twoLr) {
+            (*params)["IsSRFrameFirst"] = srFirst;
+        }
     }
 
-    LOG(INFO) << "Mode fusion: "
-              << (primaryIsLR ? "LR mode " : "SR mode ") << (int)primaryMode
-              << ", " << (primaryIsLR ? "SR mode " : "LR mode ")
-              << (int)alternateMode << ", IsSRFrameFirst=" << srFirst;
+    LOG(INFO) << "Mode fusion (" << fusionMethodName(m_fusionConfig.method)
+              << "): mode " << (int)primaryMode << " + mode "
+              << (int)alternateMode
+              << (twoLr ? "" : ", IsSRFrameFirst=" + srFirst);
 
     Status status = initPrimaryDepthCompute(primParams);
     if (status != Status::OK) {
@@ -3509,32 +3530,29 @@ aditof::Status CameraItof::configureModeFusion(
     }
 
     m_fusionActive = true;
-    m_fusionSrMode = srMode;
-    m_fusionLrMode = lrMode;
     m_fusionSequence = sequence;
     logFusionParams(primaryMode, primParams, alternateMode, altParams);
     return Status::OK;
 }
 
 /**
- * @brief Starts SR/LR mode fusion for the given pair (use instead of setMode()).
+ * @brief Starts mode fusion (use instead of setMode()).
  *
- * Performs the whole setup at camera level: sets both modes (the first mode
- * last, so it leads the sequence), enables metadata in AB, reapplies the
- * hardware configuration cleared by the mode switch, enables Dynamic Mode
- * Switching (required for fusion) and programs the SR/LR sequence with
- * fusion-enabled compute contexts. IsSRFrameFirst is 1 when firstMode is the
- * SR mode, otherwise 0.
+ * LrInvalidation, and TwoLrFrames with the same mode twice, set that mode
+ * and rebuild its compute context with fusion enabled. SrLr, and TwoLrFrames
+ * with two different modes, set both modes (the first mode last, so it leads
+ * the sequence), enable metadata in AB, reapply the hardware configuration
+ * cleared by the mode switch, enable Dynamic Mode Switching and program the
+ * two-mode sequence with fusion-enabled compute contexts.
  *
- * @param[in] firstMode Mode leading the sequence (one SR, one LR in total).
- * @param[in] secondMode The other mode of the pair.
+ * @param[in] config Fusion method, modes and method parameters.
  *
  * @return Status::OK on success; Status::UNAVAILABLE in playback or on a
- *         non-ADTF3066 imager; Status::INVALID_ARGUMENT for an invalid pair;
- *         other errors if a hardware or compute step fails.
+ *         non-ADTF3066 imager; Status::INVALID_ARGUMENT for invalid modes or
+ *         parameters; other errors if a hardware or compute step fails.
  */
-aditof::Status CameraItof::setModeFusion(uint8_t firstMode,
-                                         uint8_t secondMode) {
+aditof::Status
+CameraItof::setModeFusion(const aditof::ModeFusionConfig &config) {
     using namespace aditof;
 
     if (m_isOffline) {
@@ -3545,19 +3563,81 @@ aditof::Status CameraItof::setModeFusion(uint8_t firstMode,
         LOG(ERROR) << "Mode fusion is only supported on the ADTF3066 imager";
         return Status::UNAVAILABLE;
     }
-    const bool validPair = (isAdtf3066ShortRangeMode(firstMode) &&
-                            isAdtf3066LongRangeMode(secondMode)) ||
-                           (isAdtf3066LongRangeMode(firstMode) &&
-                            isAdtf3066ShortRangeMode(secondMode));
-    if (!validPair) {
-        LOG(ERROR) << "Mode fusion needs one SR mode (0, 1, 3, 6) and one LR "
-                      "mode (7, 8); got "
-                   << (int)firstMode << " and " << (int)secondMode;
+
+    const uint8_t firstMode = config.firstMode;
+    const uint8_t secondMode = config.secondMode;
+    switch (config.method) {
+    case ModeFusionMethod::SrLr:
+        if (!((isAdtf3066ShortRangeMode(firstMode) &&
+               isAdtf3066LongRangeMode(secondMode)) ||
+              (isAdtf3066LongRangeMode(firstMode) &&
+               isAdtf3066ShortRangeMode(secondMode)))) {
+            LOG(ERROR) << "SR/LR fusion needs one SR mode (0, 1, 3, 6) and "
+                          "one LR mode (7, 8); got "
+                       << (int)firstMode << " and " << (int)secondMode;
+            return Status::INVALID_ARGUMENT;
+        }
+        break;
+    case ModeFusionMethod::TwoLrFrames:
+        if (!isAdtf3066LongRangeMode(firstMode) ||
+            !isAdtf3066LongRangeMode(secondMode)) {
+            LOG(ERROR) << "Two-LR-frames fusion needs two LR modes (7, 8); "
+                          "got "
+                       << (int)firstMode << " and " << (int)secondMode;
+            return Status::INVALID_ARGUMENT;
+        }
+        break;
+    case ModeFusionMethod::LrInvalidation:
+        if (!isAdtf3066LongRangeMode(firstMode) &&
+            !isAdtf3066ShortRangeMode(firstMode)) {
+            LOG(ERROR) << "LR invalidation fusion needs an SR (0, 1, 3, 6) or "
+                          "LR (7, 8) mode; got "
+                       << (int)firstMode;
+            return Status::INVALID_ARGUMENT;
+        }
+        break;
+    default:
+        LOG(ERROR) << "Unknown mode fusion method " << (int)config.method;
         return Status::INVALID_ARGUMENT;
     }
+
+    if (config.method != ModeFusionMethod::LrInvalidation) {
+        // Checked before any mode switch so a bad pair leaves the camera as is.
+        auto findMode = [this](uint8_t m) {
+            return std::find_if(m_availableSensorModeDetails.begin(),
+                                m_availableSensorModeDetails.end(),
+                                [m](const DepthSensorModeDetails &d) {
+                                    return d.modeNumber == m;
+                                });
+        };
+        auto firstIt = findMode(firstMode);
+        auto secondIt = findMode(secondMode);
+        if (firstIt == m_availableSensorModeDetails.end() ||
+            secondIt == m_availableSensorModeDetails.end()) {
+            LOG(ERROR) << "Mode fusion pair " << (int)firstMode << "/"
+                       << (int)secondMode << " is not available on this camera";
+            return Status::INVALID_ARGUMENT;
+        }
+        if (firstIt->baseResolutionWidth != secondIt->baseResolutionWidth ||
+            firstIt->baseResolutionHeight != secondIt->baseResolutionHeight) {
+            LOG(ERROR) << "Mode fusion needs modes of equal resolution; mode "
+                       << (int)firstMode << " is "
+                       << firstIt->baseResolutionWidth << "x"
+                       << firstIt->baseResolutionHeight << ", mode "
+                       << (int)secondMode << " is "
+                       << secondIt->baseResolutionWidth << "x"
+                       << secondIt->baseResolutionHeight;
+            return Status::INVALID_ARGUMENT;
+        }
+    }
+
+    m_fusionConfig = config;
+    // One mode used twice needs no Dynamic Mode Switching.
+    if (config.method == ModeFusionMethod::LrInvalidation ||
+        firstMode == secondMode) {
+        return startSingleModeFusion();
+    }
     const uint8_t primaryMode = firstMode;
-    const uint8_t srMode =
-        isAdtf3066ShortRangeMode(firstMode) ? firstMode : secondMode;
 
     // The fusion contexts are logged once in configureModeFusion().
     m_fusionSetupInProgress = true;
@@ -3570,7 +3650,7 @@ aditof::Status CameraItof::setModeFusion(uint8_t firstMode,
         return status;
     }
 
-    // SR/LR pairing reads the per-frame metadata embedded in AB.
+    // Pairing reads the per-frame metadata embedded in AB.
     status = adsd3500SetEnableMetadatainAB(1);
     if (status != Status::OK) {
         LOG(ERROR) << "Could not enable metadata in AB for mode fusion";
@@ -3618,12 +3698,133 @@ aditof::Status CameraItof::setModeFusion(uint8_t firstMode,
     // Chip needs a moment to apply the sequence.
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
-    const bool srFirst = (primaryMode == srMode);
-    LOG(INFO) << "Mode fusion started: "
-              << (srFirst ? "SR mode " : "LR mode ") << (int)primaryMode
-              << " + " << (srFirst ? "LR mode " : "SR mode ")
-              << (int)secondMode << " (IsSRFrameFirst=" << srFirst << ")";
+    LOG(INFO) << "Mode fusion started (" << fusionMethodName(config.method)
+              << "): mode " << (int)primaryMode << " + mode "
+              << (int)secondMode;
     return Status::OK;
+}
+
+/**
+ * @brief Starts fusion on the single mode in m_fusionConfig (no DMS).
+ *
+ * LrInvalidation fuses each frame on its own; TwoLrFrames with the same mode
+ * twice has the frame pipeline pair successive frames (matched by the frame
+ * number in the AB metadata). Method parameters come from the mode's depth
+ * params; the LR invalidation ones are validated before the mode switch.
+ *
+ * @return Status::OK on success; Status::INVALID_ARGUMENT for invalid LR
+ *         invalidation params; error status if the mode switch, a chip write
+ *         or the compute context build fails.
+ */
+aditof::Status CameraItof::startSingleModeFusion() {
+    using namespace aditof;
+
+    const uint8_t mode = m_fusionConfig.firstMode;
+    const bool twoLr = (m_fusionConfig.method == ModeFusionMethod::TwoLrFrames);
+
+    std::map<std::string, std::string> params;
+    if (m_config->getDepthParamsForMode(mode, params) != Status::OK) {
+        LOG(ERROR) << "Could not obtain ini params for mode " << (int)mode;
+        return Status::GENERIC_ERROR;
+    }
+    applyFusionParams(params);
+
+    const bool edgeConfidence = (params["edgeConfidenceEnabled"] == "1");
+    if (m_fusionConfig.method == ModeFusionMethod::LrInvalidation) {
+        auto num = [&params](const char *key) {
+            return std::atof(params[key].c_str());
+        };
+        const int type = static_cast<int>(num("lrInvalType"));
+        if (type < 1 || type > 4) {
+            LOG(ERROR) << "lrInvalType must be 1-4; got '"
+                       << params["lrInvalType"] << "'";
+            return Status::INVALID_ARGUMENT;
+        }
+        if (type == 4 && num("lrInvalRadialMin") >= num("lrInvalRadialMax")) {
+            LOG(ERROR) << "lrInvalRadialMin must be below lrInvalRadialMax";
+            return Status::INVALID_ARGUMENT;
+        }
+        if ((type == 2 || type == 3) && !edgeConfidence) {
+            LOG(WARNING) << "lrInvalType " << type
+                         << " uses edge confidence but edgeConfidenceEnabled "
+                            "is 0";
+        }
+    }
+
+    m_fusionSetupInProgress = true;
+    Status status = setMode(mode);
+    m_fusionSetupInProgress = false;
+    if (status != Status::OK) {
+        return status;
+    }
+
+    if (twoLr) {
+        status = adsd3500SetEnableMetadatainAB(1);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Could not enable metadata in AB for two-LR-frames "
+                          "fusion";
+            return status;
+        }
+    }
+
+    if (edgeConfidence) {
+        status = adsd3500SetEnableEdgeConfidence(1);
+        if (status != Status::OK) {
+            LOG(ERROR) << "Could not enable edge confidence for mode fusion";
+            return status;
+        }
+    }
+
+    status = initPrimaryDepthCompute(params);
+    if (status != Status::OK) {
+        LOG(ERROR) << "Could not build "
+                   << fusionMethodName(m_fusionConfig.method)
+                   << " depth compute for mode " << (int)mode;
+        params["modeFusionEnabled"] = "0";
+        initPrimaryDepthCompute(params);
+        return status;
+    }
+
+    m_fusionActive = true;
+    LOG(INFO) << "Using the following configuration parameters for mode "
+              << (int)mode << " (" << fusionMethodName(m_fusionConfig.method)
+              << ")";
+    for (const auto &param : params) {
+        LOG(INFO) << param.first << " : " << param.second;
+    }
+    LOG(INFO) << "Mode fusion started ("
+              << fusionMethodName(m_fusionConfig.method) << "): mode "
+              << (int)mode;
+    return Status::OK;
+}
+
+/**
+ * @brief Writes m_fusionConfig's method selection into params.
+ *
+ * The library dispatches lrInvalEnabled, then twoLRFramesFusionEnabled, then
+ * srlrFusionEnabled, so exactly one of them is set to keep a stale config
+ * value from overriding the requested method. Method parameters are left as
+ * the user configured them.
+ *
+ * @param[in,out] params Ini key/value pairs of a fusion compute context.
+ */
+void CameraItof::applyFusionParams(
+    std::map<std::string, std::string> &params) const {
+    using aditof::ModeFusionMethod;
+
+    const ModeFusionMethod method = m_fusionConfig.method;
+    params["modeFusionEnabled"] = "1";
+    params["srlrFusionEnabled"] =
+        (method == ModeFusionMethod::SrLr) ? "1" : "0";
+    params["lrInvalEnabled"] =
+        (method == ModeFusionMethod::LrInvalidation) ? "1" : "0";
+    params["twoLRFramesFusionEnabled"] =
+        (method == ModeFusionMethod::TwoLrFrames) ? "1" : "0";
+}
+
+void CameraItof::resetFusionState() {
+    m_fusionActive = false;
+    m_fusionSequence.clear();
 }
 
 /**
@@ -3668,11 +3869,12 @@ aditof::Status CameraItof::initPrimaryDepthCompute(
         rawCCB.size());
 }
 
-aditof::Status CameraItof::getModeFusion(bool &enabled, uint8_t &srMode,
-                                         uint8_t &lrMode) const {
-    enabled = m_fusionActive;
-    srMode = m_fusionSrMode;
-    lrMode = m_fusionLrMode;
+aditof::Status
+CameraItof::getModeFusion(aditof::ModeFusionConfig &config) const {
+    config = m_fusionConfig;
+    if (!m_fusionActive) {
+        config.method = aditof::ModeFusionMethod::None;
+    }
     return aditof::Status::OK;
 }
 

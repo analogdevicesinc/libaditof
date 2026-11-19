@@ -504,6 +504,8 @@ aditof::Status BufferProcessor::setProcessorProperties(
         parseIniBoolFlag(iniFile, iniFileLength, "modeFusionEnabled", false);
     m_isSRFrameFirst =
         parseIniBoolFlag(iniFile, iniFileLength, "IsSRFrameFirst", false);
+    m_twoLrFramesFusionEnabled = parseIniBoolFlag(
+        iniFile, iniFileLength, "twoLRFramesFusionEnabled", false);
 
     // Log libtofi_compute version once per mode change.
     {
@@ -1300,6 +1302,10 @@ void BufferProcessor::processThread() {
 
             const bool primaryIsLR =
                 aditof::isAdtf3066LongRangeMode(m_currentModeNumber);
+            // Two LR modes: lrRaw is the primary (first) mode, i.e. frame A.
+            const bool twoLrModes =
+                primaryIsLR &&
+                aditof::isAdtf3066LongRangeMode(m_altConfig.modeNumber);
 
             const uint8_t *lrRaw =
                 primaryIsLR ? m_pendingPrimaryRaw.get() : m_pendingAltRaw.get();
@@ -1317,8 +1323,11 @@ void BufferProcessor::processThread() {
             // the DMS sequence (e.g. {0,7} vs {7,0}) could silently flip the
             // concatenation order if the two modes' ini blobs ever disagree
             // on this flag, breaking the mode-selection order invariance.
+            // IsSRFrameFirst applies to SR/LR only; two LR modes keep the
+            // sequence order.
             const bool srFrameFirst =
-                primaryIsLR ? m_altConfig.isSRFrameFirst : m_isSRFrameFirst;
+                !twoLrModes &&
+                (primaryIsLR ? m_altConfig.isSRFrameFirst : m_isSRFrameFirst);
             // Whole raw frames: the library expects each payload followed by
             // its numMetaDataBytes trailer.
             if (srFrameFirst) {
@@ -1342,6 +1351,49 @@ void BufferProcessor::processThread() {
             process_frame.skipRawBufferRecycle = true;
             // Process the fused frame through the LR (primary) context path.
             process_frame.isAlternate = !primaryIsLR;
+        } else if (m_modeFusionEnabled && m_twoLrFramesFusionEnabled) {
+            // Two-LR-frames fusion on one mode (no DMS): pair successive
+            // frames; the earlier one is frame A.
+            if (!m_pendingPrimaryRaw) {
+                m_pendingPrimaryRaw = process_frame.data;
+                m_pendingPrimarySize = process_frame.size;
+                continue;
+            }
+            const uint32_t prevFn = readRawFrameNumber(
+                m_pendingPrimaryRaw.get(), m_pendingPrimarySize);
+            const uint32_t curFn = readRawFrameNumber(process_frame.data.get(),
+                                                      process_frame.size);
+            if (prevFn != 0xFFFFFFFFu && curFn != 0xFFFFFFFFu &&
+                curFn - prevFn != 1) {
+                // A frame was dropped; the newer frame starts the next pair.
+                m_v4l2_input_buffer_Q.push(m_pendingPrimaryRaw);
+                m_pendingPrimaryRaw = process_frame.data;
+                m_pendingPrimarySize = process_frame.size;
+                LOG(WARNING) << "processThread: two-LR-frames pair not "
+                                "adjacent (fn "
+                             << prevFn << ", " << curFn
+                             << "); dropped stale frame, re-syncing";
+                continue;
+            }
+
+            const size_t frameASize = m_pendingPrimarySize;
+            const size_t frameBSize = process_frame.size;
+            auto fusedHolder =
+                std::shared_ptr<uint8_t>(new uint8_t[frameASize + frameBSize],
+                                         std::default_delete<uint8_t[]>());
+            memcpy(fusedHolder.get(), m_pendingPrimaryRaw.get(), frameASize);
+            memcpy(fusedHolder.get() + frameASize, process_frame.data.get(),
+                   frameBSize);
+
+            m_v4l2_input_buffer_Q.push(m_pendingPrimaryRaw);
+            m_v4l2_input_buffer_Q.push(process_frame.data);
+            m_pendingPrimaryRaw.reset();
+            m_pendingPrimarySize = 0;
+
+            process_frame.data = fusedHolder;
+            process_frame.size = frameASize + frameBSize;
+            process_frame.skipRawBufferRecycle = true;
+            process_frame.isAlternate = false;
         }
 
         std::shared_ptr<uint16_t> tofi_compute_io_buff;
