@@ -207,7 +207,6 @@ aditof::Status Adsd3500ModeSelector::updateConfigurationTable(
         configurationTable.frameHeightInBytes = rawHeight;
         configurationTable.pixelFormatIndex = 1;
         configurationTable.isRawBypass = 1;
-        configurationTable.numberOfPhases = 1; // Raw bypass always single frame
         configurationTable.frameContent = {"raw"};
 
         LOG(INFO) << "Raw bypass mode " << (int)modeIdx
