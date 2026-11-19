@@ -50,9 +50,7 @@ class RecordingManager {
      * @param confEnabled Confidence frame recording enabled
      * @param xyzEnabled XYZ frame recording enabled
      * @param rotationEnabled True if frames/XYZ tables are rotated 90° CW
-     * @param modeFusionEnabled True if SR/LR mode fusion is active
-     * @param fusionSrMode Short-range mode of the fusion pair
-     * @param fusionLrMode Long-range mode of the fusion pair
+     * @param fusion Active mode fusion (method None if inactive)
      * @return Status::OK on success
      */
     Status startRecording(
@@ -60,8 +58,7 @@ class RecordingManager {
         const DepthSensorModeDetails &modeDetailsCache,
         const std::vector<DepthSensorModeDetails> &availableModes,
         bool depthEnabled, bool abEnabled, bool confEnabled, bool xyzEnabled,
-        bool rotationEnabled, bool modeFusionEnabled = false,
-        uint8_t fusionSrMode = 0xFF, uint8_t fusionLrMode = 0xFF);
+        bool rotationEnabled, const ModeFusionConfig &fusion);
 
     /**
      * @brief Stops recording and closes the recording file.
@@ -102,19 +99,22 @@ class RecordingManager {
     uint16_t getFrameRate() const { return m_offline_parameters.frameRate; }
 
     /**
-     * @brief Gets the mode-fusion state stored in the playback file.
-     * @param[out] enabled True if the recording was made with mode fusion
-     * @param[out] srMode Short-range mode of the pair (0xFF if not fused)
-     * @param[out] lrMode Long-range mode of the pair (0xFF if not fused)
+     * @brief Gets the mode fusion stored in the playback file (method and
+     * modes only; method None if the recording was not fused).
+     * @param[out] config Recorded fusion configuration
      */
-    void getModeFusion(bool &enabled, uint8_t &srMode, uint8_t &lrMode) const {
-        enabled = (m_offline_parameters.modeFusionEnabled != 0);
-        srMode = enabled
-                     ? static_cast<uint8_t>(m_offline_parameters.fusionSrMode)
-                     : 0xFF;
-        lrMode = enabled
-                     ? static_cast<uint8_t>(m_offline_parameters.fusionLrMode)
-                     : 0xFF;
+    void getModeFusion(ModeFusionConfig &config) const {
+        config = ModeFusionConfig{};
+        const uint32_t method = m_offline_parameters.fusionMethod;
+        if (method < 1 || method > 3) {
+            config.method = ModeFusionMethod::None;
+            return;
+        }
+        config.method = static_cast<ModeFusionMethod>(method);
+        config.firstMode =
+            static_cast<uint8_t>(m_offline_parameters.fusionFirstMode);
+        config.secondMode =
+            static_cast<uint8_t>(m_offline_parameters.fusionSecondMode);
     }
 
   private:
@@ -162,9 +162,10 @@ class RecordingManager {
             uint32_t subelementsPerElement;
             uint32_t bytesCount;
         } fDataDetails[MAX_FRAME_DATA_DETAILS_SAVE];
-        uint32_t modeFusionEnabled;
-        uint32_t fusionSrMode;
-        uint32_t fusionLrMode;
+        // ModeFusionMethod value; 1 (SrLr) matches the earlier enabled flag.
+        uint32_t fusionMethod;
+        uint32_t fusionFirstMode;
+        uint32_t fusionSecondMode;
     } m_offline_parameters;
 };
 

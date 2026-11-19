@@ -342,6 +342,8 @@ class BufferProcessor : public aditof::V4lBufferAccessInterface,
         m_needsRotation; // When true, rotate frames 90 degrees clockwise (for ADTF3080)
     bool m_modeFusionEnabled = false; ///< parsed from the primary mode's ini blob
     bool m_isSRFrameFirst = false;    ///< parsed from the primary mode's ini blob
+    bool m_twoLrFramesFusionEnabled =
+        false; ///< parsed from the primary mode's ini blob
 
     aditof::DepthComputeConfig m_depthComputeConfig;
 

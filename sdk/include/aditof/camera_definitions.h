@@ -213,6 +213,35 @@ inline bool isAdtf3066ShortRangeMode(uint8_t mode) {
     return mode == 0 || mode == 1 || mode == 3 || mode == 6;
 }
 
+/**
+ * @enum ModeFusionMethod
+ * @brief Mode fusion technique run by the depth-compute library.
+ */
+enum class ModeFusionMethod : uint8_t {
+    None = 0, //!< Fusion inactive
+    SrLr = 1, //!< One SR + one LR frame, HDR depth (srlrFusionEnabled)
+    LrInvalidation =
+        2, //!< Single frame, multipath invalidation (lrInvalEnabled)
+    TwoLrFrames =
+        3, //!< Two LR frames, flying-pixel rejection (twoLRFramesFusionEnabled)
+};
+
+/**
+ * @struct ModeFusionConfig
+ * @brief Mode fusion request. Method parameters (thresholds, lrInvalType,
+ * frameAOutputEnabled, ABFusionEnabled, ...) come from each mode's depth
+ * params: built-in defaults unless changed via the JSON config or
+ * Camera::setFrameProcessParams().
+ */
+struct ModeFusionConfig {
+    /** @brief Fusion technique */
+    ModeFusionMethod method = ModeFusionMethod::SrLr;
+    /** @brief Mode leading the sequence; the only mode for LrInvalidation */
+    uint8_t firstMode = 0xFF;
+    /** @brief Second mode of the pair; unused for LrInvalidation */
+    uint8_t secondMode = 0xFF;
+};
+
 } // namespace aditof
 
 #endif // CAMERA_DEFINITIONS_H

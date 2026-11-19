@@ -176,6 +176,18 @@ PYBIND11_MODULE(aditofpython, m) {
         .value("ADTF3080", aditof::ImagerType::ADTF3080)
         .value("ADTF3066", aditof::ImagerType::ADTF3066);
 
+    py::enum_<aditof::ModeFusionMethod>(m, "ModeFusionMethod")
+        .value("None_", aditof::ModeFusionMethod::None)
+        .value("SrLr", aditof::ModeFusionMethod::SrLr)
+        .value("LrInvalidation", aditof::ModeFusionMethod::LrInvalidation)
+        .value("TwoLrFrames", aditof::ModeFusionMethod::TwoLrFrames);
+
+    py::class_<aditof::ModeFusionConfig>(m, "ModeFusionConfig")
+        .def(py::init<>())
+        .def_readwrite("method", &aditof::ModeFusionConfig::method)
+        .def_readwrite("firstMode", &aditof::ModeFusionConfig::firstMode)
+        .def_readwrite("secondMode", &aditof::ModeFusionConfig::secondMode);
+
     py::class_<aditof::IntrinsicParameters>(m, "IntrinsicParameters")
         .def(py::init<>())
         .def_readwrite("fx", &aditof::IntrinsicParameters::fx)
@@ -628,16 +640,12 @@ PYBIND11_MODULE(aditofpython, m) {
         .def("adsds3500setDynamicModeSwitchingSequence",
              &aditof::Camera::adsds3500setDynamicModeSwitchingSequence,
              py::arg("sequence"))
-        .def("setModeFusion", &aditof::Camera::setModeFusion,
-             py::arg("firstMode"), py::arg("secondMode"))
+        .def("setModeFusion", &aditof::Camera::setModeFusion, py::arg("config"))
         .def("getModeFusion",
              [](aditof::Camera &camera) {
-                 bool enabled = false;
-                 uint8_t srMode = 0xFF;
-                 uint8_t lrMode = 0xFF;
-                 aditof::Status status =
-                     camera.getModeFusion(enabled, srMode, lrMode);
-                 return std::make_tuple(status, enabled, srMode, lrMode);
+                 aditof::ModeFusionConfig config;
+                 aditof::Status status = camera.getModeFusion(config);
+                 return std::make_pair(status, config);
              })
         .def(
             "readSerialNumber",
