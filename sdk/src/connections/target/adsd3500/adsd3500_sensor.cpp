@@ -1505,7 +1505,7 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
             m_interruptManager->setSkipNextInterrupt(true);
         }
 
-        platform.resetSensor(interruptsAvailable, &m_chipResetDone, 10);
+        platform.resetSensor(interruptsAvailable, &m_chipResetDone, 2);
 
         uint16_t chipState = 0xFFFF;
         for (int i = 0; i < 20; ++i) { // poll up to ~1s

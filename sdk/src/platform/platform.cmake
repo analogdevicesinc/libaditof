@@ -11,7 +11,7 @@ if(NVIDIA)
     set(PLATFORM_RESET_GPIO "PAC.00")
     set(PLATFORM_RESET_GPIO_PIN 0)  # Not used for NVIDIA (uses named GPIO)
     set(PLATFORM_RESET_PULSE_US 100000)   # 100ms low pulse
-    set(PLATFORM_RESET_DELAY_US 10000000) # 10s default delay
+    set(PLATFORM_RESET_DELAY_US 2000000) # 2s default delay
     message(STATUS "Configured for NVIDIA Jetson platform")
     
 elseif(RPI)
