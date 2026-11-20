@@ -83,9 +83,9 @@ class CameraConfiguration {
      * @brief Saves current depth parameters to a JSON configuration file.
      *
      * Exports all depth processing parameters and global settings to JSON.
-     * Parameters are organized by mode with depth-compute and configuration
-     * sections; each depth algorithm's params go to their own top-level
-     * section ("mode-fusion", "lens-scatter"), keyed by mode.
+     * Parameters are organized by mode; each mode has depth-compute,
+     * configuration-parameters and one section per depth algorithm
+     * ("mode-fusion", "lens-scatter").
      *
      * @param[in] savePathFile Path where JSON file should be written
      * @param[in] rotationEnabled Current rotation state to apply to all modes
