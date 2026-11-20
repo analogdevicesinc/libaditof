@@ -80,6 +80,23 @@ static bool isValidGpioName(const char *gpio_name) {
 }
 
 /**
+ * @brief Waits until resetDone is set by the reset interrupt or the timeout.
+ */
+static void waitForResetDone(const bool *resetDone, int timeoutSeconds) {
+    LOG(INFO) << "Waiting for sensor to reset";
+    const auto start = std::chrono::steady_clock::now();
+    const auto deadline = start + std::chrono::seconds(timeoutSeconds);
+    while (!(*resetDone) && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    LOG(INFO) << "Waited: "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::steady_clock::now() - start)
+                     .count()
+              << " ms";
+}
+
+/**
  * @brief Safely write value to GPIO sysfs without using system()
  * @param gpio_name GPIO name (e.g., "PAC.00" or "gpio123")
  * @param value Value to write ("0" or "1")
@@ -679,14 +696,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
     }
 
     if (waitForInterrupt && resetDone) {
-        LOG(INFO) << "Waiting for sensor to reset";
-        int secondsWaited = 0;
-        while (!(*resetDone) && secondsWaited < timeoutSeconds) {
-            LOG(INFO) << ".";
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            secondsWaited++;
-        }
-        LOG(INFO) << "Waited: " << secondsWaited << " seconds";
+        waitForResetDone(resetDone, timeoutSeconds);
     } else {
         usleep(PLATFORM_RESET_DELAY_US);
     }
@@ -719,14 +729,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
         }
 
         if (waitForInterrupt && resetDone) {
-            LOG(INFO) << "Waiting for sensor to reset";
-            int secondsWaited = 0;
-            while (!(*resetDone) && secondsWaited < timeoutSeconds) {
-                LOG(INFO) << ".";
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                secondsWaited++;
-            }
-            LOG(INFO) << "Waited: " << secondsWaited << " seconds";
+            waitForResetDone(resetDone, timeoutSeconds);
         } else {
             usleep(PLATFORM_RESET_DELAY_US);
         }
@@ -768,14 +771,7 @@ Status Platform::resetSensor(bool waitForInterrupt, bool *resetDone,
     }
 
     if (waitForInterrupt && resetDone) {
-        LOG(INFO) << "Waiting for sensor to reset";
-        int secondsWaited = 0;
-        while (!(*resetDone) && secondsWaited < timeoutSeconds) {
-            LOG(INFO) << ".";
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            secondsWaited++;
-        }
-        LOG(INFO) << "Waited: " << secondsWaited << " seconds";
+        waitForResetDone(resetDone, timeoutSeconds);
     } else {
         usleep(PLATFORM_RESET_DELAY_US);
     }
