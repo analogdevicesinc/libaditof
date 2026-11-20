@@ -704,7 +704,8 @@ aditof::Status Adsd3500Sensor::setMode(const uint8_t &mode) {
 
     if (m_ccbmEnabled && m_sensorConfiguration == "standard") {
         bool modeFound = false;
-        for (auto table : m_availableModes) {
+        // A previous raw bypass selection is stored in m_availableModes.
+        for (auto table : m_chipModes) {
             if (mode == table.modeNumber) {
                 modeTable = table;
                 modeFound = true;
@@ -1626,6 +1627,21 @@ aditof::Status Adsd3500Sensor::initTargetDepthCompute(uint8_t *iniFile,
                      << ", defaulting to ISP enabled";
     }
 
+    // The ini handed to the library wins over the built-in table, e.g. when
+    // lens scatter or a loaded config computes depth on the host.
+    if (iniFile != nullptr && iniFileLength > 0) {
+        const std::string ini(reinterpret_cast<const char *>(iniFile),
+                              iniFileLength);
+        const std::string key = "depthComputeIspEnable=";
+        size_t pos = ini.find(key);
+        while (pos != std::string::npos && pos != 0 && ini[pos - 1] != '\n') {
+            pos = ini.find(key, pos + 1);
+        }
+        if (pos != std::string::npos && pos + key.size() < ini.size()) {
+            ispEnabled = (ini[pos + key.size()] != '0');
+        }
+    }
+
     status = m_bufferProcessor->setProcessorProperties(
         iniFile, iniFileLength, calData, calDataLength,
         m_implData->modeDetails.modeNumber, ispEnabled);
@@ -1971,9 +1987,11 @@ aditof::Status Adsd3500Sensor::enqueueInternalBuffer(struct v4l2_buffer &buf) {
  * @return Status::OK on success
  */
 aditof::Status Adsd3500Sensor::queryAdsd3500() {
-    return m_chipConfigManager->queryChipConfiguration(
+    aditof::Status status = m_chipConfigManager->queryChipConfiguration(
         m_availableModes, m_ccbmINIContent, m_iniFileStructList, m_bitsInAB,
         m_bitsInConf, m_bitsInDepth, m_ccbmEnabled);
+    m_chipModes = m_availableModes;
+    return status;
 }
 
 /**

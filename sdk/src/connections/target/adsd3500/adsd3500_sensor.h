@@ -251,6 +251,8 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     std::unordered_map<void *, aditof::SensorInterruptCallback>
         m_interruptCallbackMap;
     std::vector<aditof::DepthSensorModeDetails> m_availableModes;
+    // As read from the chip; m_availableModes gets the raw bypass overrides.
+    std::vector<aditof::DepthSensorModeDetails> m_chipModes;
     std::vector<IniTableEntry> m_ccbmINIContent;
     aditof::BufferProcessorInterface *m_bufferProcessor;
     bool m_depthComputeOnTarget;
