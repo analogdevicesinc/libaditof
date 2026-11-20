@@ -234,19 +234,6 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"residualUnwrappingEnabled", "0"},
     {"defaultdepthOutput", "0"},
     {"sobelEdgeDetectionEnabled", "0"},
-    {"modeFusionEnabled", "0"},
-    {"IsSRFrameFirst", "0"},
-    {"srlrFusionEnabled", "1"},
-    {"ABFusionEnabled", "0"},
-    {"lrInvalEnabled", "0"},
-    {"lrInvalType", "1"},
-    {"lrInvalThreshold", "150"},
-    {"lrInvalRadialMin", "100"},
-    {"lrInvalRadialMax", "7500"},
-    {"twoLRFramesFusionEnabled", "0"},
-    {"twoLRFramesThreshold", "100"},
-    {"frameAOutputEnabled", "0"},
-    {"edgeConfidenceEnabled", "0"},
     {"bitsInPhaseOrDepth", "16"},
     {"dualPulsatrixSystemEnabled", "1"},
     {"bitsInConf", "8"},
@@ -259,14 +246,15 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"rgbCameraEnable", "1"}};
 
 /**
- * @brief ADTF3066 depth parameters overridden by lens scatter compensation.
+ * @brief Lens scatter compensation params (DepthAlgorithm::LensScatter).
  *
- * Applied over adtf3066_fullDepth by Camera::setLensScatterCompensation():
- * raw bypass with host CUDA depth compute, parameters from
- * TOF_DepthComputeEngine_CUDA-Rel5.0.8-LS RawToDepth_LS.ini.
+ * Raw bypass with host CUDA depth compute, parameters from
+ * TOF_DepthComputeEngine_CUDA-Rel5.0.8-LS RawToDepth_LS.ini. Keys also in a
+ * mode's standard params override them while lens scatter is on.
  */
-static const std::map<std::string, std::string> adtf3066_lensScatter = {
+static const std::map<std::string, std::string> lensScatterDefaults = {
     {"lensScatterCompensationEnabled", "1"},
+    {"modeFusionEnabled", "0"},
     {"headerSize", "0"},
     {"inputFormat", "raw16"},
     {"depthComputeIspEnable", "0"},
@@ -289,5 +277,17 @@ static const std::map<std::string, std::string> adtf3066_lensScatter = {
     {"lp2", "2.0"},
     {"jblfv2_window_size", "4"},
     {"sga", "30"}};
+
+/**
+ * @brief Mode fusion params (DepthAlgorithm::ModeFusion), all imagers.
+ */
+static const std::map<std::string, std::string> modeFusionDefaults = {
+    {"modeFusionEnabled", "0"},      {"IsSRFrameFirst", "0"},
+    {"srlrFusionEnabled", "1"},      {"ABFusionEnabled", "0"},
+    {"lrInvalEnabled", "0"},         {"lrInvalType", "1"},
+    {"lrInvalThreshold", "150"},     {"lrInvalRadialMin", "100"},
+    {"lrInvalRadialMax", "7500"},    {"twoLRFramesFusionEnabled", "0"},
+    {"twoLRFramesThreshold", "100"}, {"frameAOutputEnabled", "0"},
+    {"edgeConfidenceEnabled", "0"}};
 
 #endif

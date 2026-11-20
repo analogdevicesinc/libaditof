@@ -204,6 +204,13 @@ if(${ON_TARGET})
                 elseif (NOT DEFINED LIBTOFI_LIBDIR_PATH)
                         set(LIBTOFI_LIBDIR_PATH "${CMAKE_SOURCE_DIR}/../libs")
                 endif()
+                # TEMPORARY (two depth compute libraries): lens scatter build
+                # of the library, loaded at runtime next to the standard one.
+                if(DEFINED ENV{LIBTOFI_LENS_SCATTER_LIBDIR_PATH})
+                        set(LIBTOFI_LENS_SCATTER_LIBDIR_PATH "$ENV{LIBTOFI_LENS_SCATTER_LIBDIR_PATH}")
+                elseif (NOT DEFINED LIBTOFI_LENS_SCATTER_LIBDIR_PATH)
+                        set(LIBTOFI_LENS_SCATTER_LIBDIR_PATH "${LIBTOFI_LIBDIR_PATH}/lens_scatter")
+                endif()
         endif()
 endif()
 
