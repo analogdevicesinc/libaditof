@@ -156,6 +156,11 @@ class CameraItof : public aditof::Camera {
     aditof::Status
     getModeFusion(aditof::ModeFusionConfig &config) const override;
     aditof::Status setLensScatterCompensation(bool enable) override;
+    aditof::Status getDepthAlgorithmParams(
+        aditof::DepthAlgorithm algorithm, uint16_t mode,
+        std::map<std::string, std::string> &params) override;
+    aditof::Status getSupportedDepthAlgorithms(
+        std::vector<aditof::DepthAlgorithm> &algorithms) const override;
     aditof::Status readSerialNumber(std::string &serialNumber,
                                     bool useCacheValue = false) override;
     aditof::Status getImagerType(aditof::ImagerType &imagerType) const override;
@@ -246,18 +251,18 @@ class CameraItof : public aditof::Camera {
      */
     void resetFusionState();
 
-    /**
-     * Overrides params with the imager's lens scatter parameters when lens
-     * scatter compensation was requested via setLensScatterCompensation().
-     */
-    void
-    applyLensScatterParams(std::map<std::string, std::string> &params) const;
+    // Short/Long Range classification of an available, non-PCM mode.
+    bool isShortRangeSensorMode(uint8_t mode) const;
+    bool isLongRangeSensorMode(uint8_t mode) const;
+
+    // Whether the linked depth compute library can run algorithm.
+    bool isDepthAlgorithmSupported(aditof::DepthAlgorithm algorithm) const;
 
     /**
-     * True if mode runs lens scatter compensation, requested via
-     * setLensScatterCompensation() or set in its depth params.
+     * Moves the mode fusion and lens scatter params out of the standard
+     * params into their own per-mode params, filling in built-in defaults.
      */
-    bool isLensScatterEnabledForMode(uint8_t mode) const;
+    void separateAlgorithmParams();
 
     aditof::Status startRecording(std::string &filePath) override;
     aditof::Status stopRecording() override;
@@ -342,7 +347,6 @@ class CameraItof : public aditof::Camera {
     std::string m_initConfigFilePath;
     bool m_userJsonLoaded = false;
     bool m_rawBypassWritten = false; // True while the chip has bypass enabled
-    bool m_lensScatterRequested = false; // Set by setLensScatterCompensation()
     aditof::ImagerType m_imagerType;
     bool m_rotationEnabled =
         false; // True if XYZ tables and frames are rotated 90° CW

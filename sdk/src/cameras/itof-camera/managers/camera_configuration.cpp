@@ -36,6 +36,26 @@
 
 namespace aditof {
 
+namespace {
+// Config file section holding each algorithm's params, keyed by mode.
+const std::map<DepthAlgorithm, const char *> algorithmSections = {
+    {DepthAlgorithm::ModeFusion, "mode-fusion"},
+    {DepthAlgorithm::LensScatter, "lens-scatter"}};
+
+std::string jsonValueToString(json_object *val) {
+    if (json_object_is_type(val, json_type_string)) {
+        return std::string(json_object_get_string(val));
+    }
+    std::ostringstream stream;
+    stream << std::fixed << std::setprecision(1) << json_object_get_double(val);
+    std::string value = stream.str();
+    if (value.find(".0") != std::string::npos) {
+        value = std::to_string(json_object_get_int(val));
+    }
+    return value;
+}
+} // namespace
+
 CameraConfiguration::CameraConfiguration()
     : m_mipiOutputSpeed(-1), m_isdeskewEnabled(-1),
       m_enableTempCompensation(-1), m_enableEdgeConfidence(-1),
@@ -104,8 +124,14 @@ CameraConfiguration::loadDepthParamsFromJsonFile(const std::string &pathFile,
     // session.
     if (mode_in_use < 0) {
         m_depth_params_map.clear();
+        for (auto &store : m_algorithm_params_map) {
+            store.second.clear();
+        }
     } else {
         m_depth_params_map.erase(mode_in_use);
+        for (auto &store : m_algorithm_params_map) {
+            store.second.erase(mode_in_use);
+        }
     }
 
     // Parse json
@@ -303,6 +329,33 @@ CameraConfiguration::loadDepthParamsFromJsonFile(const std::string &pathFile,
             }
             m_depth_params_map.emplace(mode, iniKeyValPairs);
         }
+
+        for (const auto &section : algorithmSections) {
+            json_object *sectionJson = NULL;
+            if (!json_object_object_get_ex(config_json, section.second,
+                                           &sectionJson) ||
+                !json_object_is_type(sectionJson, json_type_object)) {
+                continue;
+            }
+            auto &store = m_algorithm_params_map[section.first];
+            json_object_object_foreach(sectionJson, modeKey, modeJson) {
+                int mode = -1;
+                try {
+                    mode = std::stoi(modeKey);
+                } catch (...) {
+                    continue;
+                }
+                if ((mode_in_use >= 0 && mode != mode_in_use) ||
+                    !json_object_is_type(modeJson, json_type_object)) {
+                    continue;
+                }
+                std::map<std::string, std::string> params;
+                json_object_object_foreach(modeJson, paramKey, paramVal) {
+                    params[paramKey] = jsonValueToString(paramVal);
+                }
+                store[mode] = params;
+            }
+        }
         json_object_put(config_json);
     }
 
@@ -395,6 +448,29 @@ CameraConfiguration::saveDepthParamsToJsonFile(const std::string &savePathFile,
         }
     }
 
+    for (const auto &section : algorithmSections) {
+        auto storeIt = m_algorithm_params_map.find(section.first);
+        if (storeIt == m_algorithm_params_map.end() ||
+            storeIt->second.empty()) {
+            continue;
+        }
+        json_object *sectionJson = json_object_new_object();
+        for (const auto &modeEntry : storeIt->second) {
+            json_object *modeJson = json_object_new_object();
+            for (const auto &param : modeEntry.second) {
+                json_object_object_add(
+                    modeJson, param.first.c_str(),
+                    isConvertibleToDouble(param.second)
+                        ? json_object_new_double(
+                              strtod(param.second.c_str(), NULL))
+                        : json_object_new_string(param.second.c_str()));
+            }
+            json_object_object_add(
+                sectionJson, std::to_string(modeEntry.first).c_str(), modeJson);
+        }
+        json_object_object_add(rootjson, section.second, sectionJson);
+    }
+
     const char *json_str =
         json_object_to_json_string_ext(rootjson, JSON_C_TO_STRING_PRETTY);
 
@@ -416,24 +492,126 @@ Status CameraConfiguration::getDepthParamsForMode(
     uint16_t mode, std::map<std::string, std::string> &params) const {
 
     auto it = m_depth_params_map.find(mode);
-    if (it != m_depth_params_map.end()) {
-        params = it->second;
-        return Status::OK;
+    if (it == m_depth_params_map.end()) {
+        return Status::INVALID_ARGUMENT;
     }
-    return Status::INVALID_ARGUMENT;
+    params = it->second;
+
+    std::map<std::string, std::string> algorithmParams;
+    if (m_activeAlgorithm != DepthAlgorithm::None &&
+        getAlgorithmParamsForMode(m_activeAlgorithm, mode, algorithmParams) ==
+            Status::OK) {
+        for (const auto &param : algorithmParams) {
+            params[param.first] = param.second;
+        }
+    }
+    return Status::OK;
 }
 
 Status CameraConfiguration::setDepthParamsForMode(
     uint16_t mode, const std::map<std::string, std::string> &params) {
 
-    m_depth_params_map[mode] = params;
+    auto findParams =
+        [this, mode](
+            DepthAlgorithm algorithm) -> std::map<std::string, std::string> * {
+        auto storeIt = m_algorithm_params_map.find(algorithm);
+        if (storeIt == m_algorithm_params_map.end()) {
+            return nullptr;
+        }
+        auto modeIt = storeIt->second.find(mode);
+        return (modeIt != storeIt->second.end()) ? &modeIt->second : nullptr;
+    };
+
+    const std::map<std::string, std::string> oldStandard =
+        m_depth_params_map[mode];
+    std::map<std::string, std::string> standard;
+    auto *active = (m_activeAlgorithm != DepthAlgorithm::None)
+                       ? findParams(m_activeAlgorithm)
+                       : nullptr;
+
+    for (const auto &param : params) {
+        if (active && active->count(param.first)) {
+            (*active)[param.first] = param.second;
+            continue;
+        }
+        if (oldStandard.count(param.first)) {
+            standard[param.first] = param.second;
+            continue;
+        }
+        bool routed = false;
+        for (const auto &section : algorithmSections) {
+            auto *inactive = (section.first != m_activeAlgorithm)
+                                 ? findParams(section.first)
+                                 : nullptr;
+            if (inactive && inactive->count(param.first)) {
+                (*inactive)[param.first] = param.second;
+                routed = true;
+                break;
+            }
+        }
+        if (!routed) {
+            standard[param.first] = param.second;
+        }
+    }
+
+    // Standard values the active algorithm overrides are kept as they were.
+    if (active) {
+        for (const auto &param : *active) {
+            auto it = oldStandard.find(param.first);
+            if (it != oldStandard.end() && !standard.count(param.first)) {
+                standard[it->first] = it->second;
+            }
+        }
+    }
+
+    m_depth_params_map[mode] = standard;
     return Status::OK;
 }
 
-void CameraConfiguration::clearDepthParams() { m_depth_params_map.clear(); }
+Status CameraConfiguration::getStandardParamsForMode(
+    uint16_t mode, std::map<std::string, std::string> &params) const {
+    auto it = m_depth_params_map.find(mode);
+    if (it == m_depth_params_map.end()) {
+        return Status::INVALID_ARGUMENT;
+    }
+    params = it->second;
+    return Status::OK;
+}
+
+void CameraConfiguration::setStandardParamsForMode(
+    uint16_t mode, const std::map<std::string, std::string> &params) {
+    m_depth_params_map[mode] = params;
+}
+
+Status CameraConfiguration::getAlgorithmParamsForMode(
+    DepthAlgorithm algorithm, uint16_t mode,
+    std::map<std::string, std::string> &params) const {
+    auto storeIt = m_algorithm_params_map.find(algorithm);
+    if (storeIt == m_algorithm_params_map.end()) {
+        return Status::INVALID_ARGUMENT;
+    }
+    auto modeIt = storeIt->second.find(mode);
+    if (modeIt == storeIt->second.end()) {
+        return Status::INVALID_ARGUMENT;
+    }
+    params = modeIt->second;
+    return Status::OK;
+}
+
+void CameraConfiguration::setAlgorithmParamsForMode(
+    DepthAlgorithm algorithm, uint16_t mode,
+    const std::map<std::string, std::string> &params) {
+    m_algorithm_params_map[algorithm][mode] = params;
+}
+
+void CameraConfiguration::clearDepthParams() {
+    m_depth_params_map.clear();
+    m_algorithm_params_map.clear();
+}
 
 void CameraConfiguration::cacheDepthParams() {
     m_depth_params_map_cache = m_depth_params_map;
+    m_algorithm_params_map_cache = m_algorithm_params_map;
 }
 
 Status CameraConfiguration::restoreCachedDepthParams() {
@@ -441,6 +619,7 @@ Status CameraConfiguration::restoreCachedDepthParams() {
         return Status::GENERIC_ERROR;
     }
     m_depth_params_map = m_depth_params_map_cache;
+    m_algorithm_params_map = m_algorithm_params_map_cache;
     return Status::OK;
 }
 

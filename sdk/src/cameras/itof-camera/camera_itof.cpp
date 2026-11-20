@@ -26,6 +26,7 @@
 #include "aditof/frame_operations.h"
 #include "connections/target/config/sensor-tables/device_parameters.h"
 #include "hardware/adsd3500_registers.h"
+#include "helpers/depth_compute_library.h"
 #include "helpers/depth_parameter_mapper.h"
 #include "utils_ini.h"
 
@@ -379,6 +380,18 @@ aditof::Status CameraItof::initialize(const std::string &configFilepath) {
         LOG(WARNING) << "CCB loading had issues, continuing initialization";
     }
 
+    // TEMPORARY (two depth compute libraries): the lens scatter-only build
+    // has no standard depth. Remove once one library has every algorithm.
+    if (!isDepthAlgorithmSupported(DepthAlgorithm::None) &&
+        isDepthAlgorithmSupported(DepthAlgorithm::LensScatter)) {
+        LOG(INFO) << "The depth compute library only runs lens scatter "
+                     "compensation; enabling it";
+        status = setLensScatterCompensation(true);
+        if (status != Status::OK) {
+            return status;
+        }
+    }
+
     return Status::OK;
 }
 
@@ -699,6 +712,10 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
         }
         m_dmsAlternateMode = 0xFF;
         resetFusionState();
+        if (!m_fusionSetupInProgress &&
+            m_config->getActiveAlgorithm() == DepthAlgorithm::ModeFusion) {
+            m_config->setActiveAlgorithm(DepthAlgorithm::None);
+        }
 
         auto modeIt = std::find_if(m_availableSensorModeDetails.begin(),
                                    m_availableSensorModeDetails.end(),
@@ -722,15 +739,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                        << (int)mode;
             return Status::GENERIC_ERROR;
         }
-        if (m_lensScatterRequested) {
-            if (modeIt->isPCM) {
-                LOG(ERROR) << "Lens scatter compensation is not available "
-                              "for PCM mode "
-                           << (int)mode;
-                return Status::INVALID_ARGUMENT;
-            }
-            applyLensScatterParams(iniKeyValPairs);
-        }
         m_config->setIniKeyValPairs(iniKeyValPairs);
 
         // Pre-populate modeDetailsCache resolution before configureSensorModeDetails() so
@@ -749,18 +757,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             iniKeyValPairs.find("lensScatterCompensationEnabled");
         bool rawBypassEnabled = (lensScatteringIt != iniKeyValPairs.end() &&
                                  lensScatteringIt->second == "1");
-        // Host depth compute needs the raw CCB, which initialize() only reads
-        // when a mode's default params compute depth without the ISP.
-        if (rawBypassEnabled && m_calibrationMgr->getRawCCBData().empty()) {
-            std::string rawCCB;
-            status = m_calibrationMgr->readCCB(rawCCB);
-            if (status != Status::OK) {
-                LOG(ERROR) << "Failed to read the CCB for lens scatter "
-                              "compensation";
-                return status;
-            }
-            m_calibrationMgr->setRawCCBData(rawCCB);
-        }
         // The chip boots with bypass disabled; skip the write unless it changes.
         if (rawBypassEnabled || m_rawBypassWritten) {
             status = adsd3500SetRawBypassMode(rawBypassEnabled);
@@ -1058,7 +1054,6 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                            << " not found in depth params map";
                 return Status::INVALID_ARGUMENT;
             }
-            applyLensScatterParams(currentModeParams);
 
             // Fusion is only ever enabled by setModeFusion(), which rebuilds
             // the context after this mode switch.
@@ -2266,6 +2261,7 @@ aditof::Status CameraItof::retrieveDepthProcessParams() {
             UtilsIni::getKeyValuePairsFromString(iniArray, paramsMap);
             m_config->setDepthParamsForMode(mode, paramsMap);
         }
+        separateAlgorithmParams();
         m_config->cacheDepthParams();
     } else {
         loadDepthParamsFromJsonFile(m_initConfigFilePath);
@@ -2335,6 +2331,7 @@ CameraItof::loadDepthParamsFromJsonFile(const std::string &pathFile,
     aditof::Status status =
         m_config->loadDepthParamsFromJsonFile(pathFile, mode_in_use);
     if (status == aditof::Status::OK) {
+        separateAlgorithmParams();
         m_userJsonLoaded = true;
         LOG(INFO) << "User JSON config loaded, enableRotation overrides will "
                      "be respected";
@@ -3343,6 +3340,7 @@ aditof::Status CameraItof::adsd3500setEnableDynamicModeSwitching(bool en) {
 
         if (m_fusionActive) {
             resetFusionState();
+            m_config->setActiveAlgorithm(DepthAlgorithm::None);
             std::map<std::string, std::string> params;
             if (m_config->getDepthParamsForMode(m_details.mode, params) ==
                 Status::OK) {
@@ -3419,7 +3417,7 @@ aditof::Status CameraItof::adsds3500setDynamicModeSwitchingSequence(
  *
  * @param[in] sequence Two-entry DMS sequence; the first entry is the active mode.
  *
- * @return Status::OK on success; Status::UNAVAILABLE if the imager or sensor
+ * @return Status::OK on success; Status::UNAVAILABLE if the sensor
  *         does not support fusion; Status::INVALID_ARGUMENT for an invalid
  *         pair; other errors if a compute context cannot be built.
  */
@@ -3427,10 +3425,6 @@ aditof::Status CameraItof::configureModeFusion(
     const std::vector<std::pair<uint8_t, uint8_t>> &sequence) {
     using namespace aditof;
 
-    if (m_imagerType != ImagerType::ADTF3066) {
-        LOG(ERROR) << "Mode fusion is only supported on the ADTF3066 imager";
-        return Status::UNAVAILABLE;
-    }
     if (sequence.size() != 2 || sequence[0].first != m_details.mode) {
         LOG(ERROR) << "Mode fusion needs a 2-entry sequence starting with the "
                       "active mode "
@@ -3445,10 +3439,10 @@ aditof::Status CameraItof::configureModeFusion(
     const uint8_t primaryMode = sequence[0].first;
     const uint8_t alternateMode = sequence[1].first;
     const bool twoLr = (m_fusionConfig.method == ModeFusionMethod::TwoLrFrames);
-    const bool primaryIsLR = isAdtf3066LongRangeMode(primaryMode);
+    const bool primaryIsLR = isLongRangeSensorMode(primaryMode);
     if (twoLr) {
-        if (!primaryIsLR || !isAdtf3066LongRangeMode(alternateMode)) {
-            LOG(ERROR) << "Two-LR-frames fusion needs two LR modes (7, 8); "
+        if (!primaryIsLR || !isLongRangeSensorMode(alternateMode)) {
+            LOG(ERROR) << "Two-LR-frames fusion needs two Long Range modes; "
                           "got "
                        << (int)primaryMode << " and " << (int)alternateMode;
             return Status::INVALID_ARGUMENT;
@@ -3456,10 +3450,9 @@ aditof::Status CameraItof::configureModeFusion(
     } else {
         const uint8_t lrMode = primaryIsLR ? primaryMode : alternateMode;
         const uint8_t srMode = primaryIsLR ? alternateMode : primaryMode;
-        if (!isAdtf3066LongRangeMode(lrMode) ||
-            !isAdtf3066ShortRangeMode(srMode)) {
-            LOG(ERROR) << "SR/LR fusion needs one SR mode (0, 1, 3, 6) and "
-                          "one LR mode (7, 8); got "
+        if (!isLongRangeSensorMode(lrMode) || !isShortRangeSensorMode(srMode)) {
+            LOG(ERROR) << "SR/LR fusion needs one Short Range and one Long "
+                          "Range mode; got "
                        << (int)primaryMode << " and " << (int)alternateMode;
             return Status::INVALID_ARGUMENT;
         }
@@ -3582,8 +3575,8 @@ aditof::Status CameraItof::configureModeFusion(
  *
  * @param[in] config Fusion method, modes and method parameters.
  *
- * @return Status::OK on success; Status::UNAVAILABLE in playback or on a
- *         non-ADTF3066 imager; Status::INVALID_ARGUMENT for invalid modes or
+ * @return Status::OK on success; Status::UNAVAILABLE in playback;
+ *         Status::INVALID_ARGUMENT for invalid modes or
  *         parameters; other errors if a hardware or compute step fails.
  */
 aditof::Status
@@ -3594,8 +3587,9 @@ CameraItof::setModeFusion(const aditof::ModeFusionConfig &config) {
         LOG(ERROR) << "Mode fusion is not available in playback";
         return Status::UNAVAILABLE;
     }
-    if (m_imagerType != ImagerType::ADTF3066) {
-        LOG(ERROR) << "Mode fusion is only supported on the ADTF3066 imager";
+    if (!isDepthAlgorithmSupported(DepthAlgorithm::ModeFusion)) {
+        LOG(ERROR) << "Mode fusion needs the mode fusion depth compute "
+                      "library";
         return Status::UNAVAILABLE;
     }
 
@@ -3603,30 +3597,30 @@ CameraItof::setModeFusion(const aditof::ModeFusionConfig &config) {
     const uint8_t secondMode = config.secondMode;
     switch (config.method) {
     case ModeFusionMethod::SrLr:
-        if (!((isAdtf3066ShortRangeMode(firstMode) &&
-               isAdtf3066LongRangeMode(secondMode)) ||
-              (isAdtf3066LongRangeMode(firstMode) &&
-               isAdtf3066ShortRangeMode(secondMode)))) {
-            LOG(ERROR) << "SR/LR fusion needs one SR mode (0, 1, 3, 6) and "
-                          "one LR mode (7, 8); got "
+        if (!((isShortRangeSensorMode(firstMode) &&
+               isLongRangeSensorMode(secondMode)) ||
+              (isLongRangeSensorMode(firstMode) &&
+               isShortRangeSensorMode(secondMode)))) {
+            LOG(ERROR) << "SR/LR fusion needs one Short Range and one Long "
+                          "Range mode; got "
                        << (int)firstMode << " and " << (int)secondMode;
             return Status::INVALID_ARGUMENT;
         }
         break;
     case ModeFusionMethod::TwoLrFrames:
-        if (!isAdtf3066LongRangeMode(firstMode) ||
-            !isAdtf3066LongRangeMode(secondMode)) {
-            LOG(ERROR) << "Two-LR-frames fusion needs two LR modes (7, 8); "
+        if (!isLongRangeSensorMode(firstMode) ||
+            !isLongRangeSensorMode(secondMode)) {
+            LOG(ERROR) << "Two-LR-frames fusion needs two Long Range modes; "
                           "got "
                        << (int)firstMode << " and " << (int)secondMode;
             return Status::INVALID_ARGUMENT;
         }
         break;
     case ModeFusionMethod::LrInvalidation:
-        if (!isAdtf3066LongRangeMode(firstMode) &&
-            !isAdtf3066ShortRangeMode(firstMode)) {
-            LOG(ERROR) << "LR invalidation fusion needs an SR (0, 1, 3, 6) or "
-                          "LR (7, 8) mode; got "
+        if (!isLongRangeSensorMode(firstMode) &&
+            !isShortRangeSensorMode(firstMode)) {
+            LOG(ERROR) << "LR invalidation fusion needs a Short Range or Long "
+                          "Range mode; got "
                        << (int)firstMode;
             return Status::INVALID_ARGUMENT;
         }
@@ -3636,12 +3630,13 @@ CameraItof::setModeFusion(const aditof::ModeFusionConfig &config) {
         return Status::INVALID_ARGUMENT;
     }
 
-    if (isLensScatterEnabledForMode(firstMode) ||
-        (config.method != ModeFusionMethod::LrInvalidation &&
-         isLensScatterEnabledForMode(secondMode))) {
-        LOG(ERROR) << "Mode fusion and lens scatter compensation are mutually "
-                      "exclusive; disable lens scatter compensation first";
-        return Status::INVALID_ARGUMENT;
+    if (m_config->getActiveAlgorithm() == DepthAlgorithm::LensScatter) {
+        // Only one of the two runs; the selected mode fusion wins.
+        LOG(WARNING) << "Disabling lens scatter compensation for mode fusion";
+        Status lsStatus = setLensScatterCompensation(false);
+        if (lsStatus != Status::OK) {
+            return lsStatus;
+        }
     }
 
     if (config.method != ModeFusionMethod::LrInvalidation) {
@@ -3675,6 +3670,7 @@ CameraItof::setModeFusion(const aditof::ModeFusionConfig &config) {
     }
 
     m_fusionConfig = config;
+    m_config->setActiveAlgorithm(DepthAlgorithm::ModeFusion);
     // One mode used twice needs no Dynamic Mode Switching.
     if (config.method == ModeFusionMethod::LrInvalidation ||
         firstMode == secondMode) {
@@ -3877,40 +3873,165 @@ aditof::Status CameraItof::setLensScatterCompensation(bool enable) {
         LOG(ERROR) << "Lens scatter compensation is not available in playback";
         return Status::UNAVAILABLE;
     }
-    if (enable && m_imagerType != ImagerType::ADTF3066) {
-        LOG(ERROR) << "Lens scatter compensation is only supported on the "
-                      "ADTF3066 imager";
+    if (enable && !isDepthAlgorithmSupported(DepthAlgorithm::LensScatter)) {
+        LOG(ERROR) << "Lens scatter compensation needs the lens scatter "
+                      "depth compute library";
+        return Status::UNAVAILABLE;
+    }
+    if (!enable && !isDepthAlgorithmSupported(DepthAlgorithm::None)) {
+        LOG(ERROR) << "The lens scatter depth compute library only runs lens "
+                      "scatter compensation";
         return Status::UNAVAILABLE;
     }
 
-    // The next setMode() applies it and ends any active mode fusion.
-    m_lensScatterRequested = enable;
+    // The mode depth params select it (the lens scatter params of each mode
+    // join the standard ones), then setMode() switches raw bypass and builds
+    // the host compute.
+    if (enable) {
+        m_config->setActiveAlgorithm(DepthAlgorithm::LensScatter);
+    } else if (m_config->getActiveAlgorithm() == DepthAlgorithm::LensScatter) {
+        m_config->setActiveAlgorithm(DepthAlgorithm::None);
+    }
+
+    // As in initialize(): the CCB is read after the depth parameters.
+    if (enable && m_calibrationMgr->getRawCCBData().empty()) {
+        // The chip read drops frames while streaming; setMode() stops anyway.
+        if (m_devStreaming) {
+            Status status = stop();
+            if (status != Status::OK) {
+                return status;
+            }
+        }
+        Status status = m_initManager->loadCCBDataIfNeeded(m_availableModes);
+        if (status != Status::OK || m_calibrationMgr->getRawCCBData().empty()) {
+            LOG(ERROR) << "Could not read the CCB for lens scatter "
+                          "compensation";
+            return (status != Status::OK) ? status : Status::GENERIC_ERROR;
+        }
+    }
+
     LOG(INFO) << "Lens scatter compensation "
               << (enable ? "enabled" : "disabled")
               << ", applied at the next setMode()";
     return Status::OK;
 }
 
-void CameraItof::applyLensScatterParams(
-    std::map<std::string, std::string> &params) const {
-    if (!m_lensScatterRequested) {
-        return;
+aditof::Status CameraItof::getDepthAlgorithmParams(
+    aditof::DepthAlgorithm algorithm, uint16_t mode,
+    std::map<std::string, std::string> &params) {
+    if (algorithm == aditof::DepthAlgorithm::None) {
+        return m_config->getStandardParamsForMode(mode, params);
     }
-    for (const auto &param : adtf3066_lensScatter) {
-        params[param.first] = param.second;
+    return m_config->getAlgorithmParamsForMode(algorithm, mode, params);
+}
+
+aditof::Status CameraItof::getSupportedDepthAlgorithms(
+    std::vector<aditof::DepthAlgorithm> &algorithms) const {
+    using aditof::DepthAlgorithm;
+    algorithms.clear();
+    for (DepthAlgorithm algorithm :
+         {DepthAlgorithm::None, DepthAlgorithm::ModeFusion,
+          DepthAlgorithm::LensScatter}) {
+        if (isDepthAlgorithmSupported(algorithm)) {
+            algorithms.push_back(algorithm);
+        }
+    }
+    return aditof::Status::OK;
+}
+
+bool CameraItof::isDepthAlgorithmSupported(
+    aditof::DepthAlgorithm algorithm) const {
+    if (m_isOffline) {
+        return algorithm == aditof::DepthAlgorithm::None;
+    }
+    return aditof::depth_compute_library::supports(algorithm);
+}
+
+void CameraItof::separateAlgorithmParams() {
+    using namespace aditof;
+
+    for (const auto &details : m_availableSensorModeDetails) {
+        const uint8_t mode = details.modeNumber;
+        std::map<std::string, std::string> standard;
+        if (m_config->getStandardParamsForMode(mode, standard) != Status::OK) {
+            continue;
+        }
+
+        // Older configs keep the algorithm params among the standard ones;
+        // params from a config section win over them, defaults fill the rest.
+        std::map<std::string, std::string> fusion;
+        m_config->getAlgorithmParamsForMode(DepthAlgorithm::ModeFusion, mode,
+                                            fusion);
+        for (const auto &param : modeFusionDefaults) {
+            auto it = standard.find(param.first);
+            if (it != standard.end()) {
+                fusion.emplace(it->first, it->second);
+                standard.erase(it);
+            }
+            fusion.emplace(param.first, param.second);
+        }
+
+        std::map<std::string, std::string> lensScatter;
+        m_config->getAlgorithmParamsForMode(DepthAlgorithm::LensScatter, mode,
+                                            lensScatter);
+        auto lsIt = standard.find("lensScatterCompensationEnabled");
+        const bool lensScatterConfig =
+            (lsIt != standard.end() && lsIt->second == "1");
+        // The mode's built-in params tell lens scatter-only keys apart.
+        std::map<std::string, std::string> defaults;
+        std::string iniArray;
+        m_depthSensor->getIniParamsArrayForMode(mode, iniArray);
+        UtilsIni::getKeyValuePairsFromString(iniArray, defaults);
+        for (const auto &param : lensScatterDefaults) {
+            auto defaultIt = defaults.find(param.first);
+            const bool lensScatterOnly =
+                (defaultIt == defaults.end() ||
+                 param.first == "lensScatterCompensationEnabled");
+            auto it = standard.find(param.first);
+            // The standard "0" is not the lens scatter switch.
+            if (it != standard.end() &&
+                (lensScatterOnly || lensScatterConfig) &&
+                param.first != "lensScatterCompensationEnabled") {
+                lensScatter.emplace(it->first, it->second);
+            }
+            if (lensScatterOnly) {
+                standard.erase(param.first);
+            } else if (lensScatterConfig) {
+                // An old lens scatter config overwrote the standard value.
+                standard[param.first] = defaultIt->second;
+            }
+            lensScatter.emplace(param.first, param.second);
+        }
+        standard.erase("lensScatterCompensationEnabled");
+
+        m_config->setStandardParamsForMode(mode, standard);
+        if (!details.isPCM) {
+            m_config->setAlgorithmParamsForMode(DepthAlgorithm::ModeFusion,
+                                                mode, fusion);
+            m_config->setAlgorithmParamsForMode(DepthAlgorithm::LensScatter,
+                                                mode, lensScatter);
+        }
     }
 }
 
-bool CameraItof::isLensScatterEnabledForMode(uint8_t mode) const {
-    if (m_lensScatterRequested) {
-        return true;
+bool CameraItof::isShortRangeSensorMode(uint8_t mode) const {
+    for (const auto &d : m_availableSensorModeDetails) {
+        if (d.modeNumber == mode) {
+            return !d.isPCM && aditof::isShortRangeMode(m_imagerType, mode,
+                                                        d.numberOfFrequencies);
+        }
     }
-    std::map<std::string, std::string> params;
-    if (m_config->getDepthParamsForMode(mode, params) != aditof::Status::OK) {
-        return false;
+    return false;
+}
+
+bool CameraItof::isLongRangeSensorMode(uint8_t mode) const {
+    for (const auto &d : m_availableSensorModeDetails) {
+        if (d.modeNumber == mode) {
+            return !d.isPCM && aditof::isLongRangeMode(m_imagerType, mode,
+                                                       d.numberOfFrequencies);
+        }
     }
-    auto it = params.find("lensScatterCompensationEnabled");
-    return it != params.end() && it->second == "1";
+    return false;
 }
 
 /**
@@ -3923,6 +4044,15 @@ bool CameraItof::isLensScatterEnabledForMode(uint8_t mode) const {
 aditof::Status CameraItof::initPrimaryDepthCompute(
     const std::map<std::string, std::string> &params) {
     using namespace aditof;
+
+    // The active algorithm decides which depth compute library builds it.
+    Status libraryStatus =
+        depth_compute_library::select(m_config->getActiveAlgorithm());
+    if (libraryStatus != Status::OK) {
+        LOG(ERROR) << "No depth compute library for the selected depth "
+                      "algorithm";
+        return libraryStatus;
+    }
 
     std::string s;
     for (const auto &param : params) {

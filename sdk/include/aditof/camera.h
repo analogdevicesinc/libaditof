@@ -546,27 +546,29 @@ class SDK_API Camera {
     /**
      * @brief Starts mode fusion; call it instead of setMode().
      *
-     * Methods (see ModeFusionMethod):
-     * - SrLr: firstMode/secondMode are one SR (0, 1, 3, 6) and one LR (7, 8)
-     *   mode of equal resolution. IsSRFrameFirst is 1 when firstMode is the
+     * Methods (see ModeFusionMethod); Short/Long Range per isShortRangeMode()
+     * and isLongRangeMode() (ADTF3066: SR 0, 1, 3, 6 and LR 7, 8):
+     * - SrLr: firstMode/secondMode are one SR and one LR mode of equal
+     *   resolution. IsSRFrameFirst is 1 when firstMode is the
      *   SR mode. Dynamic Mode Switching and metadata in AB are configured
      *   internally.
-     * - LrInvalidation: firstMode is a single SR (0, 1, 3, 6) or LR (7, 8)
-     *   mode; output at the full sensor frame rate.
-     * - TwoLrFrames: firstMode/secondMode are LR modes (7, 8) of equal
+     * - LrInvalidation: firstMode is a single SR or LR mode; output at the
+     *   full sensor frame rate.
+     * - TwoLrFrames: firstMode/secondMode are LR modes of equal
      *   resolution, the same mode or two different ones; firstMode is
      *   frame A.
      * SrLr and TwoLrFrames fuse two frames into one, i.e. output arrives at
      * half the sensor frame rate. No JSON config is needed.
-     * Method parameters are read from each mode's depth params (built-in
-     * defaults unless changed via the JSON config or setFrameProcessParams());
-     * the edge-confidence ISP output is enabled when edgeConfidenceEnabled=1.
+     * Method parameters are the modes' DepthAlgorithm::ModeFusion params
+     * (built-in defaults unless changed via the JSON config or
+     * setFrameProcessParams()); the edge-confidence ISP output is enabled
+     * when edgeConfidenceEnabled=1. Lens scatter compensation is disabled.
      * adsd3500SetFrameRate() may be called afterwards to set the sensor rate.
      * Fusion ends with the next setMode() call. After stop(), call
      * setModeFusion() again before start().
      *
      * @param[in] config - fusion method and modes
-     * @return Status::UNAVAILABLE in playback or on non-ADTF3066 imagers,
+     * @return Status::UNAVAILABLE in playback,
      *         Status::INVALID_ARGUMENT for invalid modes or parameters
      */
     virtual aditof::Status setModeFusion(const ModeFusionConfig &config) {
@@ -591,19 +593,56 @@ class SDK_API Camera {
      * @brief Enables or disables lens scatter compensation; applied at the
      * next setMode() call.
      *
-     * The ISP outputs raw frames (raw bypass) and depth is computed on the
-     * host with the lens scatter parameters of the imager, which override the
-     * mode's depth params. Not available for PCM modes. Lens scatter
-     * compensation and mode fusion are mutually exclusive: setModeFusion()
-     * fails while it is enabled, and the setMode() that applies it ends any
+     * Each non-PCM mode's DepthAlgorithm::LensScatter params join its
+     * standard depth params, and the CCB is read for host depth compute;
+     * disabling leaves the standard params only. setMode() then outputs raw
+     * frames (raw bypass) and computes depth on the host. Lens scatter
+     * compensation and mode fusion are mutually exclusive, whatever the
+     * loaded params say: their params are kept apart, setModeFusion()
+     * disables lens scatter, and the setMode() that applies it ends any
      * active mode fusion.
      *
      * @param[in] enable - true to enable lens scatter compensation
-     * @return Status::UNAVAILABLE in playback or on imagers without lens
-     *         scatter support
+     * @return Status::UNAVAILABLE in playback or without the lens scatter
+     *         depth compute library
      */
     virtual aditof::Status setLensScatterCompensation(bool enable) {
         (void)enable;
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    /**
+     * @brief Depth params of one algorithm for a mode, as saved in its own
+     * config section ("mode-fusion", "lens-scatter"); None gives the
+     * standard params. Change them with setFrameProcessParams().
+     * @param[in] algorithm - algorithm whose params to read
+     * @param[in] mode - mode number
+     * @param[out] params - parameter name -> value
+     * @return Status::INVALID_ARGUMENT if the mode has no such params
+     */
+    virtual aditof::Status
+    getDepthAlgorithmParams(DepthAlgorithm algorithm, uint16_t mode,
+                            std::map<std::string, std::string> &params) {
+        (void)algorithm;
+        (void)mode;
+        params.clear();
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    /**
+     * @brief Depth algorithms the linked depth compute library can run.
+     *
+     * TEMPORARY (two depth compute libraries): for now lens scatter and
+     * mode fusion come from separate builds of the library; the lens scatter
+     * build alone supports only DepthAlgorithm::LensScatter, which
+     * initialize() then enables. Once one library has every algorithm, all
+     * are supported.
+     * @param[out] algorithms - supported algorithms
+     * @return Status
+     */
+    virtual aditof::Status
+    getSupportedDepthAlgorithms(std::vector<DepthAlgorithm> &algorithms) const {
+        algorithms = {DepthAlgorithm::None};
         return aditof::Status::UNAVAILABLE;
     }
 

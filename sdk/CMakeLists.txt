@@ -324,20 +324,15 @@ endif()
 
 if ( ON_TARGET AND UNIX )
     if (NOT USE_DEPTH_COMPUTE_OPENSOURCE)
-        add_library(libtofi_compute SHARED IMPORTED)
-        set_target_properties(libtofi_compute PROPERTIES
-                IMPORTED_LOCATION "${LIBTOFI_COMPUTE_CLOSED_SOURCE_PATH}"
-                IMPORTED_NO_SONAME 1
-                )
-
-        add_library(libtofi_config SHARED IMPORTED)
-        set_target_properties(libtofi_config PROPERTIES
-                        IMPORTED_LOCATION "${LIBTOFI_CONFIG_CLOSED_SOURCE_PATH}"
-                        IMPORTED_NO_SONAME 1
-                        )
-
-        target_link_libraries(${PROJECT_NAME} PUBLIC libtofi_compute)
-        target_link_libraries(${PROJECT_NAME} PUBLIC libtofi_config)
+        # TEMPORARY (two depth compute libraries): loaded at runtime
+        # (helpers/depth_compute_library.cpp) so the depth algorithm picks
+        # the standard or the lens scatter build. Link it again once one
+        # library has every algorithm.
+        target_compile_definitions(${PROJECT_NAME} PRIVATE
+            ADITOF_TOFI_DLOPEN
+            ADITOF_TOFI_LIBDIR_DEFAULT="${LIBTOFI_LIBDIR_PATH}"
+            ADITOF_TOFI_LENS_SCATTER_LIBDIR_DEFAULT="${LIBTOFI_LENS_SCATTER_LIBDIR_PATH}"
+        )
     else()
         target_link_libraries(${PROJECT_NAME} PUBLIC tofi_compute)
         target_link_libraries(${PROJECT_NAME} PUBLIC tofi_config)
@@ -383,6 +378,13 @@ if (ON_TARGET) # ON TARGET
             DESTINATION
             ${CMAKE_INSTALL_LIBDIR}
         )
+        if(EXISTS "${LIBTOFI_LENS_SCATTER_LIBDIR_PATH}/libtofi_compute.so")
+            install(FILES
+                "${LIBTOFI_LENS_SCATTER_LIBDIR_PATH}/libtofi_compute.so"
+                "${LIBTOFI_LENS_SCATTER_LIBDIR_PATH}/libtofi_config.so"
+                DESTINATION ${CMAKE_INSTALL_LIBDIR}/lens_scatter
+            )
+        endif()
     endif()
 else() # NOT ON TARGET, NO LIBRARIES
     install(TARGETS aditof

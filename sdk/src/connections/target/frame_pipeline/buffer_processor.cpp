@@ -61,6 +61,7 @@
 #include <vector>
 
 #include "buffer_processor.h"
+#include "helpers/depth_compute_library.h"
 #include <aditof/frame_handler.h>
 
 // Increased from 3 to 8 to handle slow first-frame TofiCompute in lens scatter mode
@@ -237,14 +238,16 @@ aditof::Status BufferProcessor::setVideoProperties(
     // Clear the buffer pool before reallocating the buffer
     {
         std::shared_ptr<uint8_t> clr_buffer;
-        while (m_v4l2_input_buffer_Q.pop(clr_buffer)) {
+        while (m_v4l2_input_buffer_Q.pop(clr_buffer,
+                                         std::chrono::milliseconds(0))) {
             // Buffer deallocation via shared_ptr
         }
     }
 
     {
         std::shared_ptr<uint16_t> clr_buffer;
-        while (m_tofi_io_Buffer_Q.pop(clr_buffer)) {
+        while (m_tofi_io_Buffer_Q.pop(clr_buffer,
+                                      std::chrono::milliseconds(0))) {
             // Buffer deallocation via shared_ptr
         }
     }
@@ -603,7 +606,7 @@ aditof::Status BufferProcessor::createModeTofiContext(
 
     using GetIntrinsicsDataBuffer_t = int (*)(uint16_t);
     auto fnGetIntrinsics = reinterpret_cast<GetIntrinsicsDataBuffer_t>(
-        dlsym(RTLD_DEFAULT, "GetIntrinsicsDataBuffer"));
+        aditof::depth_compute_library::symbol("GetIntrinsicsDataBuffer"));
 
     if (ispEnabled) {
         uint32_t status = ADI_TOFI_SUCCESS;
@@ -1320,12 +1323,11 @@ void BufferProcessor::processThread() {
                 }
             }
 
-            const bool primaryIsLR =
-                aditof::isAdtf3066LongRangeMode(m_currentModeNumber);
-            // Two LR modes: lrRaw is the primary (first) mode, i.e. frame A.
-            const bool twoLrModes =
-                primaryIsLR &&
-                aditof::isAdtf3066LongRangeMode(m_altConfig.modeNumber);
+            // The camera classifies the modes per imager: two-LR fusion uses
+            // two LR modes, and SR/LR sets IsSRFrameFirst=1 only when the
+            // primary (first) mode is SR.
+            const bool twoLrModes = m_twoLrFramesFusionEnabled;
+            const bool primaryIsLR = twoLrModes || !m_isSRFrameFirst;
 
             const uint8_t *lrRaw =
                 primaryIsLR ? m_pendingPrimaryRaw.get() : m_pendingAltRaw.get();
@@ -2058,7 +2060,8 @@ void BufferProcessor::stopThreads() {
     // Return buffers to their pools for potential reuse
     {
         Tofi_v4l2_buffer frame;
-        while (m_capture_to_process_Q.pop(frame)) {
+        while (m_capture_to_process_Q.pop(frame,
+                                          std::chrono::milliseconds(0))) {
             if (frame.data)
                 m_v4l2_input_buffer_Q.push(frame.data);
             if (frame.tofiBuffer)
@@ -2068,7 +2071,7 @@ void BufferProcessor::stopThreads() {
 
     {
         Tofi_v4l2_buffer frame;
-        while (m_process_done_Q.pop(frame)) {
+        while (m_process_done_Q.pop(frame, std::chrono::milliseconds(0))) {
             if (frame.data)
                 m_v4l2_input_buffer_Q.push(frame.data);
             if (frame.tofiBuffer)

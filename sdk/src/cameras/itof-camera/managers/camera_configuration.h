@@ -24,6 +24,7 @@
 #ifndef CAMERA_CONFIGURATION_H
 #define CAMERA_CONFIGURATION_H
 
+#include <aditof/camera_definitions.h>
 #include <aditof/status_definitions.h>
 #include <cstdint>
 #include <map>
@@ -82,7 +83,9 @@ class CameraConfiguration {
      * @brief Saves current depth parameters to a JSON configuration file.
      *
      * Exports all depth processing parameters and global settings to JSON.
-     * Parameters are organized by mode with depth-compute and configuration sections.
+     * Parameters are organized by mode with depth-compute and configuration
+     * sections; each depth algorithm's params go to their own top-level
+     * section ("mode-fusion", "lens-scatter"), keyed by mode.
      *
      * @param[in] savePathFile Path where JSON file should be written
      * @param[in] rotationEnabled Current rotation state to apply to all modes
@@ -92,7 +95,8 @@ class CameraConfiguration {
                                      bool rotationEnabled = false);
 
     /**
-     * @brief Retrieves depth parameters for a specific mode.
+     * @brief Retrieves depth parameters for a specific mode: the standard
+     * params merged with the active algorithm's params of that mode.
      *
      * @param[in] mode Mode number
      * @param[out] params Map of parameter name -> value
@@ -105,6 +109,10 @@ class CameraConfiguration {
     /**
      * @brief Sets depth parameters for a specific mode.
      *
+     * Takes the merged view getDepthParamsForMode() returns: keys of the
+     * active algorithm go to its params, other keys to the standard params,
+     * and keys only an inactive algorithm has go to that algorithm.
+     *
      * @param[in] mode Mode number
      * @param[in] params Map of parameter name -> value
      * @return Status::OK on success
@@ -112,6 +120,43 @@ class CameraConfiguration {
     Status
     setDepthParamsForMode(uint16_t mode,
                           const std::map<std::string, std::string> &params);
+
+    /**
+     * @brief Standard depth parameters of a mode, without algorithm params.
+     */
+    Status
+    getStandardParamsForMode(uint16_t mode,
+                             std::map<std::string, std::string> &params) const;
+
+    /**
+     * @brief Replaces the standard depth parameters of a mode.
+     */
+    void
+    setStandardParamsForMode(uint16_t mode,
+                             const std::map<std::string, std::string> &params);
+
+    /**
+     * @brief Parameters of one depth algorithm for a mode.
+     * @return Status::INVALID_ARGUMENT if the mode has none
+     */
+    Status
+    getAlgorithmParamsForMode(DepthAlgorithm algorithm, uint16_t mode,
+                              std::map<std::string, std::string> &params) const;
+
+    /**
+     * @brief Replaces the parameters of one depth algorithm for a mode.
+     */
+    void
+    setAlgorithmParamsForMode(DepthAlgorithm algorithm, uint16_t mode,
+                              const std::map<std::string, std::string> &params);
+
+    /**
+     * @brief Selects whose params getDepthParamsForMode() merges in.
+     */
+    void setActiveAlgorithm(DepthAlgorithm algorithm) {
+        m_activeAlgorithm = algorithm;
+    }
+    DepthAlgorithm getActiveAlgorithm() const { return m_activeAlgorithm; }
 
     /**
      * @brief Clears all stored depth parameters.
@@ -204,6 +249,12 @@ class CameraConfiguration {
     // Depth processing parameters per mode
     std::map<int, std::map<std::string, std::string>> m_depth_params_map;
     std::map<int, std::map<std::string, std::string>> m_depth_params_map_cache;
+
+    using ModeParams = std::map<int, std::map<std::string, std::string>>;
+    // Per algorithm, its params per mode; never part of m_depth_params_map.
+    std::map<DepthAlgorithm, ModeParams> m_algorithm_params_map;
+    std::map<DepthAlgorithm, ModeParams> m_algorithm_params_map_cache;
+    DepthAlgorithm m_activeAlgorithm = DepthAlgorithm::None;
 
     // Global configuration settings
     int16_t m_mipiOutputSpeed;

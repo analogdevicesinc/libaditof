@@ -192,6 +192,16 @@ PYBIND11_MODULE(aditofpython, m) {
         .value("LrInvalidation", aditof::ModeFusionMethod::LrInvalidation)
         .value("TwoLrFrames", aditof::ModeFusionMethod::TwoLrFrames);
 
+    py::enum_<aditof::DepthAlgorithm>(m, "DepthAlgorithm")
+        .value("None_", aditof::DepthAlgorithm::None)
+        .value("ModeFusion", aditof::DepthAlgorithm::ModeFusion)
+        .value("LensScatter", aditof::DepthAlgorithm::LensScatter);
+
+    m.def("isLongRangeMode", &aditof::isLongRangeMode, py::arg("imager"),
+          py::arg("mode"), py::arg("numberOfFrequencies"));
+    m.def("isShortRangeMode", &aditof::isShortRangeMode, py::arg("imager"),
+          py::arg("mode"), py::arg("numberOfFrequencies"));
+
     py::class_<aditof::ModeFusionConfig>(m, "ModeFusionConfig")
         .def(py::init<>())
         .def_readwrite("method", &aditof::ModeFusionConfig::method)
@@ -702,6 +712,13 @@ PYBIND11_MODULE(aditofpython, m) {
                  aditof::Status status = camera.getModeFusion(config);
                  return std::make_pair(status, config);
              })
+        .def("getSupportedDepthAlgorithms",
+             [](aditof::Camera &camera) {
+                 std::vector<aditof::DepthAlgorithm> algorithms;
+                 aditof::Status status =
+                     camera.getSupportedDepthAlgorithms(algorithms);
+                 return std::make_pair(status, algorithms);
+             })
         .def("setLensScatterCompensation",
              &aditof::Camera::setLensScatterCompensation, py::arg("enable"))
         .def(
@@ -732,6 +749,20 @@ PYBIND11_MODULE(aditofpython, m) {
                 return std::make_pair(status, pyParams);
             },
             py::arg("mode"))
+        .def(
+            "getDepthAlgorithmParams",
+            [](aditof::Camera &camera, aditof::DepthAlgorithm algorithm,
+               uint16_t mode) {
+                std::map<std::string, std::string> params;
+                aditof::Status status =
+                    camera.getDepthAlgorithmParams(algorithm, mode, params);
+                py::dict pyParams;
+                for (const auto &pair : params) {
+                    pyParams[py::str(pair.first)] = py::str(pair.second);
+                }
+                return std::make_pair(status, pyParams);
+            },
+            py::arg("algorithm"), py::arg("mode"))
         .def("resetDepthProcessParams",
              &aditof::Camera::resetDepthProcessParams)
         .def("setRotationEnabled", &aditof::Camera::setRotationEnabled,

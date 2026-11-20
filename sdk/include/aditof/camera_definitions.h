@@ -214,6 +214,41 @@ inline bool isAdtf3066ShortRangeMode(uint8_t mode) {
 }
 
 /**
+ * @brief Whether a mode is a long-range (LR) mode. ADTF3066: modes 7, 8;
+ * other imagers: 3 or more frequencies.
+ */
+inline bool isLongRangeMode(ImagerType imager, uint8_t mode,
+                            uint8_t numberOfFrequencies) {
+    if (imager == ImagerType::ADTF3066) {
+        return isAdtf3066LongRangeMode(mode);
+    }
+    return numberOfFrequencies >= 3;
+}
+
+/**
+ * @brief Whether a mode is a short-range (SR) mode. ADTF3066: modes 0, 1, 3,
+ * 6; other imagers: 2 frequencies.
+ */
+inline bool isShortRangeMode(ImagerType imager, uint8_t mode,
+                             uint8_t numberOfFrequencies) {
+    if (imager == ImagerType::ADTF3066) {
+        return isAdtf3066ShortRangeMode(mode);
+    }
+    return numberOfFrequencies == 2;
+}
+
+/**
+ * @enum DepthAlgorithm
+ * @brief Optional depth algorithm; each has its own depth params, kept apart
+ * from the standard ones and saved in its own config section.
+ */
+enum class DepthAlgorithm : uint8_t {
+    None = 0,        //!< Standard depth compute
+    ModeFusion = 1,  //!< Mode fusion ("mode-fusion" config section)
+    LensScatter = 2, //!< Lens scatter compensation ("lens-scatter" section)
+};
+
+/**
  * @enum ModeFusionMethod
  * @brief Mode fusion technique run by the depth-compute library.
  */
@@ -229,9 +264,9 @@ enum class ModeFusionMethod : uint8_t {
 /**
  * @struct ModeFusionConfig
  * @brief Mode fusion request. Method parameters (thresholds, lrInvalType,
- * frameAOutputEnabled, ABFusionEnabled, ...) come from each mode's depth
- * params: built-in defaults unless changed via the JSON config or
- * Camera::setFrameProcessParams().
+ * frameAOutputEnabled, ABFusionEnabled, ...) are the mode's
+ * DepthAlgorithm::ModeFusion params: built-in defaults unless changed via
+ * the JSON config ("mode-fusion" section) or Camera::setFrameProcessParams().
  */
 struct ModeFusionConfig {
     /** @brief Fusion technique */
