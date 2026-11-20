@@ -588,6 +588,26 @@ class SDK_API Camera {
     }
 
     /**
+     * @brief Enables or disables lens scatter compensation; applied at the
+     * next setMode() call.
+     *
+     * The ISP outputs raw frames (raw bypass) and depth is computed on the
+     * host with the lens scatter parameters of the imager, which override the
+     * mode's depth params. Not available for PCM modes. Lens scatter
+     * compensation and mode fusion are mutually exclusive: setModeFusion()
+     * fails while it is enabled, and the setMode() that applies it ends any
+     * active mode fusion.
+     *
+     * @param[in] enable - true to enable lens scatter compensation
+     * @return Status::UNAVAILABLE in playback or on imagers without lens
+     *         scatter support
+     */
+    virtual aditof::Status setLensScatterCompensation(bool enable) {
+        (void)enable;
+        return aditof::Status::UNAVAILABLE;
+    }
+
+    /**
     * @brief Read serial number from camera and update cache
     * @param[out] serialNumber - Will contain serial number
     * @param[in] useCacheValue - If it is false it will
