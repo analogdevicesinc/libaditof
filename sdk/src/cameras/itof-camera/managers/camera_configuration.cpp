@@ -328,32 +328,19 @@ CameraConfiguration::loadDepthParamsFromJsonFile(const std::string &pathFile,
                 }
             }
             m_depth_params_map.emplace(mode, iniKeyValPairs);
-        }
 
-        for (const auto &section : algorithmSections) {
-            json_object *sectionJson = NULL;
-            if (!json_object_object_get_ex(config_json, section.second,
-                                           &sectionJson) ||
-                !json_object_is_type(sectionJson, json_type_object)) {
-                continue;
-            }
-            auto &store = m_algorithm_params_map[section.first];
-            json_object_object_foreach(sectionJson, modeKey, modeJson) {
-                int mode = -1;
-                try {
-                    mode = std::stoi(modeKey);
-                } catch (...) {
-                    continue;
-                }
-                if ((mode_in_use >= 0 && mode != mode_in_use) ||
-                    !json_object_is_type(modeJson, json_type_object)) {
+            for (const auto &section : algorithmSections) {
+                json_object *sectionJson = NULL;
+                if (!json_object_object_get_ex(depthframeType, section.second,
+                                               &sectionJson) ||
+                    !json_object_is_type(sectionJson, json_type_object)) {
                     continue;
                 }
                 std::map<std::string, std::string> params;
-                json_object_object_foreach(modeJson, paramKey, paramVal) {
+                json_object_object_foreach(sectionJson, paramKey, paramVal) {
                     params[paramKey] = jsonValueToString(paramVal);
                 }
-                store[mode] = params;
+                m_algorithm_params_map[section.first][mode] = params;
             }
         }
         json_object_put(config_json);
@@ -443,32 +430,30 @@ CameraConfiguration::saveDepthParamsToJsonFile(const std::string &savePathFile,
                                    dept_compute_group_keys);
             json_object_object_add(json, "configuration-parameters",
                                    configuration_param_keys);
+
+            for (const auto &section : algorithmSections) {
+                auto storeIt = m_algorithm_params_map.find(section.first);
+                if (storeIt == m_algorithm_params_map.end()) {
+                    continue;
+                }
+                auto modeIt = storeIt->second.find(pfile->first);
+                if (modeIt == storeIt->second.end()) {
+                    continue;
+                }
+                json_object *sectionJson = json_object_new_object();
+                for (const auto &param : modeIt->second) {
+                    json_object_object_add(
+                        sectionJson, param.first.c_str(),
+                        isConvertibleToDouble(param.second)
+                            ? json_object_new_double(
+                                  strtod(param.second.c_str(), NULL))
+                            : json_object_new_string(param.second.c_str()));
+                }
+                json_object_object_add(json, section.second, sectionJson);
+            }
             json_object_object_add(rootjson,
                                    std::to_string(pfile->first).c_str(), json);
         }
-    }
-
-    for (const auto &section : algorithmSections) {
-        auto storeIt = m_algorithm_params_map.find(section.first);
-        if (storeIt == m_algorithm_params_map.end() ||
-            storeIt->second.empty()) {
-            continue;
-        }
-        json_object *sectionJson = json_object_new_object();
-        for (const auto &modeEntry : storeIt->second) {
-            json_object *modeJson = json_object_new_object();
-            for (const auto &param : modeEntry.second) {
-                json_object_object_add(
-                    modeJson, param.first.c_str(),
-                    isConvertibleToDouble(param.second)
-                        ? json_object_new_double(
-                              strtod(param.second.c_str(), NULL))
-                        : json_object_new_string(param.second.c_str()));
-            }
-            json_object_object_add(
-                sectionJson, std::to_string(modeEntry.first).c_str(), modeJson);
-        }
-        json_object_object_add(rootjson, section.second, sectionJson);
     }
 
     const char *json_str =
