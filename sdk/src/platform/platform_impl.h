@@ -137,12 +137,12 @@ class Platform {
      * @brief Reset the ToF sensor via GPIO
      * @param[in] waitForInterrupt If true, wait for sensor interrupt callback
      * @param[in,out] resetDone Pointer to flag set by interrupt handler when reset completes
-     * @param[in] timeoutSeconds Maximum seconds to wait for interrupt (default: 10)
+     * @param[in] timeoutSeconds Maximum seconds to wait for interrupt (default: 2)
      * @return Status::OK on success, error status otherwise
      * @note Platform-specific implementation (RPI/NVIDIA/NXP)
      */
     Status resetSensor(bool waitForInterrupt = false, bool *resetDone = nullptr,
-                       int timeoutSeconds = 10);
+                       int timeoutSeconds = 2);
 
     /**
      * @brief Get singleton instance of Platform

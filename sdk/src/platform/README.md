@@ -179,7 +179,7 @@ Each platform defines the following in `platform.cmake`:
 | `PLATFORM_RESET_GPIO` | "PAC.00" (named) | "" (debugfs) | "gpio64" |
 | `PLATFORM_RESET_GPIO_PIN` | 0 | 34 (physical pin) | 0 |
 | `PLATFORM_RESET_PULSE_US` | 100000 (100ms) | 100000 (100ms) | 1000000 (1s) |
-| `PLATFORM_RESET_DELAY_US` | 10000000 (10s) | 2000000 (2s) | 7000000 (7s) |
+| `PLATFORM_RESET_DELAY_US` | 2000000 (2s) | 2000000 (2s) | 7000000 (7s) |
 
 These variables are substituted into `platform_config.h.in` during CMake configuration, generating `build/libaditof/sdk/platform_config.h`.
 
