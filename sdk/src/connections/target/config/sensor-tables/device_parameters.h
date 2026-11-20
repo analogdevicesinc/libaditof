@@ -224,13 +224,13 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"jblfExponentialTerm", "5.0"},
     {"jblfMaxEdge", "12.0"},
     {"jblfABThreshold", "10.0"},
-    {"lensScatterCompensationEnabled", "1"},
-    {"headerSize", "0"},
+    {"lensScatterCompensationEnabled", "0"},
+    {"headerSize", "128"},
     {"numMetaDataBytes", "1280"},
-    {"inputFormat", "raw16"},
-    {"depthComputeIspEnable", "0"},
+    {"inputFormat", "raw8"},
+    {"depthComputeIspEnable", "1"},
     {"partialDepthEnable", "0"},
-    {"interleavingEnable", "0"},
+    {"interleavingEnable", "1"},
     {"residualUnwrappingEnabled", "0"},
     {"defaultdepthOutput", "0"},
     {"sobelEdgeDetectionEnabled", "0"},
@@ -249,15 +249,29 @@ static std::map<std::string, std::string> adtf3066_fullDepth = {
     {"edgeConfidenceEnabled", "0"},
     {"bitsInPhaseOrDepth", "16"},
     {"dualPulsatrixSystemEnabled", "1"},
-    {"bitsInConf", "0"},
+    {"bitsInConf", "8"},
     {"bitsInAB", "16"},
     {"abAveraging", "1"},
     {"phaseInvalid", "0"},
     {"enableRotation", "0"},
     {"xyzEnable", "1"},
     {"fps", "30"},
-    {"rgbCameraEnable", "1"},
-    // Lens scatter (TOF_DepthComputeEngine_CUDA-Rel5.0.8-LS RawToDepth_LS.ini)
+    {"rgbCameraEnable", "1"}};
+
+/**
+ * @brief ADTF3066 depth parameters overridden by lens scatter compensation.
+ *
+ * Applied over adtf3066_fullDepth by Camera::setLensScatterCompensation():
+ * raw bypass with host CUDA depth compute, parameters from
+ * TOF_DepthComputeEngine_CUDA-Rel5.0.8-LS RawToDepth_LS.ini.
+ */
+static const std::map<std::string, std::string> adtf3066_lensScatter = {
+    {"lensScatterCompensationEnabled", "1"},
+    {"headerSize", "0"},
+    {"inputFormat", "raw16"},
+    {"depthComputeIspEnable", "0"},
+    {"interleavingEnable", "0"},
+    {"bitsInConf", "0"},
     {"withABFrame", "1"},
     {"abFilterEnable", "0"},
     {"deltaCompEnable", "0"},

@@ -702,6 +702,8 @@ PYBIND11_MODULE(aditofpython, m) {
                  aditof::Status status = camera.getModeFusion(config);
                  return std::make_pair(status, config);
              })
+        .def("setLensScatterCompensation",
+             &aditof::Camera::setLensScatterCompensation, py::arg("enable"))
         .def(
             "readSerialNumber",
             [](aditof::Camera &camera, std::string serialNumber,

@@ -155,6 +155,7 @@ class CameraItof : public aditof::Camera {
     setModeFusion(const aditof::ModeFusionConfig &config) override;
     aditof::Status
     getModeFusion(aditof::ModeFusionConfig &config) const override;
+    aditof::Status setLensScatterCompensation(bool enable) override;
     aditof::Status readSerialNumber(std::string &serialNumber,
                                     bool useCacheValue = false) override;
     aditof::Status getImagerType(aditof::ImagerType &imagerType) const override;
@@ -245,6 +246,19 @@ class CameraItof : public aditof::Camera {
      */
     void resetFusionState();
 
+    /**
+     * Overrides params with the imager's lens scatter parameters when lens
+     * scatter compensation was requested via setLensScatterCompensation().
+     */
+    void
+    applyLensScatterParams(std::map<std::string, std::string> &params) const;
+
+    /**
+     * True if mode runs lens scatter compensation, requested via
+     * setLensScatterCompensation() or set in its depth params.
+     */
+    bool isLensScatterEnabledForMode(uint8_t mode) const;
+
     aditof::Status startRecording(std::string &filePath) override;
     aditof::Status stopRecording() override;
     uint32_t getRecordedFrameCount() const override;
@@ -328,6 +342,7 @@ class CameraItof : public aditof::Camera {
     std::string m_initConfigFilePath;
     bool m_userJsonLoaded = false;
     bool m_rawBypassWritten = false; // True while the chip has bypass enabled
+    bool m_lensScatterRequested = false; // Set by setLensScatterCompensation()
     aditof::ImagerType m_imagerType;
     bool m_rotationEnabled =
         false; // True if XYZ tables and frames are rotated 90° CW

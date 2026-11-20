@@ -24,6 +24,7 @@
 #include "camera_itof.h"
 #include "aditof/frame.h"
 #include "aditof/frame_operations.h"
+#include "connections/target/config/sensor-tables/device_parameters.h"
 #include "hardware/adsd3500_registers.h"
 #include "helpers/depth_parameter_mapper.h"
 #include "utils_ini.h"
@@ -721,6 +722,15 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                        << (int)mode;
             return Status::GENERIC_ERROR;
         }
+        if (m_lensScatterRequested) {
+            if (modeIt->isPCM) {
+                LOG(ERROR) << "Lens scatter compensation is not available "
+                              "for PCM mode "
+                           << (int)mode;
+                return Status::INVALID_ARGUMENT;
+            }
+            applyLensScatterParams(iniKeyValPairs);
+        }
         m_config->setIniKeyValPairs(iniKeyValPairs);
 
         // Pre-populate modeDetailsCache resolution before configureSensorModeDetails() so
@@ -739,6 +749,18 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             iniKeyValPairs.find("lensScatterCompensationEnabled");
         bool rawBypassEnabled = (lensScatteringIt != iniKeyValPairs.end() &&
                                  lensScatteringIt->second == "1");
+        // Host depth compute needs the raw CCB, which initialize() only reads
+        // when a mode's default params compute depth without the ISP.
+        if (rawBypassEnabled && m_calibrationMgr->getRawCCBData().empty()) {
+            std::string rawCCB;
+            status = m_calibrationMgr->readCCB(rawCCB);
+            if (status != Status::OK) {
+                LOG(ERROR) << "Failed to read the CCB for lens scatter "
+                              "compensation";
+                return status;
+            }
+            m_calibrationMgr->setRawCCBData(rawCCB);
+        }
         // The chip boots with bypass disabled; skip the write unless it changes.
         if (rawBypassEnabled || m_rawBypassWritten) {
             status = adsd3500SetRawBypassMode(rawBypassEnabled);
@@ -1036,6 +1058,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
                            << " not found in depth params map";
                 return Status::INVALID_ARGUMENT;
             }
+            applyLensScatterParams(currentModeParams);
 
             // Fusion is only ever enabled by setModeFusion(), which rebuilds
             // the context after this mode switch.
@@ -3613,6 +3636,14 @@ CameraItof::setModeFusion(const aditof::ModeFusionConfig &config) {
         return Status::INVALID_ARGUMENT;
     }
 
+    if (isLensScatterEnabledForMode(firstMode) ||
+        (config.method != ModeFusionMethod::LrInvalidation &&
+         isLensScatterEnabledForMode(secondMode))) {
+        LOG(ERROR) << "Mode fusion and lens scatter compensation are mutually "
+                      "exclusive; disable lens scatter compensation first";
+        return Status::INVALID_ARGUMENT;
+    }
+
     if (config.method != ModeFusionMethod::LrInvalidation) {
         // Checked before any mode switch so a bad pair leaves the camera as is.
         auto findMode = [this](uint8_t m) {
@@ -3837,6 +3868,49 @@ void CameraItof::applyFusionParams(
 void CameraItof::resetFusionState() {
     m_fusionActive = false;
     m_fusionSequence.clear();
+}
+
+aditof::Status CameraItof::setLensScatterCompensation(bool enable) {
+    using namespace aditof;
+
+    if (m_isOffline) {
+        LOG(ERROR) << "Lens scatter compensation is not available in playback";
+        return Status::UNAVAILABLE;
+    }
+    if (enable && m_imagerType != ImagerType::ADTF3066) {
+        LOG(ERROR) << "Lens scatter compensation is only supported on the "
+                      "ADTF3066 imager";
+        return Status::UNAVAILABLE;
+    }
+
+    // The next setMode() applies it and ends any active mode fusion.
+    m_lensScatterRequested = enable;
+    LOG(INFO) << "Lens scatter compensation "
+              << (enable ? "enabled" : "disabled")
+              << ", applied at the next setMode()";
+    return Status::OK;
+}
+
+void CameraItof::applyLensScatterParams(
+    std::map<std::string, std::string> &params) const {
+    if (!m_lensScatterRequested) {
+        return;
+    }
+    for (const auto &param : adtf3066_lensScatter) {
+        params[param.first] = param.second;
+    }
+}
+
+bool CameraItof::isLensScatterEnabledForMode(uint8_t mode) const {
+    if (m_lensScatterRequested) {
+        return true;
+    }
+    std::map<std::string, std::string> params;
+    if (m_config->getDepthParamsForMode(mode, params) != aditof::Status::OK) {
+        return false;
+    }
+    auto it = params.find("lensScatterCompensationEnabled");
+    return it != params.end() && it->second == "1";
 }
 
 /**
