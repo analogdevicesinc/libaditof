@@ -1003,7 +1003,7 @@ aditof::Status CameraItof::setMode(const uint8_t &mode) {
             } else if (item == "conf") {
                 fDataDetails.subelementSize = sizeof(float);
             } else if (item == "rgb") {
-                // RGB image on the depth grid: B, G, R per depth pixel
+                // RGB image as the depth camera sees it: B, G, R per depth pixel
                 fDataDetails.subelementSize = sizeof(uint8_t);
                 fDataDetails.subelementsPerElement = 3;
             }
@@ -1365,6 +1365,12 @@ void CameraItof::setRGBSensorInfo(const std::string &devicePath,
     // Open the RGB sensor
     aditof::RGBSensorConfig rgbConfig;
     rgbConfig.devicePath = devicePath;
+    // Full sensor, the size the RGB intrinsics are calibrated at.
+    const auto &fullSensor =
+        aditof::RGB_MODES[static_cast<int>(aditof::RGBMode::MODE_0_1920x1200)];
+    rgbConfig.mode = fullSensor.mode_index;
+    rgbConfig.width = fullSensor.width;
+    rgbConfig.height = fullSensor.height;
     m_rgbSensor = std::make_unique<aditof::RGBSensor>();
     m_rgbStatus.openStatus = m_rgbSensor->open(rgbConfig);
     if (m_rgbStatus.openStatus != aditof::Status::OK) {
@@ -1706,24 +1712,6 @@ int16_t *CameraItof::frameXyz(aditof::Frame *frame) {
     return nullptr;
 }
 
-int16_t *CameraItof::depthToXyz(aditof::Frame *frame) {
-    using namespace aditof;
-    uint16_t *depth = nullptr;
-    FrameDataDetails details;
-    const XYZTable &table = m_calibrationMgr->getXYZTable();
-    if (frame->getData("depth", &depth) != Status::OK || !depth ||
-        frame->getDataDetails("depth", details) != Status::OK ||
-        !table.p_x_table || !table.p_y_table || !table.p_z_table) {
-        return nullptr;
-    }
-    m_xyzScratch.resize(static_cast<std::size_t>(details.width) *
-                        details.height * 3);
-    XYZTable tableCopy = table;
-    Algorithms::ComputeXYZ(depth, &tableCopy, m_xyzScratch.data(),
-                           details.height, details.width);
-    return m_xyzScratch.data();
-}
-
 void CameraItof::recordRgb(aditof::Frame *frame,
                            const aditof::RGBFrame &rgbFrame) {
     using namespace aditof;
@@ -1767,19 +1755,18 @@ aditof::Status CameraItof::fillRgbOutputs(aditof::Frame *frame,
     using namespace aditof;
 
     int16_t *xyz = frameXyz(frame);
+    const XYZTable *rays = &m_calibrationMgr->getXYZTable();
 
     if (rgbFrame) {
-        if (!xyz) {
-            xyz = depthToXyz(frame);
-        }
-        return m_rgbdFusion->fuse(frame, xyz, rgbFrame->data.data(),
+        return m_rgbdFusion->fuse(frame, xyz, rays, rgbFrame->data.data(),
                                   rgbFrame->width, rgbFrame->height,
                                   rgbFrame->stride);
     }
     // Size only matters for the projection bounds; no image is read.
     const RGBSensorConfig cfg =
         m_rgbSensor ? m_rgbSensor->getConfig() : RGBSensorConfig();
-    return m_rgbdFusion->fuse(frame, xyz, nullptr, cfg.width, cfg.height, 0);
+    return m_rgbdFusion->fuse(frame, xyz, rays, nullptr, cfg.width, cfg.height,
+                              0);
 }
 #endif
 

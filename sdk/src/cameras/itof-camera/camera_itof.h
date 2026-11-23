@@ -394,9 +394,6 @@ class CameraItof : public aditof::Camera {
                                   const aditof::RGBFrame *rgbFrame);
     // Points of the frame, nullptr when it has no xyz.
     static int16_t *frameXyz(aditof::Frame *frame);
-    // Points computed from depth for "rgb" when the frame has no xyz.
-    int16_t *depthToXyz(aditof::Frame *frame);
-    std::vector<int16_t> m_xyzScratch;
     // Adds the frame's "rgb" image to an active recording.
     void recordRgb(aditof::Frame *frame, const aditof::RGBFrame &rgbFrame);
     // Playback: fills "rgb" and "xyz_color" from the recorded "rgb" image.

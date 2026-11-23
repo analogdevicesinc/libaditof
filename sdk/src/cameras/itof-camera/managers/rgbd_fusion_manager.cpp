@@ -8,9 +8,17 @@
 
 #include <aditof/log.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 
 using namespace aditof;
+
+namespace {
+// Depth frames measured at each start before the reference depth is fixed.
+constexpr uint32_t REFERENCE_DEPTH_FRAMES = 5;
+constexpr std::size_t DEPTH_SAMPLE_STEP = 16;
+} // namespace
 
 Status RgbdFusionManager::loadCalibration(const uint8_t *data,
                                           std::size_t size) {
@@ -31,6 +39,9 @@ void RgbdFusionManager::reset() {
     m_coreg = RGBDCoregistration();
     m_coreg.setImageRotated180(m_rgbRotated180);
     m_warnedUnavailable = false;
+    m_referenceFrames = 0;
+    m_depthSamples.clear();
+    m_planeXyzDepthMm = 0.0f;
 }
 
 RgbdFusionManager::Outputs RgbdFusionManager::getOutputs(Frame *frame) {
@@ -74,39 +85,96 @@ uint8_t *RgbdFusionManager::colorBuffer(const Outputs &out) {
     return m_colorScratch.data();
 }
 
-void RgbdFusionManager::writeOutputs(const Outputs &out, int16_t *xyz,
-                                     const uint8_t *rgba) const {
-    if (out.rgb) {
-        for (std::size_t i = 0; i < out.numPoints; ++i) {
-            out.rgb[3 * i] = rgba[4 * i + 2];
-            out.rgb[3 * i + 1] = rgba[4 * i + 1];
-            out.rgb[3 * i + 2] = rgba[4 * i];
-        }
+void RgbdFusionManager::writeRgb(const Outputs &out, const uint8_t *rgba) {
+    if (!out.rgb) {
+        return;
     }
+    for (std::size_t i = 0; i < out.numPoints; ++i) {
+        out.rgb[3 * i] = rgba[4 * i + 2];
+        out.rgb[3 * i + 1] = rgba[4 * i + 1];
+        out.rgb[3 * i + 2] = rgba[4 * i];
+    }
+}
 
-    if (out.color && xyz) {
-        const uint8_t outOfView =
-            static_cast<uint8_t>(XYZColorStatus::OutOfView);
-        for (std::size_t i = 0; i < out.numPoints; ++i) {
-            if (rgba[4 * i + 3] == outOfView) {
-                xyz[3 * i] = xyz[3 * i + 1] = xyz[3 * i + 2] = 0;
-            }
+void RgbdFusionManager::zeroOutOfView(const Outputs &out, int16_t *xyz,
+                                      const uint8_t *rgba) {
+    if (!out.color || !xyz) {
+        return;
+    }
+    const uint8_t outOfView = static_cast<uint8_t>(XYZColorStatus::OutOfView);
+    for (std::size_t i = 0; i < out.numPoints; ++i) {
+        if (rgba[4 * i + 3] == outOfView) {
+            xyz[3 * i] = xyz[3 * i + 1] = xyz[3 * i + 2] = 0;
         }
     }
 }
 
-Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const uint8_t *bgr,
-                               uint32_t bgrWidth, uint32_t bgrHeight,
-                               uint32_t bgrStride) {
+const int16_t *RgbdFusionManager::planeXyz(Frame *frame, const XYZTable *rays,
+                                           std::size_t numPoints) {
+    if (!rays || !rays->p_x_table || !rays->p_y_table || !rays->p_z_table) {
+        return nullptr;
+    }
+    uint16_t *depth = nullptr;
+    FrameDataDetails details;
+    if (m_referenceFrames < REFERENCE_DEPTH_FRAMES &&
+        frame->getData("depth", &depth) == Status::OK && depth &&
+        frame->getDataDetails("depth", details) == Status::OK &&
+        static_cast<std::size_t>(details.width) * details.height == numPoints) {
+        const std::size_t before = m_depthSamples.size();
+        for (std::size_t i = 0; i < numPoints; i += DEPTH_SAMPLE_STEP) {
+            if (depth[i]) {
+                m_depthSamples.push_back(depth[i]);
+            }
+        }
+        if (m_depthSamples.size() > before) {
+            ++m_referenceFrames;
+            auto mid = m_depthSamples.begin() + m_depthSamples.size() / 2;
+            std::nth_element(m_depthSamples.begin(), mid, m_depthSamples.end());
+            m_planeDepthMm = *mid;
+            if (m_referenceFrames == REFERENCE_DEPTH_FRAMES) {
+                LOG(INFO) << "RGB view: reference depth " << m_planeDepthMm
+                          << " mm (median of the first "
+                          << REFERENCE_DEPTH_FRAMES
+                          << " frames), fixed until the next start";
+                m_depthSamples.clear();
+                m_depthSamples.shrink_to_fit();
+            }
+        }
+    }
+
+    if (m_planeXyzDepthMm == m_planeDepthMm &&
+        m_planeXyzRays == rays->p_x_table &&
+        m_planeXyz.size() == numPoints * 3) {
+        return m_planeXyz.data();
+    }
+    m_planeXyz.resize(numPoints * 3);
+    const float d = m_planeDepthMm;
+    for (std::size_t i = 0; i < numPoints; ++i) {
+        m_planeXyz[3 * i] =
+            static_cast<int16_t>(std::lround(rays->p_x_table[i] * d));
+        m_planeXyz[3 * i + 1] =
+            static_cast<int16_t>(std::lround(rays->p_y_table[i] * d));
+        m_planeXyz[3 * i + 2] =
+            static_cast<int16_t>(std::lround(rays->p_z_table[i] * d));
+    }
+    m_planeXyzDepthMm = d;
+    m_planeXyzRays = rays->p_x_table;
+    return m_planeXyz.data();
+}
+
+Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const XYZTable *rays,
+                               const uint8_t *bgr, uint32_t bgrWidth,
+                               uint32_t bgrHeight, uint32_t bgrStride) {
     const Outputs out = getOutputs(frame);
     if (!out.rgb && !out.color) {
         return Status::OK;
     }
 
-    if (!isReady() || !xyz) {
+    const int16_t *plane = planeXyz(frame, rays, out.numPoints);
+    if (!isReady() || !plane) {
         if (!m_warnedUnavailable) {
-            LOG(WARNING) << "RGBD fusion: no calibration or no xyz, rgb and "
-                            "xyz_color left empty";
+            LOG(WARNING) << "RGBD fusion: no calibration or XYZ tables, "
+                            "rgb and xyz_color left empty";
             m_warnedUnavailable = true;
         }
         clearOutputs(out);
@@ -115,13 +183,24 @@ Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const uint8_t *bgr,
 
     uint8_t *rgba = colorBuffer(out);
     Status status = m_coreg.colorizePointCloud(
-        xyz, out.numPoints, bgr, bgrWidth, bgrHeight, bgrStride, rgba);
+        plane, out.numPoints, bgr, bgrWidth, bgrHeight, bgrStride, rgba);
     if (status != Status::OK) {
         clearOutputs(out);
         return status;
     }
+    writeRgb(out, rgba);
 
-    writeOutputs(out, xyz, rgba);
+    if (out.color && xyz) {
+        const uint8_t noDepth = static_cast<uint8_t>(XYZColorStatus::NoDepth);
+        for (std::size_t i = 0; i < out.numPoints; ++i) {
+            if (xyz[3 * i + 2] == 0) {
+                uint8_t *p = rgba + 4 * i;
+                p[0] = p[1] = p[2] = 0;
+                p[3] = noDepth;
+            }
+        }
+        zeroOutOfView(out, xyz, rgba);
+    }
     return Status::OK;
 }
 
@@ -170,6 +249,7 @@ Status RgbdFusionManager::applyRecordedRgb(Frame *frame, int16_t *xyz,
             p[3] = static_cast<uint8_t>(XYZColorStatus::Valid);
         }
     }
-    writeOutputs(out, xyz, rgba);
+    writeRgb(out, rgba);
+    zeroOutOfView(out, xyz, rgba);
     return Status::OK;
 }
