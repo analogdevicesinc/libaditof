@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <vector>
 
 #if defined(__aarch64__)
 #include <arm_neon.h>
@@ -250,7 +251,8 @@ bool RGBDCoregistration::projectPoint(const int16_t *p, float maxU, float maxV,
 
 void RGBDCoregistration::projectPoints(const int16_t *xyz, std::size_t count,
                                        float maxU, float maxV, float *u,
-                                       float *v, uint8_t *status) const {
+                                       float *v, uint8_t *status,
+                                       float *invDepth) const {
     const uint8_t noDepth = static_cast<uint8_t>(XYZColorStatus::NoDepth);
     const uint8_t outOfView = static_cast<uint8_t>(XYZColorStatus::OutOfView);
     const uint8_t inView = static_cast<uint8_t>(XYZColorStatus::Valid);
@@ -310,6 +312,9 @@ void RGBDCoregistration::projectPoints(const int16_t *xyz, std::size_t count,
         }
         store(u + i, uu);
         store(v + i, vv);
+        if (invDepth) {
+            store(invDepth + i, invZ);
+        }
         const int bits = maskBits(ok);
         for (int k = 0; k < 4; ++k) {
             status[i + k] = p[3 * k + 2] == 0
@@ -326,6 +331,11 @@ void RGBDCoregistration::projectPoints(const int16_t *xyz, std::size_t count,
         } else {
             status[i] =
                 projectPoint(p, maxU, maxV, u[i], v[i]) ? inView : outOfView;
+            if (invDepth) {
+                const float *R = m_calib.extrinsics.R;
+                invDepth[i] = 1.0f / (R[6] * p[0] + R[7] * p[1] + R[8] * p[2] +
+                                      m_calib.extrinsics.t[2]);
+            }
         }
     }
 }
@@ -442,7 +452,17 @@ Status RGBDCoregistration::colorizePointCloud(
         (bgr && rgbStride < rgbWidth * 3u)) {
         return Status::INVALID_ARGUMENT;
     }
+    colorizePoints(xyz, numPoints, bgr, rgbWidth, rgbHeight, rgbStride, rgba,
+                   nullptr, nullptr, nullptr);
+    return Status::OK;
+}
 
+void RGBDCoregistration::colorizePoints(const int16_t *xyz,
+                                        std::size_t numPoints,
+                                        const uint8_t *bgr, uint32_t rgbWidth,
+                                        uint32_t rgbHeight, uint32_t rgbStride,
+                                        uint8_t *rgba, float *uAll, float *vAll,
+                                        float *invDepth) const {
     const float maxU = static_cast<float>(rgbWidth - 1);
     const float maxV = static_cast<float>(rgbHeight - 1);
     // Bilinear sampling already reads up to 2 x 2 RGB pixels per ToF pixel.
@@ -453,13 +473,16 @@ Status RGBDCoregistration::colorizePointCloud(
     }
 
     static constexpr std::size_t CHUNK = 256;
-    float u[CHUNK], v[CHUNK];
+    float uChunk[CHUNK], vChunk[CHUNK];
     uint8_t status[CHUNK];
     const uint8_t inView = static_cast<uint8_t>(XYZColorStatus::Valid);
 
     for (std::size_t base = 0; base < numPoints; base += CHUNK) {
         const std::size_t count = std::min(CHUNK, numPoints - base);
-        projectPoints(xyz + 3 * base, count, maxU, maxV, u, v, status);
+        float *u = uAll ? uAll + base : uChunk;
+        float *v = vAll ? vAll + base : vChunk;
+        projectPoints(xyz + 3 * base, count, maxU, maxV, u, v, status,
+                      invDepth ? invDepth + base : nullptr);
         for (std::size_t k = 0; k < count; ++k) {
             uint8_t *out = rgba + 4 * (base + k);
             out[0] = out[1] = out[2] = 0;
@@ -483,8 +506,269 @@ Status RGBDCoregistration::colorizePointCloud(
             }
         }
     }
+}
 
+Status RGBDCoregistration::colorizeVisiblePoints(
+    const int16_t *xyz, uint32_t width, uint32_t height, const uint8_t *bgr,
+    uint32_t rgbWidth, uint32_t rgbHeight, uint32_t rgbStride,
+    uint8_t *rgba) const {
+    if (!m_calibLoaded) {
+        LOG(ERROR) << "RGBDCoregistration: calibration not loaded";
+        return Status::UNAVAILABLE;
+    }
+    if (!xyz || !rgba || width == 0 || height == 0 || rgbWidth < 2 ||
+        rgbHeight < 2 || (bgr && rgbStride < rgbWidth * 3u)) {
+        return Status::INVALID_ARGUMENT;
+    }
+    // Hidden when a nearer surface moves at least this many ToF pixels
+    // further in the RGB image; a smaller step hides nothing.
+    static constexpr float MIN_SHIFT_TOF_PIXELS = 1.0f;
+    // ToF pixels without depth on the outline of a near object.
+    static constexpr float EDGE_PIXELS = 2.0f;
+    // Neighbours within this share of the depth are on the same surface.
+    static constexpr float SURFACE_SHARE = 0.03f;
+    static constexpr uint8_t IN_VIEW = 1, SURFACE = 2, HIDDEN = 4;
+
+    // Per thread and kept, so const calls stay safe and nothing is allocated
+    // per frame; used through plain pointers, as each thread_local access
+    // costs a lookup.
+    thread_local std::vector<float> uBuf, vBuf, invBuf;
+    thread_local std::vector<uint8_t> flagBuf;
+    const std::size_t numPoints = static_cast<std::size_t>(width) * height;
+    uBuf.resize(numPoints);
+    vBuf.resize(numPoints);
+    invBuf.resize(numPoints);
+    flagBuf.resize(numPoints);
+    float *const us = uBuf.data();
+    float *const vs = vBuf.data();
+    float *const inv = invBuf.data();
+    uint8_t *const flags = flagBuf.data();
+
+    colorizePoints(xyz, numPoints, bgr, rgbWidth, rgbHeight, rgbStride, rgba,
+                   us, vs, inv);
+
+    const uint8_t valid = static_cast<uint8_t>(XYZColorStatus::Valid);
+    const uint8_t noColor = static_cast<uint8_t>(XYZColorStatus::NoColor);
+    for (std::size_t i = 0; i < numPoints; ++i) {
+        const uint8_t a = rgba[4 * i + 3];
+        flags[i] = (a == valid || a == noColor) ? IN_VIEW : 0;
+    }
+
+    const float pxPerTof = static_cast<float>(rgbPixelsPerToFPixel());
+    const float minShift = MIN_SHIFT_TOF_PIXELS * pxPerTof;
+    const auto &K = m_calib.rgb;
+    const float *t = m_calib.extrinsics.t;
+
+    // Only points with 3 of 4 neighbours alike hide others, not noise or
+    // flying pixels.
+    auto alike = [&](std::size_t i, std::size_t j) {
+        return (flags[j] & IN_VIEW) &&
+               std::abs(inv[j] - inv[i]) <= SURFACE_SHARE * inv[i];
+    };
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            const std::size_t i = std::size_t(y) * width + x;
+            if ((flags[i] & IN_VIEW) &&
+                (x > 0 && alike(i, i - 1)) +
+                        (x + 1 < width && alike(i, i + 1)) +
+                        (y > 0 && alike(i, i - width)) +
+                        (y + 1 < height && alike(i, i + width)) >=
+                    3) {
+                flags[i] |= SURFACE;
+            }
+        }
+    }
+
+    // Along the camera offset: a nearer surface moves further in the RGB
+    // image, so walking towards its shadow, a point that does not get past
+    // the furthest position reached so far is behind it, also where the near
+    // surface has no depth. Columns are walked row by row, in memory order.
+    struct Walk {
+        float reach = 0.0f, reachInv = 0.0f;
+        bool started = false;
+    };
+    const float margin = EDGE_PIXELS * pxPerTof;
+    auto scan = [&](const float *coord, float f, float tAxis, bool alongRows) {
+        // Which way the RGB coordinate runs along a line, from the middle one.
+        const uint32_t length = alongRows ? width : height;
+        auto index = [&](uint32_t k) {
+            return alongRows ? std::size_t(height / 2) * width + k
+                             : std::size_t(k) * width + width / 2;
+        };
+        long first = -1, last = -1;
+        for (uint32_t k = 0; k < length; ++k) {
+            if (flags[index(k)] & IN_VIEW) {
+                last = k;
+                if (first < 0) {
+                    first = k;
+                }
+            }
+        }
+        if (first < 0 || last == first) {
+            return;
+        }
+        const float shift =
+            (tAxis > 0.0f ? 1.0f : -1.0f) * (m_rotated180 ? -1.0f : 1.0f);
+        const bool forward =
+            (coord[index(last)] > coord[index(first)]) == (shift > 0.0f);
+        const float minInvStep = minShift / (f * std::abs(tAxis));
+        auto step = [&](std::size_t i, Walk &w) {
+            if (!(flags[i] & IN_VIEW)) {
+                return;
+            }
+            const float pos = coord[i] * shift;
+            if (w.started && pos < w.reach + margin &&
+                w.reachInv - inv[i] >= minInvStep) {
+                flags[i] |= HIDDEN;
+            }
+            if ((flags[i] & SURFACE) && (!w.started || pos > w.reach)) {
+                w.reach = pos;
+                w.reachInv = inv[i];
+                w.started = true;
+            }
+        };
+        if (alongRows) {
+            for (uint32_t y = 0; y < height; ++y) {
+                Walk w;
+                const std::size_t row = std::size_t(y) * width;
+                for (uint32_t n = 0; n < width; ++n) {
+                    step(row + (forward ? n : width - 1 - n), w);
+                }
+            }
+        } else {
+            std::vector<Walk> walks(width);
+            for (uint32_t n = 0; n < height; ++n) {
+                const std::size_t row =
+                    std::size_t(forward ? n : height - 1 - n) * width;
+                for (uint32_t x = 0; x < width; ++x) {
+                    step(row + x, walks[x]);
+                }
+            }
+        }
+    };
+    if (t[0] != 0.0f) {
+        scan(us, K.fx, t[0], true);
+    }
+    if (t[1] != 0.0f) {
+        scan(vs, K.fy, t[1], false);
+    }
+
+    // A real shadow is a strip; a hidden point with no hidden neighbour is not.
+    auto hidden = [&](std::size_t j) { return (flags[j] & HIDDEN) != 0; };
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            const std::size_t i = std::size_t(y) * width + x;
+            if (hidden(i) &&
+                ((x > 0 && hidden(i - 1)) || (x + 1 < width && hidden(i + 1)) ||
+                 (y > 0 && hidden(i - width)) ||
+                 (y + 1 < height && hidden(i + width)))) {
+                uint8_t *out = rgba + 4 * i;
+                out[0] = out[1] = out[2] = 0;
+                out[3] = static_cast<uint8_t>(XYZColorStatus::Occluded);
+            }
+        }
+    }
     return Status::OK;
+}
+
+Status RGBDCoregistration::buildRgbLookup(const int16_t *xyz,
+                                          std::size_t numPoints,
+                                          uint32_t rgbWidth, uint32_t rgbHeight,
+                                          uint32_t rgbStride,
+                                          RGBLookup &lookup) const {
+    if (!m_calibLoaded) {
+        LOG(ERROR) << "RGBDCoregistration: calibration not loaded";
+        return Status::UNAVAILABLE;
+    }
+    if (!xyz || rgbWidth < 2 || rgbHeight < 2 || rgbStride < rgbWidth * 3u) {
+        return Status::INVALID_ARGUMENT;
+    }
+    int box = rgbPixelsPerToFPixel();
+    if (box < 3 || static_cast<uint32_t>(box) > rgbWidth ||
+        static_cast<uint32_t>(box) > rgbHeight) {
+        box = 0;
+    }
+    lookup.rgbWidth = rgbWidth;
+    lookup.rgbHeight = rgbHeight;
+    lookup.stride = rgbStride;
+    lookup.box = box;
+    lookup.offset.resize(numPoints);
+    lookup.weight.resize(2 * numPoints);
+
+    const float maxU = static_cast<float>(rgbWidth - 1);
+    const float maxV = static_cast<float>(rgbHeight - 1);
+    const float half = 0.5f * static_cast<float>(box - 1);
+    const uint8_t inView = static_cast<uint8_t>(XYZColorStatus::Valid);
+    static constexpr std::size_t CHUNK = 256;
+    float u[CHUNK], v[CHUNK];
+    uint8_t status[CHUNK];
+    for (std::size_t base = 0; base < numPoints; base += CHUNK) {
+        const std::size_t count = std::min(CHUNK, numPoints - base);
+        projectPoints(xyz + 3 * base, count, maxU, maxV, u, v, status, nullptr);
+        for (std::size_t k = 0; k < count; ++k) {
+            const std::size_t i = base + k;
+            if (status[k] != inView) {
+                lookup.offset[i] = -1;
+                continue;
+            }
+            int x0, y0;
+            if (box) {
+                x0 = std::min(std::max(int(std::lround(u[k] - half)), 0),
+                              int(rgbWidth) - box);
+                y0 = std::min(std::max(int(std::lround(v[k] - half)), 0),
+                              int(rgbHeight) - box);
+            } else {
+                // x0 + 1, y0 + 1 are read too, so they stay inside.
+                x0 = std::min(int(u[k]), int(rgbWidth) - 2);
+                y0 = std::min(int(v[k]), int(rgbHeight) - 2);
+                lookup.weight[2 * i] =
+                    uint8_t(std::min((u[k] - x0) * 256.0f, 255.0f));
+                lookup.weight[2 * i + 1] =
+                    uint8_t(std::min((v[k] - y0) * 256.0f, 255.0f));
+            }
+            lookup.offset[i] = y0 * int32_t(rgbStride) + x0 * 3;
+        }
+    }
+    return Status::OK;
+}
+
+void RGBDCoregistration::sampleRgbLookup(const RGBLookup &lookup,
+                                         const uint8_t *bgr, uint8_t *bgrOut) {
+    const std::size_t numPoints = lookup.offset.size();
+    const std::size_t stride = lookup.stride;
+    const int box = lookup.box;
+    for (std::size_t i = 0; i < numPoints; ++i) {
+        uint8_t *out = bgrOut + 3 * i;
+        const int32_t offset = lookup.offset[i];
+        if (offset < 0) {
+            out[0] = out[1] = out[2] = 0;
+            continue;
+        }
+        const uint8_t *p = bgr + offset;
+        if (box) {
+            uint32_t sum[3] = {0, 0, 0};
+            for (int y = 0; y < box; ++y, p += stride) {
+                for (int x = 0; x < 3 * box; x += 3) {
+                    sum[0] += p[x];
+                    sum[1] += p[x + 1];
+                    sum[2] += p[x + 2];
+                }
+            }
+            const uint32_t count = uint32_t(box * box);
+            for (int c = 0; c < 3; ++c) {
+                out[c] = uint8_t((sum[c] + count / 2) / count);
+            }
+            continue;
+        }
+        const uint32_t wx = lookup.weight[2 * i];
+        const uint32_t wy = lookup.weight[2 * i + 1];
+        const uint8_t *q = p + stride;
+        for (int c = 0; c < 3; ++c) {
+            const uint32_t top = p[c] * (256 - wx) + p[3 + c] * wx;
+            const uint32_t bottom = q[c] * (256 - wx) + q[3 + c] * wx;
+            out[c] = uint8_t((top * (256 - wy) + bottom * wy + 32768) >> 16);
+        }
+    }
 }
 
 } // namespace aditof

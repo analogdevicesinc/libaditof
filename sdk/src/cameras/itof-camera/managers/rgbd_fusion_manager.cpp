@@ -42,6 +42,7 @@ void RgbdFusionManager::reset() {
     m_referenceFrames = 0;
     m_depthSamples.clear();
     m_planeXyzDepthMm = 0.0f;
+    m_viewLookupDepthMm = 0.0f;
 }
 
 RgbdFusionManager::Outputs RgbdFusionManager::getOutputs(Frame *frame) {
@@ -53,6 +54,8 @@ RgbdFusionManager::Outputs RgbdFusionManager::getOutputs(Frame *frame) {
         frame->getDataDetails("rgb", rgbDetails) == Status::OK) {
         out.rgb = reinterpret_cast<uint8_t *>(rgbRaw);
         out.rgbBytes = rgbDetails.bytesCount;
+        out.width = rgbDetails.width;
+        out.height = rgbDetails.height;
         out.numPoints =
             static_cast<std::size_t>(rgbDetails.width) * rgbDetails.height;
     }
@@ -61,6 +64,8 @@ RgbdFusionManager::Outputs RgbdFusionManager::getOutputs(Frame *frame) {
         out.color = reinterpret_cast<uint8_t *>(colorRaw);
         out.colorBytes = colorDetails.bytesCount;
         if (!out.rgb) {
+            out.width = colorDetails.width;
+            out.height = colorDetails.height;
             out.numPoints = static_cast<std::size_t>(colorDetails.width) *
                             colorDetails.height;
         }
@@ -83,17 +88,6 @@ uint8_t *RgbdFusionManager::colorBuffer(const Outputs &out) {
     }
     m_colorScratch.resize(out.numPoints * 4);
     return m_colorScratch.data();
-}
-
-void RgbdFusionManager::writeRgb(const Outputs &out, const uint8_t *rgba) {
-    if (!out.rgb) {
-        return;
-    }
-    for (std::size_t i = 0; i < out.numPoints; ++i) {
-        out.rgb[3 * i] = rgba[4 * i + 2];
-        out.rgb[3 * i + 1] = rgba[4 * i + 1];
-        out.rgb[3 * i + 2] = rgba[4 * i];
-    }
 }
 
 void RgbdFusionManager::zeroOutOfView(const Outputs &out, int16_t *xyz,
@@ -170,10 +164,11 @@ Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const XYZTable *rays,
         return Status::OK;
     }
 
-    const int16_t *plane = planeXyz(frame, rays, out.numPoints);
-    if (!isReady() || !plane) {
+    const int16_t *plane =
+        out.rgb ? planeXyz(frame, rays, out.numPoints) : nullptr;
+    if (!isReady() || (out.rgb && !plane) || (out.color && !xyz)) {
         if (!m_warnedUnavailable) {
-            LOG(WARNING) << "RGBD fusion: no calibration or XYZ tables, "
+            LOG(WARNING) << "RGBD fusion: no calibration, XYZ tables or xyz, "
                             "rgb and xyz_color left empty";
             m_warnedUnavailable = true;
         }
@@ -181,25 +176,36 @@ Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const XYZTable *rays,
         return Status::UNAVAILABLE;
     }
 
-    uint8_t *rgba = colorBuffer(out);
-    Status status = m_coreg.colorizePointCloud(
-        plane, out.numPoints, bgr, bgrWidth, bgrHeight, bgrStride, rgba);
-    if (status != Status::OK) {
-        clearOutputs(out);
-        return status;
-    }
-    writeRgb(out, rgba);
-
-    if (out.color && xyz) {
-        const uint8_t noDepth = static_cast<uint8_t>(XYZColorStatus::NoDepth);
-        for (std::size_t i = 0; i < out.numPoints; ++i) {
-            if (xyz[3 * i + 2] == 0) {
-                uint8_t *p = rgba + 4 * i;
-                p[0] = p[1] = p[2] = 0;
-                p[3] = noDepth;
+    if (out.rgb && !bgr) {
+        std::memset(out.rgb, 0, out.rgbBytes);
+    } else if (out.rgb) {
+        // The view's points only change until the reference depth is fixed.
+        RGBDCoregistration::RGBLookup &lookup = m_viewLookup;
+        if (m_viewLookupDepthMm != m_planeXyzDepthMm ||
+            m_viewLookupRays != m_planeXyzRays || lookup.rgbWidth != bgrWidth ||
+            lookup.rgbHeight != bgrHeight || lookup.stride != bgrStride ||
+            lookup.offset.size() != out.numPoints) {
+            Status status = m_coreg.buildRgbLookup(
+                plane, out.numPoints, bgrWidth, bgrHeight, bgrStride, lookup);
+            if (status != Status::OK) {
+                clearOutputs(out);
+                return status;
             }
+            m_viewLookupDepthMm = m_planeXyzDepthMm;
+            m_viewLookupRays = m_planeXyzRays;
         }
-        zeroOutOfView(out, xyz, rgba);
+        RGBDCoregistration::sampleRgbLookup(lookup, bgr, out.rgb);
+    }
+
+    if (out.color) {
+        Status status = m_coreg.colorizeVisiblePoints(
+            xyz, out.width, out.height, bgr, bgrWidth, bgrHeight, bgrStride,
+            out.color);
+        if (status != Status::OK) {
+            clearOutputs(out);
+            return status;
+        }
+        zeroOutOfView(out, xyz, out.color);
     }
     return Status::OK;
 }
@@ -223,8 +229,9 @@ Status RgbdFusionManager::applyRecordedRgb(Frame *frame, int16_t *xyz,
     uint8_t *rgba = colorBuffer(out);
     // No image: gives each point's status, NoColor where it is in view.
     if (!isReady() || !xyz ||
-        m_coreg.colorizePointCloud(xyz, out.numPoints, nullptr, rgbWidth,
-                                   rgbHeight, 0, rgba) != Status::OK) {
+        m_coreg.colorizeVisiblePoints(xyz, out.width, out.height, nullptr,
+                                      rgbWidth, rgbHeight, 0,
+                                      rgba) != Status::OK) {
         if (!m_warnedUnavailable) {
             LOG(WARNING) << "RGBD fusion: no calibration or no xyz, "
                             "xyz_color left empty";
@@ -238,18 +245,21 @@ Status RgbdFusionManager::applyRecordedRgb(Frame *frame, int16_t *xyz,
     }
 
     // Live xyz differs slightly from playback xyz, so a recorded colour
-    // decides the status; only black pixels keep the recomputed one.
+    // decides the status; only black and hidden points keep the recomputed one.
+    const uint8_t occluded = static_cast<uint8_t>(XYZColorStatus::Occluded);
     for (std::size_t i = 0; i < out.numPoints; ++i) {
         const uint8_t *src = bgr + 3 * i;
-        if (src[0] | src[1] | src[2]) {
-            uint8_t *p = rgba + 4 * i;
+        uint8_t *p = rgba + 4 * i;
+        if ((src[0] | src[1] | src[2]) && p[3] != occluded) {
             p[0] = src[2];
             p[1] = src[1];
             p[2] = src[0];
             p[3] = static_cast<uint8_t>(XYZColorStatus::Valid);
         }
     }
-    writeRgb(out, rgba);
+    if (out.rgb) {
+        std::memcpy(out.rgb, bgr, out.numPoints * 3);
+    }
     zeroOutOfView(out, xyz, rgba);
     return Status::OK;
 }

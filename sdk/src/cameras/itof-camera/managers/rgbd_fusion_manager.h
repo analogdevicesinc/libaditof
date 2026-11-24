@@ -39,8 +39,6 @@ class RgbdFusionManager {
     /** @return true once a calibration is loaded. */
     bool isReady() const { return m_coreg.isCalibrationLoaded(); }
 
-    const RGBDCoregistration &coregistration() const { return m_coreg; }
-
     /** @brief Set when the RGB image arrives rotated 180° from the calibrated one. */
     void setRgbRotated180(bool rotated);
 
@@ -51,9 +49,9 @@ class RgbdFusionManager {
      * pixel): every depth pixel's ray is projected at one reference depth,
      * the median of the valid depths of the first frames after start, fixed
      * until the next start; so pixels without depth are coloured too; 0
-     * outside the RGB view. "xyz_color" gives each point the "rgb" colour of
-     * its pixel (NoDepth where xyz has no depth); xyz points outside the RGB
-     * view are then zeroed.
+     * outside the RGB view. "xyz_color" colours each point of xyz projected
+     * with its own depth; points hidden from the RGB camera by a nearer point
+     * are Occluded (black); xyz points outside the RGB view are then zeroed.
      * @param frame Frame holding "rgb" and/or "xyz_color"
      * @param xyz Points of this frame, X Y Z int16 mm per depth pixel;
      *            nullptr when the frame has no xyz
@@ -96,12 +94,13 @@ class RgbdFusionManager {
         std::size_t rgbBytes = 0;
         std::size_t colorBytes = 0;
         std::size_t numPoints = 0;
+        uint32_t width = 0;
+        uint32_t height = 0;
     };
     static Outputs getOutputs(Frame *frame);
     static void clearOutputs(const Outputs &out);
     // Points' colours: the frame's "xyz_color", else m_colorScratch.
     uint8_t *colorBuffer(const Outputs &out);
-    static void writeRgb(const Outputs &out, const uint8_t *rgba);
     static void zeroOutOfView(const Outputs &out, int16_t *xyz,
                               const uint8_t *rgba);
     // Every ray of the depth grid at the reference depth.
@@ -115,6 +114,9 @@ class RgbdFusionManager {
     std::vector<int16_t> m_planeXyz;
     float m_planeXyzDepthMm = 0.0f; ///< depth m_planeXyz was built with
     const float *m_planeXyzRays = nullptr;
+    RGBDCoregistration::RGBLookup m_viewLookup; ///< RGB reads of the view
+    float m_viewLookupDepthMm = 0.0f;           ///< depth it was built for
+    const float *m_viewLookupRays = nullptr;
     std::vector<uint16_t> m_depthSamples; ///< first frames after start
     uint32_t m_referenceFrames = 0;
     float m_planeDepthMm = 1000.0f; ///< until the first depth frame
