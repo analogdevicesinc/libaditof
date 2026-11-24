@@ -28,6 +28,7 @@
 #include "aditof/status_definitions.h"
 #include <cstdint>
 #include <string>
+#include <vector>
 
 /**
  * @file rgbd_coregistration.h
@@ -202,6 +203,60 @@ class SDK_API RGBDCoregistration {
                               uint32_t rgbHeight, uint32_t rgbStride,
                               uint8_t *rgba) const;
 
+    /**
+     * @brief colorizePointCloud() that also marks the points a nearer point
+     *        hides from the RGB camera.
+     *
+     * Each point is projected once. A point is Occluded, with R, G, B 0,
+     * when a nearer surface shifts at least one ToF pixel further in the RGB
+     * image and lands on the same spot, or covers it along the camera offset
+     * (also where that surface has gaps in its depth). Single noisy points do
+     * not hide others, and single hidden points are dropped.
+     *
+     * @param xyz        Points, int16 mm, X Y Z per point, row by row.
+     * @param width      Points per row of the depth image.
+     * @param height     Rows of the depth image.
+     * @param bgr        As for colorizePointCloud().
+     * @param rgbWidth   Width of the RGB image.
+     * @param rgbHeight  Height of the RGB image.
+     * @param rgbStride  Bytes per row of the RGB image.
+     * @param rgba       Output, as for colorizePointCloud().
+     * @return As for colorizePointCloud(); Status::INVALID_ARGUMENT also for
+     *         an empty depth image.
+     */
+    Status colorizeVisiblePoints(const int16_t *xyz, uint32_t width,
+                                 uint32_t height, const uint8_t *bgr,
+                                 uint32_t rgbWidth, uint32_t rgbHeight,
+                                 uint32_t rgbStride, uint8_t *rgba) const;
+
+    /**
+     * @brief Where colorizePointCloud() reads the RGB image for each point,
+     *        for points that stay the same from frame to frame.
+     */
+    struct RGBLookup {
+        std::vector<int32_t> offset; ///< Byte offset read, -1 out of view
+        std::vector<uint8_t> weight; ///< Bilinear x, y weights in 1/256
+        uint32_t rgbWidth = 0;       ///< RGB image width
+        uint32_t rgbHeight = 0;      ///< RGB image height
+        uint32_t stride = 0;         ///< Bytes per row of the RGB image
+        int box = 0;                 ///< n x n mean instead when > 0
+    };
+
+    /**
+     * @brief Fills a lookup for these points and an RGB image of this size.
+     * @return As for colorizePointCloud() without an image.
+     */
+    Status buildRgbLookup(const int16_t *xyz, std::size_t numPoints,
+                          uint32_t rgbWidth, uint32_t rgbHeight,
+                          uint32_t rgbStride, RGBLookup &lookup) const;
+
+    /**
+     * @brief B, G, R per point of the lookup from an RGB image of its size;
+     *        0 for points outside the RGB image.
+     */
+    static void sampleRgbLookup(const RGBLookup &lookup, const uint8_t *bgr,
+                                uint8_t *bgrOut);
+
     /** @return true once a calibration has been successfully loaded. */
     bool isCalibrationLoaded() const { return m_calibLoaded; }
 
@@ -234,9 +289,18 @@ class SDK_API RGBDCoregistration {
     int rgbPixelsPerToFPixel() const;
 
     // Projects count points (NEON/SSE2, 4 at a time); status is NoDepth,
-    // OutOfView or Valid (in view).
+    // OutOfView or Valid (in view); invDepth, when set, gets 1 / depth in the
+    // RGB camera of points with depth.
     void projectPoints(const int16_t *xyz, std::size_t count, float maxU,
-                       float maxV, float *u, float *v, uint8_t *status) const;
+                       float maxV, float *u, float *v, uint8_t *status,
+                       float *invDepth) const;
+
+    // colorizePointCloud() on checked arguments; stores each point's RGB
+    // position and 1 / depth in the non-null outputs.
+    void colorizePoints(const int16_t *xyz, std::size_t numPoints,
+                        const uint8_t *bgr, uint32_t rgbWidth,
+                        uint32_t rgbHeight, uint32_t rgbStride, uint8_t *rgba,
+                        float *uAll, float *vAll, float *invDepth) const;
 
     RGBDCalibration m_calib;
     bool m_calibLoaded = false;
