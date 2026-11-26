@@ -36,6 +36,7 @@
 #include "v4l_buffer_access_interface.h"
 #include "video_device_driver.h"
 #include <atomic>
+#include <chrono>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -260,6 +261,8 @@ class Adsd3500Sensor : public aditof::DepthSensorInterface,
     int m_imagerStatus;
     aditof::Adsd3500Status m_adsd3500Status;
     bool m_chipResetDone;
+    /// When the last reset finished; start() waits until the chip settles.
+    std::chrono::steady_clock::time_point m_lastResetDone{};
     std::vector<iniFileStruct> m_iniFileStructList;
     aditof::Adsd3500ModeSelector m_modeSelector;
     std::string m_sensorConfiguration;

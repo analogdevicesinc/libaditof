@@ -419,7 +419,6 @@ aditof::Status CameraItof::start() {
 
 #ifdef HAS_RGB_CAMERA
     m_rgbSync = RgbSyncStats();
-    m_rgbSync.started = std::chrono::steady_clock::now();
 
     // The RGB sensor is triggered by the depth stream, so it has to be armed
     // first; its start() returns once it waits for triggers.
@@ -462,6 +461,10 @@ aditof::Status CameraItof::start() {
         return status;
     }
     m_devStreaming = true;
+#ifdef HAS_RGB_CAMERA
+    // The depth start can wait for the chip to settle; count from the stream.
+    m_rgbSync.started = std::chrono::steady_clock::now();
+#endif
 
     return aditof::Status::OK;
 }
