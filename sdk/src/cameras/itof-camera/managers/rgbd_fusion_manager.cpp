@@ -15,9 +15,8 @@
 using namespace aditof;
 
 namespace {
-// Depth frames measured at each start before the reference depth is fixed.
-constexpr uint32_t REFERENCE_DEPTH_FRAMES = 5;
-constexpr std::size_t DEPTH_SAMPLE_STEP = 16;
+// The "rgb" view projects every ToF ray at this one depth.
+constexpr float VIEW_DEPTH_MM = 1000.0f;
 } // namespace
 
 Status RgbdFusionManager::loadCalibration(const uint8_t *data,
@@ -39,10 +38,8 @@ void RgbdFusionManager::reset() {
     m_coreg = RGBDCoregistration();
     m_coreg.setImageRotated180(m_rgbRotated180);
     m_warnedUnavailable = false;
-    m_referenceFrames = 0;
-    m_depthSamples.clear();
-    m_planeXyzDepthMm = 0.0f;
-    m_viewLookupDepthMm = 0.0f;
+    m_planeXyzRays = nullptr;
+    m_viewLookupRays = nullptr;
 }
 
 RgbdFusionManager::Outputs RgbdFusionManager::getOutputs(Frame *frame) {
@@ -103,46 +100,17 @@ void RgbdFusionManager::zeroOutOfView(const Outputs &out, int16_t *xyz,
     }
 }
 
-const int16_t *RgbdFusionManager::planeXyz(Frame *frame, const XYZTable *rays,
+const int16_t *RgbdFusionManager::planeXyz(const XYZTable *rays,
                                            std::size_t numPoints) {
     if (!rays || !rays->p_x_table || !rays->p_y_table || !rays->p_z_table) {
         return nullptr;
     }
-    uint16_t *depth = nullptr;
-    FrameDataDetails details;
-    if (m_referenceFrames < REFERENCE_DEPTH_FRAMES &&
-        frame->getData("depth", &depth) == Status::OK && depth &&
-        frame->getDataDetails("depth", details) == Status::OK &&
-        static_cast<std::size_t>(details.width) * details.height == numPoints) {
-        const std::size_t before = m_depthSamples.size();
-        for (std::size_t i = 0; i < numPoints; i += DEPTH_SAMPLE_STEP) {
-            if (depth[i]) {
-                m_depthSamples.push_back(depth[i]);
-            }
-        }
-        if (m_depthSamples.size() > before) {
-            ++m_referenceFrames;
-            auto mid = m_depthSamples.begin() + m_depthSamples.size() / 2;
-            std::nth_element(m_depthSamples.begin(), mid, m_depthSamples.end());
-            m_planeDepthMm = *mid;
-            if (m_referenceFrames == REFERENCE_DEPTH_FRAMES) {
-                LOG(INFO) << "RGB view: reference depth " << m_planeDepthMm
-                          << " mm (median of the first "
-                          << REFERENCE_DEPTH_FRAMES
-                          << " frames), fixed until the next start";
-                m_depthSamples.clear();
-                m_depthSamples.shrink_to_fit();
-            }
-        }
-    }
-
-    if (m_planeXyzDepthMm == m_planeDepthMm &&
-        m_planeXyzRays == rays->p_x_table &&
+    if (m_planeXyzRays == rays->p_x_table &&
         m_planeXyz.size() == numPoints * 3) {
         return m_planeXyz.data();
     }
     m_planeXyz.resize(numPoints * 3);
-    const float d = m_planeDepthMm;
+    const float d = VIEW_DEPTH_MM;
     for (std::size_t i = 0; i < numPoints; ++i) {
         m_planeXyz[3 * i] =
             static_cast<int16_t>(std::lround(rays->p_x_table[i] * d));
@@ -151,7 +119,6 @@ const int16_t *RgbdFusionManager::planeXyz(Frame *frame, const XYZTable *rays,
         m_planeXyz[3 * i + 2] =
             static_cast<int16_t>(std::lround(rays->p_z_table[i] * d));
     }
-    m_planeXyzDepthMm = d;
     m_planeXyzRays = rays->p_x_table;
     return m_planeXyz.data();
 }
@@ -164,8 +131,7 @@ Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const XYZTable *rays,
         return Status::OK;
     }
 
-    const int16_t *plane =
-        out.rgb ? planeXyz(frame, rays, out.numPoints) : nullptr;
+    const int16_t *plane = out.rgb ? planeXyz(rays, out.numPoints) : nullptr;
     if (!isReady() || (out.rgb && !plane) || (out.color && !xyz)) {
         if (!m_warnedUnavailable) {
             LOG(WARNING) << "RGBD fusion: no calibration, XYZ tables or xyz, "
@@ -179,10 +145,9 @@ Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const XYZTable *rays,
     if (out.rgb && !bgr) {
         std::memset(out.rgb, 0, out.rgbBytes);
     } else if (out.rgb) {
-        // The view's points only change until the reference depth is fixed.
+        // Fixed per mode and RGB image size, so built once.
         RGBDCoregistration::RGBLookup &lookup = m_viewLookup;
-        if (m_viewLookupDepthMm != m_planeXyzDepthMm ||
-            m_viewLookupRays != m_planeXyzRays || lookup.rgbWidth != bgrWidth ||
+        if (m_viewLookupRays != m_planeXyzRays || lookup.rgbWidth != bgrWidth ||
             lookup.rgbHeight != bgrHeight || lookup.stride != bgrStride ||
             lookup.offset.size() != out.numPoints) {
             Status status = m_coreg.buildRgbLookup(
@@ -191,7 +156,6 @@ Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const XYZTable *rays,
                 clearOutputs(out);
                 return status;
             }
-            m_viewLookupDepthMm = m_planeXyzDepthMm;
             m_viewLookupRays = m_planeXyzRays;
         }
         RGBDCoregistration::sampleRgbLookup(lookup, bgr, out.rgb);

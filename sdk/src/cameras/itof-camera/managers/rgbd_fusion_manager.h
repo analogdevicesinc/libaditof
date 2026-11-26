@@ -46,10 +46,9 @@ class RgbdFusionManager {
      * @brief Fills the frame's "rgb" and "xyz_color".
      *
      * "rgb" is the RGB image as the depth camera sees it (B, G, R per depth
-     * pixel): every depth pixel's ray is projected at one reference depth,
-     * the median of the valid depths of the first frames after start, fixed
-     * until the next start; so pixels without depth are coloured too; 0
-     * outside the RGB view. "xyz_color" colours each point of xyz projected
+     * pixel): only intrinsics and extrinsics, no depth; every depth pixel's
+     * ray is projected at 1 m into the RGB image, 0 outside the RGB field of
+     * view. "xyz_color" colours each point of xyz projected
      * with its own depth; points hidden from the RGB camera by a nearer point
      * are Occluded (black); xyz points outside the RGB view are then zeroed.
      * @param frame Frame holding "rgb" and/or "xyz_color"
@@ -103,23 +102,17 @@ class RgbdFusionManager {
     uint8_t *colorBuffer(const Outputs &out);
     static void zeroOutOfView(const Outputs &out, int16_t *xyz,
                               const uint8_t *rgba);
-    // Every ray of the depth grid at the reference depth.
-    const int16_t *planeXyz(Frame *frame, const XYZTable *rays,
-                            std::size_t numPoints);
+    // Every ray of the depth grid at VIEW_DEPTH_MM.
+    const int16_t *planeXyz(const XYZTable *rays, std::size_t numPoints);
     RGBDCoregistration m_coreg;
     bool m_rgbRotated180 = false;
     bool m_warnedUnavailable = false;
     std::vector<uint8_t>
         m_colorScratch; ///< point colours when the frame has no xyz_color
     std::vector<int16_t> m_planeXyz;
-    float m_planeXyzDepthMm = 0.0f; ///< depth m_planeXyz was built with
-    const float *m_planeXyzRays = nullptr;
+    const float *m_planeXyzRays = nullptr; ///< rays m_planeXyz was built from
     RGBDCoregistration::RGBLookup m_viewLookup; ///< RGB reads of the view
-    float m_viewLookupDepthMm = 0.0f;           ///< depth it was built for
     const float *m_viewLookupRays = nullptr;
-    std::vector<uint16_t> m_depthSamples; ///< first frames after start
-    uint32_t m_referenceFrames = 0;
-    float m_planeDepthMm = 1000.0f; ///< until the first depth frame
 };
 
 } // namespace aditof
