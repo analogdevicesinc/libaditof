@@ -574,6 +574,20 @@ aditof::Status Adsd3500Sensor::start() {
     Status status = Status::OK;
     struct VideoDev *dev;
 
+    // The chip answers commands soon after a reset, but streaming earlier than
+    // this gives corrupt frames (every third one, for about a second).
+    constexpr auto RESET_SETTLE_TIME = std::chrono::milliseconds(3000);
+    const auto settled = m_lastResetDone + RESET_SETTLE_TIME;
+    const auto now = std::chrono::steady_clock::now();
+    if (m_lastResetDone.time_since_epoch().count() != 0 && now < settled) {
+        LOG(INFO) << "Waiting "
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(
+                         settled - now)
+                         .count()
+                  << " ms for the ADSD3500 to settle after its reset";
+        std::this_thread::sleep_until(settled);
+    }
+
     for (unsigned int i = 0; i < m_implData->numVideoDevs; i++) {
         dev = &m_implData->videoDevs[i];
         if (dev->started) {
@@ -1519,6 +1533,7 @@ aditof::Status Adsd3500Sensor::adsd3500_reset() {
         }
 
         if (status == Status::OK) {
+            m_lastResetDone = std::chrono::steady_clock::now();
             break;
         }
 
