@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 #if defined(__aarch64__)
@@ -41,6 +42,27 @@
 static constexpr float METRES_TO_MM = 1000.0f;
 
 namespace aditof {
+
+// Runs fn(begin, end) over [0, count) split across up to 4 threads, each
+// part at least minPart long; fn must only write inside its own part.
+template <typename Fn>
+static void parallelRanges(std::size_t count, std::size_t minPart, Fn fn) {
+    static constexpr std::size_t MAX_THREADS = 4;
+    const std::size_t cores = std::max(1u, std::thread::hardware_concurrency());
+    const std::size_t threads = std::max<std::size_t>(
+        1, std::min({MAX_THREADS, cores,
+                     count / std::max<std::size_t>(minPart, 1)}));
+    const std::size_t part = (count + threads - 1) / threads;
+    std::vector<std::thread> workers;
+    workers.reserve(threads - 1);
+    for (std::size_t begin = part; begin < count; begin += part) {
+        workers.emplace_back(fn, begin, std::min(count, begin + part));
+    }
+    fn(std::size_t(0), std::min(count, part));
+    for (auto &worker : workers) {
+        worker.join();
+    }
+}
 
 #if defined(RGBD_NEON)
 using F4 = float32x4_t;
@@ -544,40 +566,50 @@ Status RGBDCoregistration::colorizeVisiblePoints(
     float *const inv = invBuf.data();
     uint8_t *const flags = flagBuf.data();
 
-    colorizePoints(xyz, numPoints, bgr, rgbWidth, rgbHeight, rgbStride, rgba,
-                   us, vs, inv);
+    parallelRanges(numPoints, 16384, [&](std::size_t b, std::size_t e) {
+        colorizePoints(xyz + 3 * b, e - b, bgr, rgbWidth, rgbHeight, rgbStride,
+                       rgba + 4 * b, us + b, vs + b, inv + b);
+    });
 
     const uint8_t valid = static_cast<uint8_t>(XYZColorStatus::Valid);
     const uint8_t noColor = static_cast<uint8_t>(XYZColorStatus::NoColor);
-    for (std::size_t i = 0; i < numPoints; ++i) {
-        const uint8_t a = rgba[4 * i + 3];
-        flags[i] = (a == valid || a == noColor) ? IN_VIEW : 0;
-    }
+    // Read from rgba, which no pass below writes until the last one, so
+    // threads can set flags of their own rows while reading neighbours.
+    auto inView = [&](std::size_t j) {
+        const uint8_t a = rgba[4 * j + 3];
+        return a == valid || a == noColor;
+    };
 
     const float pxPerTof = static_cast<float>(rgbPixelsPerToFPixel());
     const float minShift = MIN_SHIFT_TOF_PIXELS * pxPerTof;
     const auto &K = m_calib.rgb;
     const float *t = m_calib.extrinsics.t;
+    static constexpr std::size_t MIN_ROWS = 32;
 
     // Only points with 3 of 4 neighbours alike hide others, not noise or
     // flying pixels.
     auto alike = [&](std::size_t i, std::size_t j) {
-        return (flags[j] & IN_VIEW) &&
-               std::abs(inv[j] - inv[i]) <= SURFACE_SHARE * inv[i];
+        return inView(j) && std::abs(inv[j] - inv[i]) <= SURFACE_SHARE * inv[i];
     };
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < width; ++x) {
-            const std::size_t i = std::size_t(y) * width + x;
-            if ((flags[i] & IN_VIEW) &&
-                (x > 0 && alike(i, i - 1)) +
+    parallelRanges(height, MIN_ROWS, [&](std::size_t y0, std::size_t y1) {
+        for (uint32_t y = y0; y < y1; ++y) {
+            for (uint32_t x = 0; x < width; ++x) {
+                const std::size_t i = std::size_t(y) * width + x;
+                if (!inView(i)) {
+                    flags[i] = 0;
+                    continue;
+                }
+                flags[i] = IN_VIEW;
+                if ((x > 0 && alike(i, i - 1)) +
                         (x + 1 < width && alike(i, i + 1)) +
                         (y > 0 && alike(i, i - width)) +
                         (y + 1 < height && alike(i, i + width)) >=
                     3) {
-                flags[i] |= SURFACE;
+                    flags[i] |= SURFACE;
+                }
             }
         }
-    }
+    });
 
     // Along the camera offset: a nearer surface moves further in the RGB
     // image, so walking towards its shadow, a point that does not get past
@@ -628,22 +660,29 @@ Status RGBDCoregistration::colorizeVisiblePoints(
             }
         };
         if (alongRows) {
-            for (uint32_t y = 0; y < height; ++y) {
-                Walk w;
-                const std::size_t row = std::size_t(y) * width;
-                for (uint32_t n = 0; n < width; ++n) {
-                    step(row + (forward ? n : width - 1 - n), w);
-                }
-            }
+            parallelRanges(
+                height, MIN_ROWS, [&](std::size_t y0, std::size_t y1) {
+                    for (std::size_t y = y0; y < y1; ++y) {
+                        Walk w;
+                        const std::size_t row = y * width;
+                        for (uint32_t n = 0; n < width; ++n) {
+                            step(row + (forward ? n : width - 1 - n), w);
+                        }
+                    }
+                });
         } else {
-            std::vector<Walk> walks(width);
-            for (uint32_t n = 0; n < height; ++n) {
-                const std::size_t row =
-                    std::size_t(forward ? n : height - 1 - n) * width;
-                for (uint32_t x = 0; x < width; ++x) {
-                    step(row + x, walks[x]);
-                }
-            }
+            // Each part walks its own columns, row by row in memory order.
+            parallelRanges(
+                width, MIN_ROWS, [&](std::size_t x0, std::size_t x1) {
+                    std::vector<Walk> walks(x1 - x0);
+                    for (uint32_t n = 0; n < height; ++n) {
+                        const std::size_t row =
+                            std::size_t(forward ? n : height - 1 - n) * width;
+                        for (std::size_t x = x0; x < x1; ++x) {
+                            step(row + x, walks[x - x0]);
+                        }
+                    }
+                });
         }
     };
     if (t[0] != 0.0f) {
@@ -655,19 +694,21 @@ Status RGBDCoregistration::colorizeVisiblePoints(
 
     // A real shadow is a strip; a hidden point with no hidden neighbour is not.
     auto hidden = [&](std::size_t j) { return (flags[j] & HIDDEN) != 0; };
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < width; ++x) {
-            const std::size_t i = std::size_t(y) * width + x;
-            if (hidden(i) &&
-                ((x > 0 && hidden(i - 1)) || (x + 1 < width && hidden(i + 1)) ||
-                 (y > 0 && hidden(i - width)) ||
-                 (y + 1 < height && hidden(i + width)))) {
-                uint8_t *out = rgba + 4 * i;
-                out[0] = out[1] = out[2] = 0;
-                out[3] = static_cast<uint8_t>(XYZColorStatus::Occluded);
+    parallelRanges(height, MIN_ROWS, [&](std::size_t y0, std::size_t y1) {
+        for (uint32_t y = y0; y < y1; ++y) {
+            for (uint32_t x = 0; x < width; ++x) {
+                const std::size_t i = std::size_t(y) * width + x;
+                if (hidden(i) && ((x > 0 && hidden(i - 1)) ||
+                                  (x + 1 < width && hidden(i + 1)) ||
+                                  (y > 0 && hidden(i - width)) ||
+                                  (y + 1 < height && hidden(i + width)))) {
+                    uint8_t *out = rgba + 4 * i;
+                    out[0] = out[1] = out[2] = 0;
+                    out[3] = static_cast<uint8_t>(XYZColorStatus::Occluded);
+                }
             }
         }
-    }
+    });
     return Status::OK;
 }
 

@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <future>
 
 using namespace aditof;
 
@@ -142,6 +143,7 @@ Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const XYZTable *rays,
         return Status::UNAVAILABLE;
     }
 
+    std::future<void> view;
     if (out.rgb && !bgr) {
         std::memset(out.rgb, 0, out.rgbBytes);
     } else if (out.rgb) {
@@ -158,7 +160,11 @@ Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const XYZTable *rays,
             }
             m_viewLookupRays = m_planeXyzRays;
         }
-        RGBDCoregistration::sampleRgbLookup(lookup, bgr, out.rgb);
+        // Reads only bgr and the lookup, so it runs beside xyz_color.
+        uint8_t *rgbOut = out.rgb;
+        view = std::async(std::launch::async, [&lookup, bgr, rgbOut]() {
+            RGBDCoregistration::sampleRgbLookup(lookup, bgr, rgbOut);
+        });
     }
 
     if (out.color) {
@@ -166,10 +172,16 @@ Status RgbdFusionManager::fuse(Frame *frame, int16_t *xyz, const XYZTable *rays,
             xyz, out.width, out.height, bgr, bgrWidth, bgrHeight, bgrStride,
             out.color);
         if (status != Status::OK) {
+            if (view.valid()) {
+                view.wait();
+            }
             clearOutputs(out);
             return status;
         }
         zeroOutOfView(out, xyz, out.color);
+    }
+    if (view.valid()) {
+        view.wait();
     }
     return Status::OK;
 }
