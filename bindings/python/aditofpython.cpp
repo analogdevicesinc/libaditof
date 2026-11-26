@@ -1212,6 +1212,44 @@ PYBIND11_MODULE(aditofpython, m) {
             "Colour int16 xyz points (... x 3, mm) from a BGR image (H x W x "
             "3). Returns ... x 4 uint8: R, G, B and a status in A (255 = "
             "valid). Frames from a camera already carry this as xyz_color.")
+        .def(
+            "colorizeVisiblePoints",
+            [](aditof::RGBDCoregistration &coreg,
+               py::array_t<int16_t, py::array::c_style | py::array::forcecast>
+                   xyz_in,
+               py::array_t<uint8_t, py::array::c_style | py::array::forcecast>
+                   bgr_in) {
+                py::buffer_info xyz = xyz_in.request();
+                py::buffer_info bgr = bgr_in.request();
+                if (xyz.ndim != 3 || xyz.shape[2] != 3) {
+                    throw std::invalid_argument(
+                        "xyz must be H x W x 3 (X, Y, Z)");
+                }
+                if (bgr.ndim != 3 || bgr.shape[2] != 3) {
+                    throw std::invalid_argument("bgr must be H x W x 3");
+                }
+
+                py::array_t<uint8_t> rgba(
+                    {xyz.shape[0], xyz.shape[1], static_cast<py::ssize_t>(4)});
+
+                const uint32_t rgbWidth = static_cast<uint32_t>(bgr.shape[1]);
+                aditof::Status status = coreg.colorizeVisiblePoints(
+                    static_cast<const int16_t *>(xyz.ptr),
+                    static_cast<uint32_t>(xyz.shape[1]),
+                    static_cast<uint32_t>(xyz.shape[0]),
+                    static_cast<const uint8_t *>(bgr.ptr), rgbWidth,
+                    static_cast<uint32_t>(bgr.shape[0]), rgbWidth * 3u,
+                    rgba.mutable_data());
+                if (status != aditof::Status::OK) {
+                    throw std::runtime_error("colorizeVisiblePoints failed; is "
+                                             "the calibration loaded?");
+                }
+                return rgba;
+            },
+            py::arg("xyz"), py::arg("bgr"),
+            "colorizePointCloud() for an H x W x 3 xyz image that also marks "
+            "the points a nearer point hides from the RGB camera "
+            "(XYZColorStatus.Occluded, R, G, B 0). Returns H x W x 4 uint8.")
         .def("isCalibrationLoaded",
              &aditof::RGBDCoregistration::isCalibrationLoaded);
 
