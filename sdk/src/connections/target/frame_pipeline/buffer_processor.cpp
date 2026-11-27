@@ -246,8 +246,8 @@ aditof::Status BufferProcessor::setVideoProperties(
 
     {
         std::shared_ptr<uint16_t> clr_buffer;
-        while (m_tofi_io_Buffer_Q.pop(clr_buffer,
-                                      std::chrono::milliseconds(0))) {
+        while (
+            m_tofi_io_Buffer_Q.pop(clr_buffer, std::chrono::milliseconds(0))) {
             // Buffer deallocation via shared_ptr
         }
     }
@@ -2060,8 +2060,8 @@ void BufferProcessor::stopThreads() {
     // Return buffers to their pools for potential reuse
     {
         Tofi_v4l2_buffer frame;
-        while (m_capture_to_process_Q.pop(frame,
-                                          std::chrono::milliseconds(0))) {
+        while (
+            m_capture_to_process_Q.pop(frame, std::chrono::milliseconds(0))) {
             if (frame.data)
                 m_v4l2_input_buffer_Q.push(frame.data);
             if (frame.tofiBuffer)
