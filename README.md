@@ -147,6 +147,21 @@ Use `data_collect` with `--scf` to capture the live camera parameters to a JSON 
 
 This saves all active depth parameters (JBLF, thresholds, FPS, etc.) for the given mode. Run once per mode and combine as needed.
 
+The file has one entry per mode. Each mode holds `depth-compute` and `configuration-parameters`, plus one section per depth algorithm used with it, `mode-fusion` and/or `lens-scatter`:
+
+```json
+{
+  "0": {
+    "depth-compute": { "abThreshMin": 3.0, "confThresh": 25.0, ... },
+    "configuration-parameters": { "fps": 30.0, ... },
+    "mode-fusion": { "ABFusionEnabled": 1.0, ... }
+  },
+  "7": { ... }
+}
+```
+
+The algorithm sections are used only while that algorithm runs (`Camera::setModeFusion()`, `Camera::setLensScatterCompensation()`); otherwise the mode's standard parameters apply.
+
 ### Loading the configuration
 
 The SDK looks for `adcam_config.json` in the following order:
@@ -161,6 +176,17 @@ The SDK looks for `adcam_config.json` in the following order:
 3. **Factory defaults** — if neither of the above is found, the SDK runs with built-in defaults.
 
 The explicit path passed to `camera->initialize("/path/to/config.json")` always takes priority over auto-discovery.
+
+## RGB Camera
+
+With the RGB camera enabled (`rgbCameraEnable`, on by default), frames carry two extra data types, filled from the RGB frame paired with each depth frame:
+
+* `rgb`: the RGB image as the depth camera sees it, B, G, R per depth pixel. Each depth pixel is mapped into the RGB image with the RGB-depth calibration (read from the chip) at a fixed 1 m; pixels outside the RGB field of view are 0.
+* `xyz_color` (with `xyzEnable`): R, G, B, A per `xyz` point, projected with the point's own depth. A is the `XYZColorStatus`: `Valid`, `Occluded` (a nearer surface hides the point from the RGB camera; R, G, B are 0), `OutOfView`, `NoDepth` or `NoColor`. Points outside the RGB view are also zeroed in `xyz`.
+
+`RGBDCoregistration` (`aditof/rgbd_coregistration.h`) does the same for data captured elsewhere.
+
+`start()` streams no sooner than 3 s after the last ADSD3500 reset (the SDK resets the chip in `initialize()` and `stop()`), because frames streamed earlier can be corrupt.
 
 ## CMake Options
 
